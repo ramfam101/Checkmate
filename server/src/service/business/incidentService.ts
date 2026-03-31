@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -64,11 +68,18 @@ export class IncidentService implements IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null> => {
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+		await this.handleEscalations({
+			monitor,
+			activeIncident,
+			decision,
+			monitorStatusResponse,
+		});
+
 		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident) {
 			return null;
 		}
-
-		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
 
 		if (decision.shouldCreateIncident) {
 			if (activeIncident) {
@@ -89,6 +100,7 @@ export class IncidentService implements IIncidentService {
 					startTime: Date.now().toString(),
 					status: true,
 					statusCode,
+					escalationsSent: [],
 					message,
 				};
 				return await this.incidentsRepository.create(incident);
@@ -106,6 +118,90 @@ export class IncidentService implements IIncidentService {
 		}
 
 		return null;
+	};
+
+	private buildEscalationRuleKey(delayMinutes: number, notificationChannels: string[]): string {
+		const channelKey = [...notificationChannels].sort().join(",");
+		return `${delayMinutes}:${channelKey}`;
+	}
+
+	private handleEscalations = async ({
+		monitor,
+		activeIncident,
+		decision,
+		monitorStatusResponse,
+	}: {
+		monitor: Monitor;
+		activeIncident: Incident | null;
+		decision: MonitorActionDecision;
+		monitorStatusResponse?: MonitorStatusResponse;
+	}): Promise<void> => {
+		if (!activeIncident) {
+			return;
+		}
+
+		if (!monitorStatusResponse) {
+			return;
+		}
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const escalationRules = (monitor.escalatedNotifications ?? [])
+			.filter((rule) => rule.delayMinutes > 0 && Array.isArray(rule.notificationChannels) && rule.notificationChannels.length > 0)
+			.sort((a, b) => a.delayMinutes - b.delayMinutes);
+
+		if (!escalationRules.length) {
+			return;
+		}
+
+		const incidentStartedAt = new Date(activeIncident.startTime).getTime();
+		const incidentDurationMinutes = Math.floor((Date.now() - incidentStartedAt) / 60000);
+		if (incidentDurationMinutes <= 0) {
+			return;
+		}
+
+		const alreadySent = new Set(activeIncident.escalationsSent ?? []);
+		const sentThisCycle: string[] = [];
+
+		for (const rule of escalationRules) {
+			if (incidentDurationMinutes < rule.delayMinutes) {
+				continue;
+			}
+
+			const ruleKey = this.buildEscalationRuleKey(rule.delayMinutes, rule.notificationChannels);
+			if (alreadySent.has(ruleKey)) {
+				continue;
+			}
+
+			const success = await this.notificationsService.sendEscalationNotifications({
+				monitor,
+				monitorStatusResponse,
+				decision,
+				notificationIds: rule.notificationChannels,
+				escalationDelayMinutes: rule.delayMinutes,
+				incidentDurationMinutes,
+			});
+
+			if (!success) {
+				this.logger.warn({
+					message: `Escalation notification failed for monitor ${monitor.id} at ${rule.delayMinutes} minutes`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+				});
+				continue;
+			}
+
+			alreadySent.add(ruleKey);
+			sentThisCycle.push(ruleKey);
+		}
+
+		if (sentThisCycle.length > 0) {
+			await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+				escalationsSent: [...alreadySent],
+			});
+		}
 	};
 
 	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {

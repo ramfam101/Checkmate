@@ -49,6 +49,25 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const escalatedNotificationRuleValidation = z.object({
+	delayMinutes: z.number().min(1).max(10080),
+	notificationChannels: z.array(z.string()).min(1),
+});
+
+const escalatedNotificationsValidation = z.array(escalatedNotificationRuleValidation).superRefine((rules, ctx) => {
+	const seenDelays = new Set<number>();
+	rules.forEach((rule, index) => {
+		if (seenDelays.has(rule.delayMinutes)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Escalation delays must be unique",
+				path: [index, "delayMinutes"],
+			});
+		}
+		seenDelays.add(rule.delayMinutes);
+	});
+});
+
 export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
@@ -67,6 +86,7 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalatedNotifications: escalatedNotificationsValidation.optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +109,7 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalatedNotifications: escalatedNotificationsValidation.optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -144,6 +165,7 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalatedNotifications: escalatedNotificationsValidation.default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

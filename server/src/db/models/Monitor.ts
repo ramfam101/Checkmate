@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, CheckSnapshot, EscalatedNotificationRule } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -15,14 +15,18 @@ import type {
 } from "@/types/check.js";
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
+type EscalatedNotificationRuleDocument = Omit<EscalatedNotificationRule, "notificationChannels"> & {
+	notificationChannels: Types.ObjectId[];
+};
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "escalatedNotifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalatedNotifications: EscalatedNotificationRuleDocument[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -198,6 +202,20 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalatedNotificationRuleSchema = new Schema<EscalatedNotificationRuleDocument>(
+	{
+		delayMinutes: { type: Number, required: true, min: 1 },
+		notificationChannels: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+				required: true,
+			},
+		],
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +302,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalatedNotifications: {
+			type: [escalatedNotificationRuleSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

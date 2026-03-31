@@ -1,22 +1,26 @@
 import type { NextFunction, Request, Response } from "express";
 import { logger } from "@/utils/logger.js";
 import { AppError } from "@/utils/AppError.js";
+import { ZodError } from "zod";
 
 const handleErrors = (error: unknown, req: Request, res: Response, _next: NextFunction) => {
-	const status = error instanceof AppError ? error.status || 500 : 500;
-	const message = error instanceof AppError ? error.message : "Server error";
-	const service = error instanceof AppError ? error.service : "unknownService";
-	const method = error instanceof AppError ? error.method : "unknownMethod";
+	const isAppError = error instanceof AppError;
+	const isZodError = error instanceof ZodError;
+	const status = isAppError ? error.status || 500 : isZodError ? 400 : 500;
+	const message = isAppError ? error.message : isZodError ? "Validation error" : "Server error";
+	const service = isAppError ? error.service : isZodError ? "Validation" : "unknownService";
+	const method = isAppError ? error.method : isZodError ? `${req.method} ${req.originalUrl}` : "unknownMethod";
 	logger.error({
 		message: message,
 		service: service,
 		method: method,
-		stack: error instanceof AppError ? error.stack : undefined,
-		details: error instanceof AppError ? error.details : undefined,
+		stack: isAppError ? error.stack : undefined,
+		details: isAppError ? error.details : isZodError ? error.flatten() : undefined,
 	});
 	res.status(status).json({
 		status,
 		msg: message,
+		...(isZodError ? { errors: error.flatten() } : {}),
 	});
 };
 

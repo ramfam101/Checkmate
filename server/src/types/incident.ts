@@ -12,6 +12,7 @@ export interface Incident {
 	status: boolean;
 	message?: string | null;
 	statusCode?: number | null;
+	escalationsSent?: string[];
 	resolutionType: IncidentResolutionType;
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;

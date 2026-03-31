@@ -56,6 +56,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			status: doc.status,
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
+			escalationsSent: doc.escalationsSent ?? [],
 			resolutionType: doc.resolutionType ?? null,
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
@@ -254,10 +255,10 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			avgResolutionTimeHours,
 			topMonitor: monitorResult[0]
 				? {
-						monitorId: this.toStringId(monitorResult[0].monitorId),
-						monitorName: monitorResult[0].monitorName ?? null,
-						incidentCount: monitorResult[0].count,
-					}
+					monitorId: this.toStringId(monitorResult[0].monitorId),
+					monitorName: monitorResult[0].monitorName ?? null,
+					incidentCount: monitorResult[0].count,
+				}
 				: null,
 			latestIncidents: latestIncidents.map((incident) => ({
 				id: this.toStringId(incident._id),

@@ -239,10 +239,11 @@ export class StatusService implements IStatusService {
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
 				monitor.status = newStatus;
+				const hasChangedDuringWarmup = prevStatus !== newStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
-					statusChanged: false,
+					statusChanged: hasChangedDuringWarmup,
 					prevStatus,
 					code,
 					timestamp: Date.now(),
