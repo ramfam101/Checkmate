@@ -150,13 +150,29 @@ class NotificationController implements INotificationController {
 
 			const result = await this.notificationsService.testAllNotifications(notifications);
 
-			if (!result) {
-				throw new AppError({ message: "Failed to send all notifications", status: 500 });
+			if (!result.allSucceeded && result.succeeded === 0) {
+				const failedChannels = result.failures
+					.map((failure) => `${failure.name} (${failure.type})${failure.reason ? `: ${failure.reason}` : ""}`)
+					.join(", ");
+				throw new AppError({
+					message: failedChannels ? `Failed to send notifications: ${failedChannels}` : "Failed to send notifications",
+					status: 500,
+					service: SERVICE_NAME,
+					method: "testAllNotifications",
+					details: { ...result },
+				});
 			}
+
+			const msg = result.allSucceeded
+				? "All notifications sent successfully"
+				: `Sent ${result.succeeded} of ${result.total} notifications. Failed: ${result.failures
+						.map((failure) => `${failure.name} (${failure.type})${failure.reason ? `: ${failure.reason}` : ""}`)
+						.join(", ")}`;
 
 			return res.status(200).json({
 				success: true,
-				msg: "All notifications sent successfully",
+				msg,
+				data: result,
 			});
 		} catch (error) {
 			next(error);

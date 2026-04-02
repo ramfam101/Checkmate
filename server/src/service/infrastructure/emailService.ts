@@ -21,6 +21,7 @@ export interface IEmailService {
 	init(): void;
 	buildEmail(template: string, context: Record<string, unknown>): Promise<string | undefined>;
 	sendEmail(to: string, subject: string, html: string, transportConfig?: EmailTransportConfig): Promise<string | false | undefined>;
+	getLastError(): string | null;
 }
 
 export class EmailService implements IEmailService {
@@ -34,6 +35,7 @@ export class EmailService implements IEmailService {
 	private nodemailer: Mailer;
 	private logger: ILogger;
 	private transporter: ReturnType<typeof import("nodemailer").createTransport> | null = null;
+	private lastError: string | null = null;
 	private templateLookup: Record<string, ((context: Record<string, unknown>) => string) | undefined>;
 	private loadTemplate: (templateName: string) => ((context: Record<string, unknown>) => string) | undefined;
 
@@ -61,6 +63,10 @@ export class EmailService implements IEmailService {
 	get serviceName() {
 		return EmailService.SERVICE_NAME;
 	}
+
+	getLastError = () => {
+		return this.lastError;
+	};
 
 	init = () => {
 		this.loadTemplate = (templateName) => {
@@ -106,7 +112,28 @@ export class EmailService implements IEmailService {
 		}
 	};
 
+	private validateTransportConfig = (config: EmailTransportConfig) => {
+		const missingFields: string[] = [];
+
+		if (!config.systemEmailHost) {
+			missingFields.push("systemEmailHost");
+		}
+		if (!config.systemEmailPort || Number.isNaN(Number(config.systemEmailPort))) {
+			missingFields.push("systemEmailPort");
+		}
+		if (!config.systemEmailAddress) {
+			missingFields.push("systemEmailAddress");
+		}
+		if (!config.systemEmailPassword) {
+			missingFields.push("systemEmailPassword");
+		}
+
+		return missingFields;
+	};
+
 	sendEmail = async (to: string, subject: string, html: string, transportConfig?: EmailTransportConfig) => {
+		this.lastError = null;
+
 		let config: EmailTransportConfig;
 		if (typeof transportConfig !== "undefined") {
 			config = transportConfig;
@@ -127,6 +154,23 @@ export class EmailService implements IEmailService {
 			systemEmailRequireTLS,
 			systemEmailRejectUnauthorized,
 		} = config;
+
+		const missingFields = this.validateTransportConfig(config);
+		if (missingFields.length > 0) {
+			this.lastError = `Email transport configuration is incomplete: ${missingFields.join(", ")}`;
+			this.logger.warn({
+				message: this.lastError,
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					host: systemEmailHost || null,
+					port: systemEmailPort ?? null,
+					from: systemEmailAddress || null,
+					user: systemEmailUser || systemEmailAddress || null,
+				},
+			});
+			return false;
+		}
 
 		const emailConfig = {
 			host: systemEmailHost,
@@ -151,10 +195,23 @@ export class EmailService implements IEmailService {
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
+			this.lastError = error instanceof Error ? `Email transporter verification failed: ${error.message}` : "Email transporter verification failed";
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: this.lastError,
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
+				details: {
+					host: systemEmailHost,
+					port: systemEmailPort,
+					from: systemEmailAddress,
+					user: systemEmailUser || systemEmailAddress,
+					secure: systemEmailSecure,
+					ignoreTLS: systemEmailIgnoreTLS,
+					requireTLS: systemEmailRequireTLS,
+					rejectUnauthorized: systemEmailRejectUnauthorized,
+					tlsServername: systemEmailTLSServername || null,
+					connectionHost: systemEmailConnectionHost || null,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
@@ -169,10 +226,19 @@ export class EmailService implements IEmailService {
 			});
 			return info?.messageId;
 		} catch (error: unknown) {
+			this.lastError = error instanceof Error ? error.message : "Unknown error";
 			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
+				message: this.lastError,
 				service: SERVICE_NAME,
 				method: "sendEmail",
+				details: {
+					host: systemEmailHost,
+					port: systemEmailPort,
+					from: systemEmailAddress,
+					user: systemEmailUser || systemEmailAddress,
+					to,
+					subject,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 		}

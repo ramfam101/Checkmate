@@ -7,6 +7,8 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	lastEscalationStep?: number | null;
+	lastEscalationAt?: Date | null;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -72,6 +74,14 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		lastEscalationStep: {
+			type: Number,
+			default: null,
+		},
+		lastEscalationAt: {
+			type: Date,
+			default: null,
+		},
 	},
 	{ timestamps: true }
 );
@@ -82,6 +92,7 @@ IncidentSchema.index({ teamId: 1, startTime: -1 });
 IncidentSchema.index({ status: 1, startTime: -1 });
 IncidentSchema.index({ resolutionType: 1, status: 1 });
 IncidentSchema.index({ resolvedBy: 1, status: 1 });
+IncidentSchema.index({ lastEscalationStep: 1 });
 IncidentSchema.index({ createdAt: -1 });
 
 const IncidentModel = model<IncidentDocument>("Incident", IncidentSchema);

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -193,6 +193,11 @@ const CreateMonitorPage = () => {
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
 	const { data: games } = useGet<GamesMap>("/monitors/games");
 
+	const notificationOptions = (notifications ?? []).map((n) => ({
+		...n,
+		name: n.notificationName,
+	}));
+
 	const { schema, defaults } = useMonitorForm({
 		data: existingMonitor ?? null,
 		defaultType,
@@ -203,6 +208,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields: escalationFields, append, remove } = useFieldArray({
+		name: "escalationPolicy",
+		control,
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -706,10 +715,6 @@ const CreateMonitorPage = () => {
 						control={control}
 						render={({ field }) => {
 							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -762,6 +767,107 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.length === 0 && (
+							<Typography>
+								{t("pages.createMonitor.form.escalation.empty")}
+							</Typography>
+						)}
+						{escalationFields.map((step, index) => {
+							return (
+								<Stack
+									key={step.id}
+									spacing={theme.spacing(LAYOUT.MD)}
+									sx={{
+										border: `1px solid ${theme.palette.divider}`,
+										borderRadius: theme.shape.borderRadius,
+										padding: theme.spacing(LAYOUT.MD),
+									}}
+								>
+									<Typography variant="subtitle2">
+										{t("pages.createMonitor.form.escalation.stepLabel", {
+											step: index + 1,
+										})}
+									</Typography>
+									<Stack
+										direction={{ xs: "column", md: "row" }}
+										spacing={theme.spacing(LAYOUT.MD)}
+										alignItems="flex-start"
+									>
+											<Controller
+												name={`escalationPolicy.${index}.delayMinutes`}
+												control={control}
+												render={({ field, fieldState }) => (
+													<TextField
+														{...field}
+														type="number"
+														value={field.value ?? ""}
+														onChange={(event) => {
+															const value = event.target.value;
+															field.onChange(value === "" ? undefined : Number(value));
+														}}
+														fieldLabel={t(
+															"pages.createMonitor.form.escalation.option.stepDelay.label"
+														)}
+														placeholder={t(
+															"pages.createMonitor.form.escalation.option.stepDelay.placeholder"
+														)}
+														InputLabelProps={{ shrink: true }}
+														inputProps={{ min: 1 }}
+														error={!!fieldState.error}
+														helperText={fieldState.error?.message ?? ""}
+													/>
+												)}
+											/>
+											<Controller
+												name={`escalationPolicy.${index}.notificationIds`}
+												control={control}
+												render={({ field }) => {
+													const selectedEscalationNotifications = notificationOptions.filter((n) =>
+														(field.value ?? []).includes(n.id)
+													);
+
+													return (
+														<Autocomplete
+															multiple
+															options={notificationOptions}
+															value={selectedEscalationNotifications}
+															getOptionLabel={(option) => option.name}
+															onChange={(_: unknown, newValue: typeof notificationOptions) => {
+																field.onChange(newValue.map((n) => n.id));
+															}}
+															isOptionEqualToValue={(option, value) => option.id === value.id}
+														/>
+													);
+												}}
+											/>
+										<IconButton
+												size="small"
+												onClick={() => remove(index)}
+												aria-label={t(
+												"pages.createMonitor.form.escalation.removeStepLabel"
+												)}
+											>
+											<Trash2 size={16} />
+										</IconButton>
+									</Stack>
+								</Stack>
+							);
+						})}
+						<Button
+							variant="outlined"
+							onClick={() => append({ delayMinutes: 5, notificationIds: [] })}
+						>
+							{t("pages.createMonitor.form.escalation.addStep")}
+						</Button>
+					</Stack>
 				}
 			/>
 

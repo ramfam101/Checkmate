@@ -543,6 +543,23 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Send follow-up alerts after a delay when an incident remains unresolved.",
+					"empty": "No escalation steps defined. Add a step to notify additional channels after a delay.",
+					"title": "Escalation policy",
+					"addStep": "Add escalation step",
+					"stepLabel": "Step {{step}}",
+					"removeStepLabel": "Remove escalation step",
+					"option": {
+						"stepDelay": {
+							"label": "Delay (minutes)",
+							"placeholder": "e.g. 5"
+						},
+						"notifications": {
+							"label": "Notification channels"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

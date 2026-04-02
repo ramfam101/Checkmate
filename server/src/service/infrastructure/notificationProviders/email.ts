@@ -24,7 +24,7 @@ export class EmailProvider implements INotificationProvider {
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
-			return false;
+			throw new Error("Notification email address is missing");
 		}
 
 		if (!html) {
@@ -33,17 +33,18 @@ export class EmailProvider implements INotificationProvider {
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
-			return false;
+			throw new Error("Failed to build test email content");
 		}
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
+			const reason = this.emailService.getLastError() || "Email test alert failed";
 			this.logger.warn({
-				message: "Email test alert failed",
+				message: reason,
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
-			return false;
+			throw new Error(reason);
 		}
 		return true;
 	}

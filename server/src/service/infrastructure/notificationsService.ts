@@ -16,7 +16,22 @@ export interface INotificationsService {
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
-	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	testAllNotifications: (notificationIds: string[]) => Promise<NotificationDispatchSummary>;
+}
+
+export interface NotificationDispatchFailure {
+	id: string;
+	name: string;
+	type: Notification["type"];
+	reason?: string;
+}
+
+export interface NotificationDispatchSummary {
+	total: number;
+	succeeded: number;
+	failed: number;
+	allSucceeded: boolean;
+	failures: NotificationDispatchFailure[];
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -108,28 +123,39 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = decision.notificationIds?.length ? decision.notificationIds : monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		const missingCount = notificationIds.length - notifications.length;
+		if (missingCount > 0) {
+			this.logger.warn({
+				message: `Notification send failed because ${missingCount} configured notification(s) were not found`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+				details: { notificationIds, foundCount: notifications.length },
+			});
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
-
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
+		const outcomes = await Promise.allSettled(
+			notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage))
+		);
+		const succeeded = outcomes.filter((outcome) => outcome.status === "fulfilled" && outcome.value).length;
+		const failed = outcomes.length - succeeded + missingCount;
 		if (failed > 0) {
 			this.logger.warn({
 				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
 				service: SERVICE_NAME,
 				method: "sendNotifications",
+				details: { notificationIds, succeeded, failed, missingCount },
 			});
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+		// Return true if all notifications succeeded and none were missing
+		return succeeded === notificationIds.length;
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
@@ -162,16 +188,73 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	testAllNotifications = async (notificationIds: string[]) => {
+	testAllNotifications = async (notificationIds: string[]): Promise<NotificationDispatchSummary> => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			return false;
+		const missingCount = notificationIds.length - notifications.length;
+		if (missingCount > 0) {
+			this.logger.warn({
+				message: `Test notification failed because ${missingCount} notification(s) were not found`,
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+				details: { notificationIds, foundCount: notifications.length },
+			});
 		}
-		return true;
+
+		const outcomes = await Promise.allSettled(notifications.map((notification) => this.sendTestNotification(notification)));
+		const failures: NotificationDispatchFailure[] = [];
+		let succeeded = 0;
+
+		outcomes.forEach((outcome, index) => {
+			const notification = notifications[index];
+			if (!notification) {
+				return;
+			}
+
+			if (outcome.status === "fulfilled" && outcome.value) {
+				succeeded += 1;
+				return;
+			}
+
+			failures.push({
+				id: notification.id,
+				name: notification.notificationName,
+				type: notification.type,
+				reason: outcome.status === "rejected" ? ((outcome.reason as Error | undefined)?.message ?? "Unknown error") : undefined,
+			});
+
+			if (outcome.status === "rejected") {
+				const error = outcome.reason as Error;
+				this.logger.warn({
+					message: "Test notification threw an error",
+					service: SERVICE_NAME,
+					method: "testAllNotifications",
+					details: {
+						notificationId: notification.id,
+						notificationType: notification.type,
+						notificationName: notification.notificationName,
+					},
+					stack: error?.stack,
+				});
+			}
+		});
+
+		const failed = failures.length + missingCount;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Test notifications completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+				details: { notificationIds, succeeded, failed, missingCount },
+			});
+		}
+
+		return {
+			total: notificationIds.length,
+			succeeded,
+			failed,
+			allSucceeded: failed === 0,
+			failures,
+		};
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {
