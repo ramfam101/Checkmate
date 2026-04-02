@@ -23,6 +23,7 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import { deleteChecksParamValidation } from "@/validation/checkValidation.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
@@ -37,8 +38,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -426,20 +428,28 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
-		if (!statusChanged) {
-			return decision;
-		}
-
+		if (statusChanged) {
+		
+		
 		if (monitor.status === "down") {
 			// Monitor went down (unreachable)
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+			this.monitorsRepository.updateById(monitor.id, monitor.teamId, { lastDownAt: new Date().toISOString() }).catch((error: unknown) => {
+				this.logger.error({
+					message: `Error updating lastDownAt for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "evaluateMonitorAction",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			},);
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
@@ -451,8 +461,39 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+			this.monitorsRepository.updateById(monitor.id, monitor.teamId, { lastDownAt: undefined, escalationSent: false }).catch((error: unknown) => {
+				this.logger.error({
+					message: `Error resetting lastDownAt and escalationSent for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "evaluateMonitorAction",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			});
 		}
 
 		return decision;
 	}
+	
+		if (monitor.status === "down" && monitor.lastDownAt && !monitor.escalationSent) {
+			const escalationDelayMs = (monitor.escalationDelay || 0) * 60 * 1000;
+			const downtimeDurationMs = Date.now() - new Date(monitor.lastDownAt).getTime();
+			if (downtimeDurationMs >= escalationDelayMs) {
+				decision.shouldSendNotification = true;
+				decision.shouldSendEscalation = true;
+				decision.notificationReason = "escalation";
+
+				this.monitorsRepository.updateById(monitor.id, monitor.teamId, { escalationSent: true }).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error updating escalationSent for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "evaluateMonitorAction",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+			}
+
+		}
+		return decision;
+}
 }

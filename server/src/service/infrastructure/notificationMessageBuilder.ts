@@ -53,11 +53,14 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "escalation" as NotificationType; 
+		}
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
 		}
-
+		
 		// Threshold breach (only if not down)
 		if (decision.notificationReason === "threshold_breach") {
 			return "threshold_breach";
@@ -79,6 +82,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
+			case "escalation":
 			case "monitor_down":
 				return "critical";
 			case "threshold_breach":
@@ -97,6 +101,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -106,6 +112,21 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const delay = monitor.escalationDelay || 0;
+		const title = `Escalation: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for ${delay} minute(s) and has entered escalation.`;
+		const details = [`URL: ${monitor.url}`, `Status: Escalation`, `Type: ${monitor.type}`, `Escalation Delay: ${delay} minute(s)`];
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {

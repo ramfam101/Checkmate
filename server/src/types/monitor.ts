@@ -42,6 +42,10 @@ export interface Monitor {
 	cpuAlertCounter: number;
 	memoryAlertThreshold: number;
 	memoryAlertCounter: number;
+	escalationDelay: number;
+	escalatedNotifications: string[];
+	lastDownAt?: string;
+	escalationSent: boolean;
 	diskAlertThreshold: number;
 	diskAlertCounter: number;
 	tempAlertThreshold: number;

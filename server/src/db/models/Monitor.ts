@@ -25,6 +25,8 @@ type MonitorDocumentBase = Omit<
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+	escalatedNotifications: Types.ObjectId[];
+	lastDownAt?: Date;
 };
 
 interface MonitorDocument extends MonitorDocumentBase {
@@ -255,6 +257,15 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		expectedValue: {
 			type: String,
 		},
+		escalationDelay: {
+			type: Number,
+			default: 0,
+		},
+		escalatedNotifications: [{
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+		}],
+
 		matchMethod: {
 			type: String,
 			enum: ["equal", "include", "regex", ""],
@@ -322,6 +333,13 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		selectedDisks: {
 			type: [String],
 			default: [],
+		},
+		lastDownAt: {
+			type: Date,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
 		},
 		gameId: {
 			type: String,

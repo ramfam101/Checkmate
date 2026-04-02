@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { monitorSchema, type MonitorFormData } from "@/Validation/monitor";
 import type { Monitor, MonitorType } from "@/Types/Monitor";
+import { es } from "zod/v4/locales";
 
 interface UseMonitorFormOptions {
 	data?: Monitor | null;
@@ -17,6 +18,8 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
 	geoCheckLocations: data?.geoCheckLocations || [],
 	geoCheckInterval: data?.geoCheckInterval || 300000,
+	escalationDelay: data?.escalationDelay ?? 0,
+	escalatedNotifications: data?.escalatedNotifications ?? [],
 });
 
 export const useMonitorForm = ({

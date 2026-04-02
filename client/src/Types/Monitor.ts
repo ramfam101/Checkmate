@@ -69,6 +69,12 @@ export interface Monitor {
 	diskAlertCounter: number;
 	tempAlertThreshold: number;
 	tempAlertCounter: number;
+	//delay mins
+	escalationDelay: number;
+	//list of notification ids
+	escalatedNotifications: string[];
+	lastDownAt: string;
+	escalationSent: boolean;
 	selectedDisks: string[];
 	gameId?: string;
 	grpcServiceName?: string;

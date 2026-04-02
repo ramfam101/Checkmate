@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type SubmitHandler, type SubmitErrorHandler, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -169,6 +169,7 @@ const CreateMonitorPage = () => {
 	const navigate = useNavigate();
 	const isEditMode = Boolean(monitorId);
 
+	
 	// Extract page type from URL path (e.g., /pagespeed/create -> pagespeed)
 	const pageType = useMemo(() => {
 		const pathSegments = location.pathname.split("/").filter(Boolean);
@@ -199,7 +200,7 @@ const CreateMonitorPage = () => {
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema) as Resolver<MonitorFormData>,
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
@@ -251,7 +252,7 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
-	const onSubmit = async (data: MonitorFormData) => {
+	const onSubmit: SubmitHandler<MonitorFormData> = async (data) => {
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -270,7 +271,7 @@ const CreateMonitorPage = () => {
 		}
 	};
 
-	const onError = (errors: unknown) => {
+	const onError: SubmitErrorHandler<MonitorFormData> = (errors) => {
 		logger.debug("Monitor creation validation errors", errors);
 	};
 
@@ -765,6 +766,56 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="escalationDelay"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								type="number"
+								fieldLabel={t("pages.createMonitor.form.escalationRules.option.delay.label")}
+								placeholder="0"
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+								onChange={(e) => field.onChange(Number(e.target.value))}
+							/>
+						)}
+					/>
+					<Controller
+						name="escalatedNotifications"
+						control={control}
+						render={({ field }) => {
+							const options = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const selectedOptions = options.filter((n) =>
+								(field.value ?? []).includes(n.id)
+							);
+							return (
+								<Autocomplete
+									multiple
+									options={options}
+									value={selectedOptions}
+									getOptionLabel={(option) => option.name}
+									onChange={(_: unknown, newValue: typeof options) => {
+										field.onChange(newValue.map((n) => n.id));
+									}}
+									isOptionEqualToValue={(option, value) => option.id === value.id}
+									fieldLabel={t("pages.createMonitor.form.escalationRules.option.notifications.label")}
+								/>
+							);
+						}}
+					/>	
+					</Stack>
+				}
+			/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
