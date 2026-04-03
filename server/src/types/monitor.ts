@@ -50,6 +50,8 @@ export interface Monitor {
 	gameId?: string;
 	grpcServiceName?: string;
 	group: string | null;
+	escalationDelayMinutes?: number;
+	escalationNotifications?: string[];
 	geoCheckEnabled?: boolean;
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;

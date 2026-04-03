@@ -92,6 +92,7 @@ export class MatrixProvider implements INotificationProvider {
 		// Determine color based on severity
 		const colorMap = {
 			critical: "#FF0000", // Red
+			high: "#FF0000", // Red (same as critical)
 			warning: "#FFA500", // Orange
 			success: "#00FF00", // Green
 			info: "#0000FF", // Blue

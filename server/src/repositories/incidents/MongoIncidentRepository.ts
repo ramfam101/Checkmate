@@ -60,6 +60,10 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+		escalationSent: doc.escalationSent ?? false,
+		acknowledged: doc.acknowledged ?? false,
+		acknowledgedBy: doc.acknowledgedBy ? this.toStringId(doc.acknowledgedBy) : null,
+		acknowledgedAt: doc.acknowledgedAt ? this.toDateString(doc.acknowledgedAt) : null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};

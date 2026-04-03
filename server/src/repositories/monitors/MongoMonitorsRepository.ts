@@ -390,6 +390,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? 0,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((id) => toStringId(id)),
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
