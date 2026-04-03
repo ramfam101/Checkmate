@@ -5,6 +5,8 @@ import { fixInfrastructureThresholds } from "./0004_fixInfrastructureThresholds.
 import MigrationModel from "../models/Migration.js";
 import { migrateStatusPageTypeToArray } from "./0005_migrateStatusPageTypeToArray.js";
 import type { ILogger } from "@/utils/logger.js";
+import { add } from "winston";
+import { addEscalationFields } from "./0006_addEscalationFields.js";
 
 type MigrationEntry = {
 	name: string;
@@ -17,6 +19,7 @@ const migrations: MigrationEntry[] = [
 	{ name: "0003_cleanupDuplicateMonitorStats", execute: cleanupDuplicateMonitorStats },
 	{ name: "0004_fixInfrastructureThresholds", execute: fixInfrastructureThresholds },
 	{ name: "0005_migrateStatusPageTypeToArray", execute: migrateStatusPageTypeToArray },
+	{ name: "0006_addEscalationFields", execute: addEscalationFields },
 ];
 
 const runMigrations = async (logger?: ILogger) => {
