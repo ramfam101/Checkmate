@@ -72,6 +72,7 @@ export class DiscordProvider implements INotificationProvider {
 	private buildDiscordEmbed(message: NotificationMessage): AlertDiscordPayload {
 		const colorMap: Record<NotificationSeverity, number> = {
 			critical: 0xdc2626, // red-600
+			high: 0xdc2626, // red-600 (same as critical)
 			warning: 0xf59e0b, // amber-500
 			info: 0x3b82f6, // blue-500
 			success: 0x10b981, // green-500

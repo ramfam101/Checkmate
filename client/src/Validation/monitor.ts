@@ -27,6 +27,12 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationDelayMinutes: z
+		.number()
+		.min(0, "Escalation delay must be 0 or greater")
+		.max(1440, "Escalation delay must be at most 1440 minutes")
+		.optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 // HTTP monitor schema

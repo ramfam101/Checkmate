@@ -29,6 +29,7 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	markIncidentEscalated(incidentId: string, teamId: string): Promise<Incident>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -90,6 +91,8 @@ export class IncidentService implements IIncidentService {
 					status: true,
 					statusCode,
 					message,
+					escalationSent: false,
+					acknowledged: false,
 				};
 				return await this.incidentsRepository.create(incident);
 			}
@@ -263,4 +266,18 @@ export class IncidentService implements IIncidentService {
 			throw error;
 		}
 	};
-}
+	markIncidentEscalated = async (incidentId: string, teamId: string) => {
+		try {
+			const incident = await this.incidentsRepository.updateById(incidentId, teamId, { escalationSent: true });
+			return incident;
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "markIncidentEscalated",
+				message: error instanceof Error ? error.message : "Unknown error",
+				details: { incidentId, teamId },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			throw error;
+		}
+	};}

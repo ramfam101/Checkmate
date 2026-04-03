@@ -72,6 +72,23 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
+		acknowledged: {
+			type: Boolean,
+			default: false,
+		},
+		acknowledgedBy: {
+			type: Schema.Types.ObjectId,
+			ref: "User",
+			default: null,
+		},
+		acknowledgedAt: {
+			type: Date,
+			default: null,
+		},
 	},
 	{ timestamps: true }
 );

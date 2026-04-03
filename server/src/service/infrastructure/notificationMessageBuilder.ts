@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: import("@/types/incident.js").Incident, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -182,7 +183,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	public extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[] {
+	public extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[] {
 		const breaches: ThresholdBreach[] = [];
 
 		// Check if this is a hardware monitor with threshold data
@@ -191,7 +192,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		// Cast to HardwareStatusPayload type
-		const payload = monitorStatusResponse.payload;
+		const payload = monitorStatusResponse.payload as HardwareStatusPayload;
 		const hardware = payload.data;
 
 		if (!hardware) {
@@ -270,5 +271,46 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(monitor: Monitor, incident: import("@/types/incident.js").Incident, clientHost: string): NotificationMessage {
+		const type: NotificationType = "escalation";
+		const severity: NotificationSeverity = "high";
+
+		const title = `ESCALATION: ${monitor.name} is still down`;
+		const summary = `Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Incident started: ${new Date(incident.createdAt).toISOString()}`,
+			`Duration: ${Math.floor((Date.now() - new Date(incident.createdAt).getTime()) / 1000 / 60)} minutes`,
+		];
+
+		const content: NotificationContent = {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				incidentId: incident.id,
+				notificationReason: "escalation",
+			},
+		};
 	}
 }

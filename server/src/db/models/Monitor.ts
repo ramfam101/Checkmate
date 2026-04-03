@@ -339,6 +339,15 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				return value && value.trim() ? value.trim() : null;
 			},
 		},
+		escalationDelayMinutes: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotifications: {
+			type: [Schema.Types.ObjectId],
+			ref: "Notification",
+			default: [],
+		},
 		geoCheckEnabled: {
 			type: Boolean,
 			default: false,

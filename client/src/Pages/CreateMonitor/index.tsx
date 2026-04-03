@@ -765,6 +765,54 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Select
+									{...field}
+									value={field.value ?? 0}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+									error={!!fieldState.error}
+								>
+									<MenuItem value={0}>0</MenuItem>
+									<MenuItem value={5}>5</MenuItem>
+									<MenuItem value={10}>10</MenuItem>
+									<MenuItem value={15}>15</MenuItem>
+									<MenuItem value={30}>30</MenuItem>
+									<MenuItem value={60}>60</MenuItem>
+									<MenuItem value={120}>120</MenuItem>
+								</Select>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({ ...n, name: n.notificationName }));
+								const selectedEscalation = notificationOptions.filter((n) => (field.value ?? []).includes(n.id));
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedEscalation}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => { field.onChange(newValue.map((n) => n.id)); }}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t("pages.createMonitor.form.escalation.option.notifications.label")}
+									/>
+								)
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
