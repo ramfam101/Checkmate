@@ -765,6 +765,99 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalations = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalations.map((escalation, index) => (
+										<Stack
+											key={index}
+											direction="row"
+											alignItems="center"
+											spacing={theme.spacing(LAYOUT.MD)}
+										>
+											<TextField
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.time.label"
+												)}
+												placeholder="e.g. 1"
+												type="number"
+												value={escalation.time ?? ""}
+												onChange={(e) => {
+													const newEscalations = [...escalations];
+													newEscalations[index] = {
+														...newEscalations[index],
+														time: Number(e.target.value),
+													};
+													field.onChange(newEscalations);
+												}}
+												fullWidth
+											/>
+											<Select
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.type.label"
+												)}
+												value={escalation.type ?? ""}
+												onChange={(e) => {
+													const newEscalations = [...escalations];
+													newEscalations[index] = {
+														...newEscalations[index],
+														type: e.target.value,
+													};
+													field.onChange(newEscalations);
+												}}
+												fullWidth
+											>
+												<MenuItem value="">
+													{t(
+														"pages.createMonitor.form.escalations.option.type.placeholder"
+													)}
+												</MenuItem>
+												<MenuItem value="email">Email</MenuItem>
+												<MenuItem value="slack">Slack</MenuItem>
+												<MenuItem value="discord">Discord</MenuItem>
+												<MenuItem value="webhook">Webhook</MenuItem>
+												<MenuItem value="pager_duty">PagerDuty</MenuItem>
+												<MenuItem value="matrix">Matrix</MenuItem>
+												<MenuItem value="teams">Teams</MenuItem>
+											</Select>
+											<IconButton
+												size="small"
+												onClick={() => {
+													const newEscalations = escalations.filter(
+														(_, i) => i !== index
+													);
+													field.onChange(newEscalations);
+												}}
+												aria-label="Remove escalation"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										onClick={() => {
+											const newEscalations = [...escalations, { time: 1, type: "" }];
+											field.onChange(newEscalations);
+										}}
+									>
+										{t("pages.createMonitor.form.escalations.addButton")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

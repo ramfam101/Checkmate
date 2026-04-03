@@ -351,6 +351,32 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: 300000,
 		},
+		escalations: {
+			type: [
+				{
+					time: { type: Number, required: true },
+					type: { type: String, required: true },
+				},
+			],
+			default: [],
+		},
+		lastEscalationIndex: {
+			type: Number,
+			default: -1,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
+		lastStatusNotification: {
+			type: String,
+			enum: ["up", "down", "paused", "initializing", "maintenance", "breached"],
+			default: null,
+		},
+		downSince: {
+			type: Number,
+			default: null,
+		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],

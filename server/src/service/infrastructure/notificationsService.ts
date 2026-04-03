@@ -1,4 +1,5 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { NotificationChannel } from "@/types/notification.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -13,7 +14,12 @@ export interface INotificationsService {
 	findNotificationsByTeamId: (teamId: string) => Promise<Notification[]>;
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
-	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationChannel?: NotificationChannel | null
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,9 +113,26 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationChannel?: NotificationChannel | null
+	) => {
 		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		let notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		if (escalationChannel) {
+			notifications = notifications.filter((notification) => notification.type === escalationChannel);
+			if (notifications.length === 0) {
+				this.logger.warn({
+					message: `No configured notifications for escalation channel ${escalationChannel}`,
+					service: SERVICE_NAME,
+					method: "sendNotifications",
+				});
+				return false;
+			}
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -132,13 +155,18 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	handleNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationChannel?: NotificationChannel | null
+	) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		// Send notifications based on decision and optional escalation channel
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, escalationChannel);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

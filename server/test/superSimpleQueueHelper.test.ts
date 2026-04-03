@@ -56,6 +56,23 @@ describe("SuperSimpleQueueHelper", () => {
 			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(monitor);
 		});
 
+		it("does not resend down status email when already notified down", async () => {
+			const networkResponse = { monitor: { id: "m1" }, status: false };
+			const updatedMonitor = { id: "m1", status: "down", lastStatusNotification: "down" } as unknown as Monitor;
+			const notificationsServiceMock = { handleNotifications: jest.fn().mockResolvedValue(undefined) };
+			const { helper } = createHelper({
+				networkService: { requestStatus: jest.fn().mockResolvedValue(networkResponse) },
+				statusService: {
+					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: updatedMonitor, statusChanged: true, prevStatus: "up", code: 503 }),
+				},
+				notificationsService: notificationsServiceMock,
+			});
+			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
+			const job = helper.getMonitorJob();
+			await job({ id: "m1", teamId: "team" } as Monitor);
+			expect(notificationsServiceMock.handleNotifications).not.toHaveBeenCalled();
+		});
+
 		it("throws when monitor id is missing", async () => {
 			const { helper } = createHelper();
 			const job = helper.getMonitorJob();

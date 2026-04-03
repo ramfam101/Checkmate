@@ -152,12 +152,40 @@ export class EmailService implements IEmailService {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: "Email transporter verification failed; attempting Ethereal fallback",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,
 			});
-			return false;
+
+			try {
+				const testAccount = await this.nodemailer.createTestAccount();
+				this.transporter = this.nodemailer.createTransport({
+					host: "smtp.ethereal.email",
+					port: 587,
+					secure: false,
+					auth: {
+						user: testAccount.user,
+						pass: testAccount.pass,
+					},
+				});
+
+				await this.transporter.verify();
+				this.logger.info({
+					message: "Email transporter switched to Ethereal fallback",
+					service: SERVICE_NAME,
+					method: "verifyTransporter",
+					details: { user: testAccount.user },
+				});
+			} catch (fallbackError: unknown) {
+				this.logger.error({
+					message: "Fallback Ethereal transporter verification failed",
+					service: SERVICE_NAME,
+					method: "verifyTransporter",
+					stack: fallbackError instanceof Error ? fallbackError.stack : undefined,
+				});
+				return false;
+			}
 		}
 
 		try {

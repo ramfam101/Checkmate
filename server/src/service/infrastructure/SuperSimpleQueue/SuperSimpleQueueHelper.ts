@@ -38,7 +38,9 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	escalationType?: "email" | "slack" | "discord" | "webhook" | "pager_duty" | "matrix" | "teams" | null;
+	escalationIndex?: number | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -153,19 +155,62 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
+				// Debug: Log monitor escalations state
+				this.logger.debug({
+					message: `[HEARTBEAT] Monitor state check`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+					details: {
+						monitorId,
+						hasEscalations: statusChangeResult.monitor.escalations && statusChangeResult.monitor.escalations.length > 0,
+						escalationCount: statusChangeResult.monitor.escalations?.length ?? 0,
+						monitorStatus: statusChangeResult.monitor.status,
+					},
+				});
+
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				// Prevent duplicate status-change emails by tracking the last notification state.
+				if (decision.shouldSendNotification && decision.notificationReason === "status_change") {
+					if (statusChangeResult.monitor.lastStatusNotification === statusChangeResult.monitor.status) {
+						decision.shouldSendNotification = false;
+					} else {
+						statusChangeResult.monitor.lastStatusNotification = statusChangeResult.monitor.status;
+						await this.monitorsRepository.updateById(monitorId, teamId, { lastStatusNotification: statusChangeResult.monitor.status });
+					}
+				}
+
+				// Optional escalation decision if still down and no status change notification is due
+				if (!decision.shouldSendNotification) {
+					const escalation = this.getEscalationDecision(statusChangeResult.monitor);
+					if (escalation.shouldSendNotification && escalation.escalationIndex !== null && escalation.escalationType) {
+						decision.shouldSendNotification = true;
+						decision.notificationReason = "escalation";
+						decision.incidentReason = "status_down";
+						decision.escalationType = escalation.escalationType;
+						decision.escalationIndex = escalation.escalationIndex;
+						statusChangeResult.monitor.lastEscalationIndex = escalation.escalationIndex;
+						statusChangeResult.monitor.escalationSent = true;
+						await this.monitorsRepository.updateById(monitorId, teamId, {
+							lastEscalationIndex: escalation.escalationIndex,
+							escalationSent: true,
+						});
+					}
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+					this.notificationsService
+						.handleNotifications(statusChangeResult.monitor, status, decision, decision.escalationType)
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -454,5 +499,71 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private getEscalationDecision(monitor: Monitor): {
+		shouldSendNotification: boolean;
+		escalationType?: "email" | "slack" | "discord" | "webhook" | "pager_duty" | "matrix" | "teams" | null;
+		escalationIndex?: number | null;
+	} {
+		const escalations = monitor.escalations ?? [];
+
+		// Debug logging
+		if (escalations.length > 0 || monitor.status === "down") {
+			this.logger.debug({
+				message: `[ESCALATION CHECK] Monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "getEscalationDecision",
+				details: {
+					hasEscalations: escalations.length > 0,
+					escalationCount: escalations.length,
+					escalations: escalations,
+					monitorStatus: monitor.status,
+					downSince: monitor.downSince,
+					lastEscalationIndex: monitor.lastEscalationIndex,
+				},
+			});
+		}
+
+		if (monitor.status !== "down" || !monitor.downSince || escalations.length === 0 || monitor.escalationSent) {
+			return { shouldSendNotification: false, escalationType: null, escalationIndex: null };
+		}
+
+		const sortedEscalations = [...escalations].sort((a, b) => a.time - b.time);
+		const now = Date.now();
+		const elapsedSeconds = (now - monitor.downSince) / 1000;
+		const elapsedMinutes = elapsedSeconds / 60;
+		const firstEscalation = sortedEscalations[0];
+
+		this.logger.debug({
+			message: `[ESCALATION TIMING] Monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "getEscalationDecision",
+			details: {
+				elapsedMinutes: Math.round(elapsedMinutes * 100) / 100,
+				firstEscalation,
+				sortedEscalations,
+			},
+		});
+
+		if (!firstEscalation) {
+			return { shouldSendNotification: false, escalationType: null, escalationIndex: null };
+		}
+
+		if (elapsedMinutes >= firstEscalation.time) {
+			this.logger.info({
+				message: `[ESCALATION TRIGGERED] Monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "getEscalationDecision",
+				details: {
+					elapsedMinutes: Math.round(elapsedMinutes * 100) / 100,
+					thresholdMinutes: firstEscalation.time,
+					escalationType: firstEscalation.type,
+				},
+			});
+			return { shouldSendNotification: true, escalationType: firstEscalation.type, escalationIndex: 0 };
+		}
+
+		return { shouldSendNotification: false, escalationType: null, escalationIndex: null };
 	}
 }

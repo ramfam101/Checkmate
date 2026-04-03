@@ -2,6 +2,7 @@ import { z } from "zod";
 import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
+import { NotificationChannels } from "@/types/notification.js";
 
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
@@ -78,6 +79,14 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalations: z
+		.array(
+			z.object({
+				time: z.number().min(0, "Escalation time must be at least 0"),
+				type: z.enum(NotificationChannels, { message: "Invalid notification channel" }),
+			})
+		)
+		.optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +116,14 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalations: z
+		.array(
+			z.object({
+				time: z.number().min(0, "Escalation time must be at least 0"),
+				type: z.enum(NotificationChannels, { message: "Invalid notification channel" }),
+			})
+		)
+		.optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
