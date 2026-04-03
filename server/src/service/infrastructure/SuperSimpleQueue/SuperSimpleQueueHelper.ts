@@ -37,8 +37,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -421,36 +422,82 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
-		// Initialize result
 		const decision: MonitorActionDecision = {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
-		if (!statusChanged) {
-			return decision;
+		// --- Handle status changes ---
+		if (statusChanged) {
+			if (monitor.status === "down") {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "status_down";
+				decision.notificationReason = "status_change";
+				// Record when monitor went down for escalation tracking
+				this.monitorsRepository
+					.updateById(monitor.id, monitor.teamId, {
+						lastDownAt: new Date().toISOString(),
+						escalationSent: false,
+					})
+					.catch((error: unknown) => {
+						this.logger.error({
+							message: `Error updating lastDownAt for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "evaluateMonitorAction",
+						});
+					});
+			} else if (monitor.status === "breached") {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "threshold_breach";
+				decision.notificationReason = "threshold_breach";
+			} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+				decision.shouldResolveIncident = true;
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "status_change";
+				// Reset escalation state when monitor recovers
+				this.monitorsRepository
+					.updateById(monitor.id, monitor.teamId, {
+						escalationSent: false,
+					})
+					.catch((error: unknown) => {
+						this.logger.error({
+							message: `Error resetting escalationSent for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "evaluateMonitorAction",
+						});
+					});
+			}
 		}
 
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
+		// --- Handle escalation check (runs every heartbeat, independent of status change) ---
+		if (
+			monitor.status === "down" &&
+			monitor.lastDownAt &&
+			!monitor.escalationSent &&
+			monitor.escalationDelay > 0 &&
+			(monitor.escalatedNotifications ?? []).length > 0
+		) {
+			const escalationDelayMs = monitor.escalationDelay * 60 * 1000;
+			const downtimeDurationMs = Date.now() - new Date(monitor.lastDownAt).getTime();
+
+			if (downtimeDurationMs >= escalationDelayMs) {
+				decision.shouldSendNotification = true;
+				decision.shouldSendEscalation = true;
+				decision.notificationReason = "escalation";
+				this.monitorsRepository.updateById(monitor.id, monitor.teamId, { escalationSent: true }).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error updating escalationSent for monitor ${monitor.id}`,
+						service: SERVICE_NAME,
+						method: "evaluateMonitorAction",
+					});
+				});
+			}
 		}
 
 		return decision;

@@ -765,6 +765,61 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelay"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									fieldLabel={t(
+										"pages.createMonitor.form.escalationRules.option.delay.label"
+									)}
+									placeholder="0"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+									onChange={(e) => field.onChange(Number(e.target.value))}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalatedNotifications"
+							control={control}
+							render={({ field }) => {
+								const options = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedOptions = options.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Autocomplete
+										multiple
+										options={options}
+										value={selectedOptions}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof options) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalationRules.option.notifications.label"
+										)}
+									/>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

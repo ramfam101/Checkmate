@@ -53,6 +53,9 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -79,6 +82,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
+			case "escalation":
 			case "monitor_down":
 				return "critical";
 			case "threshold_breach":
@@ -95,6 +99,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
@@ -106,6 +112,22 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const delay = monitor.escalationDelay || 0;
+		return {
+			title: `Escalation: ${monitor.name} still down`,
+			summary: `Monitor "${monitor.name}" has been down for ${delay}+ minute(s) and requires attention.`,
+			details: [
+				`URL: ${monitor.url}`,
+				`Status: Down (Escalated)`,
+				`Type: ${monitor.type}`,
+				`Escalation Delay: ${delay} minute(s)`,
+				...(monitorStatusResponse.code ? [`Response Code: ${monitorStatusResponse.code}`] : []),
+			],
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
