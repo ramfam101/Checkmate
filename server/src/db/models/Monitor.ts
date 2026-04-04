@@ -13,6 +13,7 @@ import type {
 	GotTimings,
 	ILighthouseAudit,
 } from "@/types/check.js";
+import { ref } from "node:process";
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
@@ -284,6 +285,24 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationAfter: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		downtimeStartAt: {
+			type: Date,
+			default: undefined,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
 		secret: {
 			type: String,
 		},
