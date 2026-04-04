@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotification: (monitor: Monitor, incident: import("@/types/incident.js").Incident, channelId: string) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,38 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (monitor: Monitor, incident: import("@/types/incident.js").Incident, channelId: string) => {
+		const notification = await this.notificationsRepository.findById(channelId, monitor.teamId);
+		if (!notification) return false;
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const decision: MonitorActionDecision = {
+			shouldSendNotification: true,
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			notificationReason: "status_change",
+			incidentReason: null,
+		};
+
+		// Use type assertion since we don't have a new MonitorStatusResponse to pass.
+		// For an escalated down incident, passing null/undefined can be handled correctly
+		// depending on how buildMessage handles it, but since we are down, we just simulate an empty one.
+		const fakeStatus: MonitorStatusResponse = {
+			monitorId: monitor.id,
+			teamId: monitor.teamId,
+			type: monitor.type,
+			status: false,
+			code: incident.statusCode || 0,
+			message: incident.message || "Escalation",
+			responseTime: 0,
+			payload: null as any,
+		};
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, fakeStatus, decision, clientHost);
+
+		return await this.send(notification, monitor, fakeStatus, decision, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

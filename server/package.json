@@ -30,7 +30,6 @@
 		"axios": "^1.7.2",
 		"bcryptjs": "3.0.2",
 		"bullmq": "5.41.2",
-		"cacheable-lookup": "7.0.0",
 		"compression": "1.8.1",
 		"cookie-parser": "^1.4.7",
 		"cors": "^2.8.5",

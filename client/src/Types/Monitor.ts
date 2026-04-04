@@ -60,6 +60,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalations?: { delayMinutes: number; channelId: string }[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

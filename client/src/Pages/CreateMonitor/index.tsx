@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,12 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+
+	const {
+		fields: escalationFields,
+		append: appendEscalation,
+		remove: removeEscalation,
+	} = useFieldArray({ control, name: "escalations" });
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +768,88 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title", "Escalated Notifications")}
+				subtitle={t(
+					"pages.createMonitor.form.escalations.description",
+					"Trigger alternative notifications if an incident remains unacknowledged."
+				)}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => (
+							<Stack
+								key={field.id}
+								direction={{ xs: "column", sm: "row" }}
+								spacing={2}
+								alignItems="center"
+								bgcolor="background.paper"
+								p={2}
+								borderRadius={1}
+								border={1}
+								borderColor="divider"
+							>
+								<Controller
+									name={`escalations.${index}.delayMinutes`}
+									control={control}
+									render={({ field: delayField }) => (
+										<TextField
+											{...delayField}
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.delay",
+												"Delay (Minutes)"
+											)}
+											fullWidth
+											onChange={(e) => delayField.onChange(Number(e.target.value))}
+										/>
+									)}
+								/>
+								<Controller
+									name={`escalations.${index}.channelId`}
+									control={control}
+									render={({ field: channelField }) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedChannel =
+											notificationOptions.find((n) => n.id === channelField.value) ||
+											null;
+										return (
+											<Autocomplete
+												options={notificationOptions}
+												value={selectedChannel}
+												getOptionLabel={(option) => option.name}
+												onChange={(_: unknown, newValue: any) => {
+													channelField.onChange(newValue ? newValue.id : "");
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.channel",
+													"Notification Channel"
+												)}
+											/>
+										);
+									}}
+								/>
+								<IconButton
+									color="error"
+									onClick={() => removeEscalation(index)}
+								>
+									<Trash2 size={20} />
+								</IconButton>
+							</Stack>
+						))}
+						<Button
+							variant="outlined"
+							onClick={() => appendEscalation({ delayMinutes: 15, channelId: "" })}
+						>
+							{t("pages.createMonitor.form.escalations.add", "Add Escalation")}
+						</Button>
+					</Stack>
 				}
 			/>
 

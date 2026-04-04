@@ -54,6 +54,11 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			startTime: this.toDateString(doc.startTime),
 			endTime: doc.endTime ? this.toDateString(doc.endTime) : null,
 			status: doc.status,
+			escalationsTriggered:
+				doc.escalationsTriggered?.map((e) => ({
+					channelId: this.toStringId(e.channelId),
+					triggeredAt: this.toDateString(e.triggeredAt),
+				})) || [],
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
 			resolutionType: doc.resolutionType ?? null,
@@ -103,6 +108,11 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		return this.toEntity(incident);
 	};
 
+	findAllActive = async (): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({ status: true });
+		return incidents.map(this.toEntity);
+	};
+
 	findActiveByMonitorId = async (monitorId: string, teamId: string): Promise<Incident | null> => {
 		const incident = await IncidentModel.findOne({
 			monitorId: new mongoose.Types.ObjectId(monitorId),
@@ -131,6 +141,20 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			.skip(page * rowsPerPage)
 			.limit(rowsPerPage);
 		return this.mapDocuments(incidents);
+	};
+
+	pushEscalationTriggered = async (incidentId: string, teamId: string, channelId: string): Promise<void> => {
+		await IncidentModel.updateOne(
+			{ _id: new mongoose.Types.ObjectId(incidentId), teamId: new mongoose.Types.ObjectId(teamId) },
+			{
+				$push: {
+					escalationsTriggered: {
+						channelId: new mongoose.Types.ObjectId(channelId),
+						triggeredAt: new Date(),
+					},
+				},
+			}
+		);
 	};
 
 	updateById = async (incidentId: string, teamId: string, patch: Partial<Incident>) => {
