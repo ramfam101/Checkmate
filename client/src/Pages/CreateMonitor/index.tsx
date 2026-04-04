@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalations = watch("escalations") ?? [];
 
 	useEffect(() => {
 		clearErrors();
@@ -221,6 +222,22 @@ const CreateMonitorPage = () => {
 		() => getGeneralSettingsConfig(watchedType, t),
 		[watchedType, t]
 	);
+
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
+	);
+
+	const createEscalationId = () => {
+		if (typeof globalThis.crypto?.randomUUID === "function") {
+			return globalThis.crypto.randomUUID();
+		}
+		return `escalation-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+	};
 
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
 	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
@@ -705,11 +722,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -762,6 +774,131 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{watchedEscalations.map((escalation, index) => {
+							const selectedNotifications = notificationOptions.filter((notification) =>
+								(escalation.notificationIds ?? []).includes(notification.id)
+							);
+
+							return (
+								<Stack
+									key={escalation.id}
+									spacing={theme.spacing(LAYOUT.SM)}
+									sx={{
+										border: `1px solid ${theme.palette.divider}`,
+										borderRadius: theme.spacing(2),
+										padding: theme.spacing(LAYOUT.MD),
+									}}
+								>
+									<Stack
+										direction="row"
+										justifyContent="space-between"
+										alignItems="center"
+									>
+										<Typography variant="subtitle2">
+											{t("pages.createMonitor.form.escalations.stepLabel", {
+												number: index + 1,
+											})}
+										</Typography>
+										<IconButton
+											size="small"
+											onClick={() => {
+												setValue(
+													"escalations",
+													watchedEscalations.filter(
+														(_, escalationIndex) => escalationIndex !== index
+													),
+													{ shouldDirty: true, shouldValidate: true }
+												);
+											}}
+											aria-label="Remove escalation"
+										>
+											<Trash2 size={16} />
+										</IconButton>
+									</Stack>
+									<TextField
+										type="number"
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.option.afterMinutes.label"
+										)}
+										value={escalation.afterMinutes}
+										onChange={(event) => {
+											const nextEscalations = watchedEscalations.map(
+												(item, escalationIndex) =>
+													escalationIndex === index
+														? {
+																...item,
+																afterMinutes: Number(event.target.value || 1),
+															}
+														: item
+											);
+											setValue("escalations", nextEscalations, {
+												shouldDirty: true,
+												shouldValidate: true,
+											});
+										}}
+										inputProps={{ min: 1 }}
+									/>
+									<Autocomplete
+										multiple
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.option.channels.label"
+										)}
+										options={notificationOptions}
+										value={selectedNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											const nextEscalations = watchedEscalations.map(
+												(item, escalationIndex) =>
+													escalationIndex === index
+														? {
+																...item,
+																notificationIds: newValue.map(
+																	(notification) => notification.id
+																),
+															}
+														: item
+											);
+											setValue("escalations", nextEscalations, {
+												shouldDirty: true,
+												shouldValidate: true,
+											});
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+								</Stack>
+							);
+						})}
+
+						<Button
+							type="button"
+							variant="outlined"
+							onClick={() => {
+								setValue(
+									"escalations",
+									[
+										...watchedEscalations,
+										{
+											id: createEscalationId(),
+											afterMinutes: 15,
+											notificationIds: [],
+										},
+									],
+									{ shouldDirty: true, shouldValidate: true }
+								);
+							}}
+							startIcon={<Plus size={16} />}
+						>
+							{t("pages.createMonitor.form.escalations.add")}
+						</Button>
+					</Stack>
 				}
 			/>
 
