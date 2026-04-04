@@ -60,6 +60,8 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationsSent: doc.escalationsSent ?? 0,
+			escalationIntervalsSent: doc.escalationIntervalsSent ?? [],
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -113,6 +115,28 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			return null;
 		}
 		return this.toEntity(incident);
+	};
+
+	checkAndUpdateEscalation = async (
+		incidentId: string,
+		teamId: string,
+		escalationInterval: number
+	): Promise<boolean> => {
+		const result = await IncidentModel.findOneAndUpdate(
+			{
+				_id: new mongoose.Types.ObjectId(incidentId),
+				teamId: new mongoose.Types.ObjectId(teamId),
+				status: true,
+				escalationIntervalsSent: { $nin: [escalationInterval] },
+			},
+			{
+				$push: { escalationIntervalsSent: escalationInterval },
+				$inc: { escalationsSent: 1 },
+			},
+			{ new: true }
+		);
+
+		return !!result;
 	};
 
 	findByTeamId = async (

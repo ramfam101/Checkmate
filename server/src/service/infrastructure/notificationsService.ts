@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Incident, Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,7 +14,11 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalation: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident
+	) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +143,57 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalation = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident
+	): Promise<boolean> => {
+		if (!monitor.escalationEnabled || !monitor.escalationNotificationId) {
+			return false;
+		}
+
+		const escalationNotification = await this.notificationsRepository.findById(
+			monitor.escalationNotificationId,
+			monitor.teamId
+		);
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "escalation",
+		};
+
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			clientHost
+		);
+
+		const downForMinutes = Math.max(
+			0,
+			Math.floor((Date.now() - Date.parse(incident.startTime)) / 60000)
+		);
+
+		notificationMessage.content.details = [
+			...(notificationMessage.content.details ?? []),
+			`Incident started: ${incident.startTime}`,
+			`Down for: ${downForMinutes} minute(s)`,
+		];
+
+		return await this.send(
+			escalationNotification,
+			monitor,
+			monitorStatusResponse,
+			decision,
+			notificationMessage
+		);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

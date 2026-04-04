@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -88,6 +92,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "success";
 			case "test":
 				return "info";
+			case "escalation":
+				return "critical";
 			default:
 				return "info";
 		}
@@ -103,6 +109,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
@@ -170,6 +178,18 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			summary,
 			details,
 			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse
+	): NotificationContent {
+		const content = this.buildMonitorDownContent(monitor, monitorStatusResponse);
+		return {
+			...content,
+			title: `Escalated Alert: ${monitor.name}`,
+			summary: `Monitor "${monitor.name}" is still down and requires escalation.`,
 		};
 	}
 

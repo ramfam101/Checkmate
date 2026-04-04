@@ -11,7 +11,12 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import {
+	CHECK_TTL_SENTINEL,
+	type MaintenanceWindow,
+	type MonitorStatusResponse,
+	type StatusChangeResult,
+} from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +43,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -172,6 +177,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 7b. Send escalation notification if monitor is still down
+				this.handleEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -417,6 +432,44 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async handleEscalation(monitor: Monitor, status: MonitorStatusResponse): Promise<void> {
+		if (
+			monitor.status !== "down" ||
+			!monitor.escalationEnabled ||
+			!monitor.escalationNotificationId ||
+			!monitor.escalationIntervals?.length
+		) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(
+			monitor.id,
+			monitor.teamId
+		);
+		if (!activeIncident) {
+			return;
+		}
+
+		const escalationIndex = activeIncident.escalationsSent ?? 0;
+		const nextInterval = monitor.escalationIntervals[escalationIndex];
+		const maxEscalationAlerts = monitor.maxEscalationAlerts ?? 3;
+		const downForMs = Date.now() - Date.parse(activeIncident.startTime);
+
+		if (!nextInterval || escalationIndex >= maxEscalationAlerts || downForMs < nextInterval) {
+			return;
+		}
+
+		const shouldSend = await this.incidentsRepository.checkAndUpdateEscalation(
+			activeIncident.id,
+			monitor.teamId,
+			nextInterval
+		);
+
+		if (shouldSend) {
+			await this.notificationsService.sendEscalation(monitor, status, activeIncident);
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

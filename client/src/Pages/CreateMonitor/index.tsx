@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalationEnabled = watch("escalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +763,92 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send another alert if this monitor stays down for a set amount of time."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack direction="row" alignItems="center" spacing={theme.spacing(SPACING.LG)}>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable escalated notifications</Typography>
+								</Stack>
+							)}
+						/>
+
+						{watchedEscalationEnabled && (
+							<>
+								<Controller
+									name="escalationNotificationId"
+									control={control}
+									render={({ field }) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedNotification =
+											notificationOptions.find((n) => n.id === field.value) ?? null;
+
+										return (
+											<Autocomplete
+												options={notificationOptions}
+												value={selectedNotification}
+												fieldLabel="Escalation notification channel"
+												getOptionLabel={(option) => option.name}
+												onChange={(_, newValue) => {
+													field.onChange(newValue?.id ?? null);
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+											/>
+										);
+									}}
+								/>
+
+								<Controller
+									name="escalationIntervals"
+									control={control}
+									render={({ field }) => (
+										<Select
+											value={field.value?.[0] ?? 60000}
+											fieldLabel="Escalate after"
+											onChange={(e) => field.onChange([Number(e.target.value)])}
+										>
+											<MenuItem value={60000}>1 minute</MenuItem>
+											<MenuItem value={180000}>3 minutes</MenuItem>
+											<MenuItem value={300000}>5 minutes</MenuItem>
+											<MenuItem value={600000}>10 minutes</MenuItem>
+										</Select>
+									)}
+								/>
+
+								<Controller
+									name="maxEscalationAlerts"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											value={field.value ?? 3}
+											type="number"
+											fieldLabel="Max escalation alerts"
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+											onChange={(e) => field.onChange(Number(e.target.value))}
+										/>
+									)}
+								/>
+							</>
+						)}
+					</Stack>
 				}
 			/>
 
