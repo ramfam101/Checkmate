@@ -151,7 +151,13 @@ class NotificationController implements INotificationController {
 			const result = await this.notificationsService.testAllNotifications(notifications);
 
 			if (!result) {
-				throw new AppError({ message: "Failed to send all notifications", status: 500 });
+				throw new AppError({
+					message: "Failed to send all notifications. Check the notification channel configuration and email SMTP settings.",
+					status: 500,
+					service: SERVICE_NAME,
+					method: "testAllNotifications",
+					details: { monitorId: validatedBody.monitorId, notificationCount: notifications.length },
+				});
 			}
 
 			return res.status(200).json({

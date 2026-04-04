@@ -123,7 +123,13 @@ class SettingsController implements ISettingsController {
 			});
 
 			if (!messageId) {
-				throw new AppError({ message: "Failed to send test email.", status: 500 });
+				throw new AppError({
+					message: "Failed to send test email. Verify the SMTP host, port, address, password, and TLS settings.",
+					status: 500,
+					service: SERVICE_NAME,
+					method: "sendTestEmail",
+					details: { to },
+				});
 			}
 
 			return res.status(200).json({

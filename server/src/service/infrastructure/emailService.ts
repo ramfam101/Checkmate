@@ -128,6 +128,22 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		const missingFields: string[] = [];
+		if (!systemEmailHost) missingFields.push("systemEmailHost");
+		if (!systemEmailPort) missingFields.push("systemEmailPort");
+		if (!systemEmailAddress) missingFields.push("systemEmailAddress");
+		if (!systemEmailPassword) missingFields.push("systemEmailPassword");
+
+		if (missingFields.length > 0) {
+			this.logger.warn({
+				message: `Email settings incomplete: missing ${missingFields.join(", ")}`,
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: { to, subject },
+			});
+			return false;
+		}
+
 		const emailConfig = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
@@ -152,7 +168,7 @@ export class EmailService implements IEmailService {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: `Email transporter verification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,
