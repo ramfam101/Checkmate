@@ -765,6 +765,92 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+    title="Escalation Rules"
+    subtitle="If the monitor stays down for the specified time, notify additional channels."
+    rightContent={
+        <Stack spacing={theme.spacing(LAYOUT.MD)}>
+            <Controller
+                name="escalationDelay"
+                control={control}
+                render={({ field }) => (
+                    <TextField
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                            field.onChange(
+                                e.target.value === "" ? null : Number(e.target.value)
+                            )
+                        }
+                        type="number"
+                        fieldLabel="Escalate after (minutes)"
+                        placeholder="e.g. 3"
+                        fullWidth
+                    />
+                )}
+            />
+            <Controller
+                name="escalationNotifications"
+                control={control}
+                render={({ field }) => {
+                    const notificationOptions = (notifications ?? []).map((n) => ({
+                        ...n,
+                        name: n.notificationName,
+                    }));
+                    const selected = notificationOptions.filter((n) =>
+                        (field.value ?? []).includes(n.id)
+                    );
+                    return (
+                        <Stack spacing={theme.spacing(LAYOUT.MD)}>
+                            <Autocomplete
+                                multiple
+                                options={notificationOptions}
+                                value={selected}
+                                getOptionLabel={(option) => option.name}
+                                onChange={(_: unknown, newValue: typeof notificationOptions) => {
+                                    field.onChange(newValue.map((n) => n.id));
+                                }}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                fieldLabel="Escalation notification channels"
+                            />
+                            {selected.length > 0 && (
+                                <Stack flex={1} width="100%">
+                                    {selected.map((notification, index) => (
+                                        <Stack
+                                            direction="row"
+                                            alignItems="center"
+                                            key={notification.id}
+                                            width="100%"
+                                        >
+                                            <Typography flexGrow={1}>
+                                                {notification.notificationName}
+                                            </Typography>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => {
+                                                    field.onChange(
+                                                        (field.value ?? []).filter(
+                                                            (id: string) => id !== notification.id
+                                                        )
+                                                    );
+                                                }}
+                                                aria-label="Remove escalation notification"
+                                            >
+                                                <Trash2 size={16} />
+                                            </IconButton>
+                                            {index < selected.length - 1 && <Divider />}
+                                        </Stack>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Stack>
+                    );
+                }}
+            />
+        </Stack>
+    }
+/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

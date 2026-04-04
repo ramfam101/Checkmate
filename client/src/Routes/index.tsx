@@ -41,6 +41,8 @@ import Settings from "@/Pages/Settings";
 
 import Maintenance from "@/Pages/Maintenance";
 import CreateNewMaintenanceWindow from "@/Pages/Maintenance/create";
+import EscalationPolicies from "@/Pages/EscalationPolicies";
+import EscalationPoliciesCreate from "@/Pages/EscalationPolicies/create";
 
 // Logs & Diagnostics
 import Logs from "@/Pages/Logs";
@@ -167,6 +169,19 @@ const Routes = () => {
 				<Route
 					path="/maintenance/create/:maintenanceWindowId?"
 					element={<CreateNewMaintenanceWindow />}
+				/>
+
+				<Route
+					path="escalation-policies"
+					element={<EscalationPolicies />}
+				/>
+				<Route
+					path="/escalation-policies/create"
+					element={<EscalationPoliciesCreate />}
+				/>
+				<Route
+					path="/escalation-policies/configure/:policyId"
+					element={<EscalationPoliciesCreate />}
 				/>
 				<Route
 					path="settings"

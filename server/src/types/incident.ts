@@ -16,6 +16,9 @@ export interface Incident {
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;
+	escalationPolicyId?: string | null;
+	escalationEventsTriggered: number[]; // Track which escalation rules have been triggered (by delayMinutes)
+	lastEscalationCheckTime?: string;
 	createdAt: string;
 	updatedAt: string;
 }
