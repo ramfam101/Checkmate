@@ -28,6 +28,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -185,6 +186,46 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				throw error;
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Checking for notification escalations",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+
+				const activeIncidents = await this.incidentsRepository.findAllActive();
+
+				for (const incident of activeIncidents) {
+					const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+					if (!monitor || !monitor.escalations || monitor.escalations.length === 0) continue;
+
+					const incidentAgeMs = Date.now() - new Date(incident.startTime).getTime();
+
+					for (const esc of monitor.escalations) {
+						if (incidentAgeMs >= esc.delayMinutes * 60000) {
+							const alreadyTriggered = incident.escalationsTriggered?.some((e) => e.channelId.toString() === esc.channelId.toString());
+
+							if (!alreadyTriggered) {
+								await this.notificationsService.sendEscalationNotification(monitor, incident, esc.channelId);
+
+								await this.incidentsRepository.pushEscalationTriggered(incident.id, incident.teamId, esc.channelId);
+							}
+						}
+					}
+				}
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Failed during escalation job: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
 			}
 		};
 	};

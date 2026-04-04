@@ -45,6 +45,15 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			default: true,
 			index: true,
 		},
+		escalationsTriggered: {
+			type: [
+				{
+					channelId: { type: Schema.Types.ObjectId, ref: "Notification" },
+					triggeredAt: { type: Date, default: Date.now },
+				},
+			],
+			default: [],
+		},
 		message: {
 			type: String,
 			default: null,

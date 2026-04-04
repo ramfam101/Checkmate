@@ -1,3 +1,8 @@
+export interface IncidentEscalationTriggered {
+	channelId: string;
+	triggeredAt: string;
+}
+
 export interface Incident {
 	id: string;
 	monitorId: string;
@@ -5,6 +10,7 @@ export interface Incident {
 	startTime: string;
 	endTime: string | null;
 	status: boolean;
+	escalationsTriggered?: IncidentEscalationTriggered[];
 	message?: string | null;
 	statusCode?: number | null;
 	resolutionType: "automatic" | "manual" | null;
