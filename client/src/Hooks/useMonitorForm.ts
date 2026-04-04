@@ -8,6 +8,8 @@ interface UseMonitorFormOptions {
 }
 
 const getBaseDefaults = (data?: Monitor | null) => ({
+	escalationDelay: (data as any)?.escalationDelay || null,
+    escalationNotifications: (data as any)?.escalationNotifications || [],
 	name: data?.name || "",
 	description: data?.description || "",
 	interval: data?.interval || 60000,

@@ -387,6 +387,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalationPolicyId: doc.escalationPolicyId ? toStringId(doc.escalationPolicyId) : undefined,
+			escalationDelay: (doc as any).escalationDelay ?? null,
+			escalationNotifications: ((doc as any).escalationNotifications ?? []).map((id: unknown) => toStringId(id)),
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
@@ -446,12 +449,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
-			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
-			geoCheckEnabled: doc.geoCheckEnabled ?? false,
-			geoCheckLocations: doc.geoCheckLocations ?? [],
-			geoCheckInterval: doc.geoCheckInterval ?? 300000,
-			createdAt: toDateString(doc.createdAt),
-			updatedAt: toDateString(doc.updatedAt),
+			escalationPolicyId: doc.escalationPolicyId ? toStringId(doc.escalationPolicyId) : undefined,
+			escalationDelay: (doc as any).escalationDelay ?? null,
+			escalationNotifications: ((doc as any).escalationNotifications ?? []).map((id: unknown) => toStringId(id)),
 		};
 	};
 

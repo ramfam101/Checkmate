@@ -2,6 +2,7 @@ import { IMonitorsRepository } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import Scheduler from "super-simple-scheduler";
 import { ISuperSimpleQueueHelper } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
+import type { IEscalationService } from "@/service/infrastructure/escalationService.js";
 import { Monitor, MonitorType, supportsGeoCheck } from "@/types/monitor.js";
 const SERVICE_NAME = "JobQueue";
 
@@ -60,12 +61,14 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 	private logger: ILogger;
 	private helper: ISuperSimpleQueueHelper;
 	private monitorsRepository: IMonitorsRepository;
+	private escalationService: IEscalationService;
 	private readonly scheduler: Scheduler;
 
-	constructor(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, scheduler: Scheduler) {
+	constructor(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, escalationService: IEscalationService, scheduler: Scheduler) {
 		this.logger = logger;
 		this.helper = helper;
 		this.monitorsRepository = monitorsRepository;
+		this.escalationService = escalationService;
 		this.scheduler = scheduler;
 	}
 
@@ -73,14 +76,14 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 		return SuperSimpleQueue.SERVICE_NAME;
 	}
 
-	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository) {
+	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, escalationService: IEscalationService) {
 		const scheduler = new Scheduler({
 			// storeType: "mongo",
 			// storeType: "redis",
 			logLevel: "debug",
 			// dbUri: envSettings.dbConnectionString,
 		});
-		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler);
+		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, escalationService, scheduler);
 		await instance.init();
 		return instance;
 	}
@@ -93,6 +96,10 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
+			this.scheduler.addTemplate("escalation-check", async () => {
+				await this.escalationService.checkAndTriggerEscalations();
+			});
+
 			const monitors = await this.monitorsRepository.findAll();
 			if (!monitors) {
 				return true;
@@ -106,6 +113,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addJob({ id: "cleanup-orphaned", template: "cleanup-orphaned", active: true });
 			this.scheduler.addJob({ id: "cleanup-retention", template: "cleanup-retention-job", active: true, repeat: 24 * 60 * 60 * 1000 });
+			this.scheduler.addJob({ id: "escalation-check", template: "escalation-check", active: true, repeat: 60 * 1000 });
 
 			return true;
 		} catch (error: unknown) {

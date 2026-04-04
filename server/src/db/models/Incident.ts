@@ -7,6 +7,9 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	escalationPolicyId?: Types.ObjectId | null;
+	escalationEventsTriggered: number[]; // Track which escalation rules have been triggered (by delayMinutes)
+	lastEscalationCheckTime?: Date;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -70,6 +73,19 @@ const IncidentSchema = new Schema<IncidentDocument>(
 		},
 		comment: {
 			type: String,
+			default: null,
+		},
+		escalationPolicyId: {
+			type: Schema.Types.ObjectId,
+			ref: "EscalationPolicy",
+			default: null,
+		},
+		escalationEventsTriggered: {
+			type: [Number],
+			default: [],
+		},
+		lastEscalationCheckTime: {
+			type: Date,
 			default: null,
 		},
 	},

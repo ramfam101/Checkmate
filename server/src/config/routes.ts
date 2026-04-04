@@ -17,8 +17,8 @@ import QueueRoutes from "../routes/queueRoute.js";
 import LogRoutes from "../routes/logRoutes.js";
 import DiagnosticRoutes from "../routes/diagnosticRoute.js";
 import NotificationRoutes from "../routes/notificationRoute.js";
-
 import IncidentRoutes from "../routes/incidentRoute.js";
+import EscalationPolicyRoutes from "../routes/escalationPolicyRoute.js";
 
 export const setupRoutes = (app: Application, controllers: InitializedControllers, services: InitializedServices) => {
 	const verifyJWT = createVerifyJWT(services.settingsService);
@@ -36,6 +36,7 @@ export const setupRoutes = (app: Application, controllers: InitializedController
 	const notificationRoutes = new NotificationRoutes(controllers.notificationController);
 	const diagnosticRoutes = new DiagnosticRoutes(controllers.diagnosticController, verifyJWT);
 	const incidentRoutes = new IncidentRoutes(controllers.incidentController);
+	const escalationPolicyRoutes = new EscalationPolicyRoutes(controllers.escalationPolicyController, verifyJWT);
 
 	app.use("/api/v1/auth", authApiLimiter, authRoutes.getRouter());
 	app.use("/api/v1/monitors", verifyJWT, monitorRoutes.getRouter());
@@ -50,4 +51,5 @@ export const setupRoutes = (app: Application, controllers: InitializedController
 	app.use("/api/v1/notifications", verifyJWT, notificationRoutes.getRouter());
 	app.use("/api/v1/diagnostic", verifyJWT, diagnosticRoutes.getRouter());
 	app.use("/api/v1/incidents", verifyJWT, incidentRoutes.getRouter());
+	app.use("/api/v1/escalation-policies", verifyJWT, escalationPolicyRoutes.getRouter());
 };
