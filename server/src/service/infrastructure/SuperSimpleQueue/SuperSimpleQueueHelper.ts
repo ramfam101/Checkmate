@@ -38,7 +38,8 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	shouldSendEscalation: boolean;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -428,31 +429,53 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			shouldSendEscalation: false,
 		};
 
-		if (!statusChanged) {
-			return decision;
+		if (statusChanged) {
+			if (monitor.status === "down") {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "status_down";
+				decision.notificationReason = "status_change";
+				this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					downtimeStartAt: new Date().toISOString(),
+					escalationSent: false,
+				});
+			} else if (monitor.status === "breached") {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "threshold_breach";
+				decision.notificationReason = "threshold_breach";
+			} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+				decision.shouldResolveIncident = true;
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "status_change";
+				this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					downtimeStartAt: undefined,
+					escalationSent: false,
+				});
+			}
 		}
-
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
+		if (
+			!statusChanged &&
+			monitor.status === "down" &&
+			monitor.downtimeStartAt &&
+			!monitor.escalationSent &&
+			(monitor.escalationAfter ?? 0) > 0 &&
+			(monitor.escalationNotifications?.length ?? 0) > 0
+		) {
+			const escalationDelayMs = (monitor.escalationAfter ?? 0) * 60 * 1000;
+			const downtimeDurationMs = Date.now() - new Date(monitor.downtimeStartAt).getTime();
+			if (downtimeDurationMs >= escalationDelayMs) {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+				decision.shouldSendEscalation = true;
+				this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					escalationSent: true,
+				});
+			}
 		}
-
 		return decision;
 	}
 }
