@@ -14,6 +14,16 @@ export default defineConfig(({}) => {
 		plugins: [svgr(), react()],
 		server: {
 			host: true,
+			proxy: {
+				"/api": {
+					target: "http://localhost:52346",
+					changeOrigin: true,
+				},
+				"/auth": {
+					target: "http://localhost:52346",
+					changeOrigin: true,
+				},
+			},
 		},
 		resolve: {
 			alias: {
