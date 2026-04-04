@@ -7,6 +7,13 @@ export interface IIncidentsRepository {
 	findById(incidentId: string, teamId: string): Promise<Incident>;
 	findActiveByIncidentId(incidentId: string, teamId: string): Promise<Incident | null>;
 	findActiveByMonitorId(monitorId: string, teamId: string): Promise<Incident | null>;
+
+	checkAndUpdateEscalation(
+		incidentId: string,
+		teamId: string,
+		escalationInterval: number
+	): Promise<boolean>;
+
 	findByTeamId(
 		teamId: string,
 		startDate: Date | undefined,
