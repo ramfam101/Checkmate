@@ -7,12 +7,21 @@ import type {
 	ThresholdBreach,
 	NotificationContent,
 } from "@/types/notificationMessage.js";
+import type { Incident } from "@/types/incident.js";
+import type { NotificationEscalation } from "@/types/notification.js";
 
 export interface INotificationMessageBuilder {
 	buildMessage(
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: Incident,
+		escalation: NotificationEscalation,
+		escalationLevel: number,
 		clientHost: string
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
@@ -48,6 +57,79 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: Incident,
+		escalation: NotificationEscalation,
+		escalationLevel: number,
+		clientHost: string
+	): NotificationMessage {
+		const incidentStart = new Date(incident.startTime);
+		const now = new Date();
+		const durationMs = now.getTime() - incidentStart.getTime();
+		const durationMinutes = Math.floor(durationMs / (1000 * 60));
+		const durationHours = Math.floor(durationMinutes / 60);
+		const durationString = durationHours > 0
+			? `${durationHours}h ${durationMinutes % 60}m`
+			: `${durationMinutes}m`;
+
+		const title = `ESCALATION ${escalationLevel}: ${monitor.name} still down`;
+		const summary = escalation.message || `Monitor "${monitor.name}" has been down for ${durationString} and has reached escalation level ${escalationLevel}.`;
+		const details = [
+			`Monitor: ${monitor.name}`,
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Incident started: ${incidentStart.toISOString()}`,
+			`Duration: ${durationString}`,
+			`Escalation level: ${escalationLevel}`,
+			`Escalation delay: ${escalation.delayMinutes} minutes`,
+		];
+
+		// Add incident details if available
+		if (incident.message) {
+			details.push(`Last error: ${incident.message}`);
+		}
+		if (incident.statusCode) {
+			details.push(`Status code: ${incident.statusCode}`);
+		}
+
+		const incidentInfo = {
+			id: incident.id,
+			url: `${clientHost}/incidents/${incident.id}`,
+			createdAt: incidentStart,
+			duration: durationString,
+			escalationLevel,
+			escalationDelay: escalation.delayMinutes,
+			escalationMessage: escalation.message,
+		};
+
+		return {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title,
+				summary,
+				details,
+				incident: incidentInfo,
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+				isEscalation: true,
 			},
 		};
 	}

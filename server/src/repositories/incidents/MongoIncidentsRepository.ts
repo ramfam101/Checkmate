@@ -5,7 +5,7 @@ import type { IIncidentsRepository } from "@/repositories/index.js";
 import mongoose from "mongoose";
 import { AppError } from "@/utils/AppError.js";
 
-class MongoIncidentRepository implements IIncidentsRepository {
+class MongoIncidentsRepository implements IIncidentsRepository {
 	private toStringId = (value?: mongoose.Types.ObjectId | string | null): string => {
 		if (!value) {
 			return "";
@@ -113,6 +113,13 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			return null;
 		}
 		return this.toEntity(incident);
+	};
+
+	findActiveIncidents = async (): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({
+			status: true, // Active incidents have status = true
+		}).sort({ createdAt: -1 });
+		return incidents.map((doc) => this.toEntity(doc));
 	};
 
 	findByTeamId = async (
@@ -288,4 +295,4 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		return result.deletedCount ?? 0;
 	};
 }
-export default MongoIncidentRepository;
+export default MongoIncidentsRepository;

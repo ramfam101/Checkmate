@@ -6,8 +6,16 @@ export const NotificationChannels = [
 	"pager_duty",
 	"matrix",
 	"teams",
+	"telegram",
 ] as const;
 export type NotificationChannel = (typeof NotificationChannels)[number];
+
+export interface NotificationEscalation {
+	id: string;
+	delayMinutes: number;
+	message?: string;
+	enabled: boolean;
+}
 
 export interface Notification {
 	id: string;
@@ -20,6 +28,8 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalations?: NotificationEscalation[];
+	escalationEnabled?: boolean;
 	createdAt: string;
 	updatedAt: string;
 }

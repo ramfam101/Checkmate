@@ -25,6 +25,9 @@ export { default as RecoveryTokenModel } from "@/db/models/RecoveryToken.js";
 export * from "@/db/models/Notification.js";
 export { default as NotificationModel } from "@/db/models/Notification.js";
 
+export * from "@/db/models/NotificationHistory.js";
+export { default as NotificationHistoryModel } from "@/db/models/NotificationHistory.js";
+
 export * from "@/db/models/Incident.js";
 export { default as IncidentModel } from "@/db/models/Incident.js";
 
@@ -36,3 +39,6 @@ export { default as MaintenanceWindowModel } from "@/db/models/MaintenanceWindow
 
 export * from "@/db/models/GeoCheck.js";
 export { default as GeoCheckModel } from "@/db/models/GeoCheck.js";
+
+export * from "@/db/models/DLQItem.js";
+export { default as DLQItemModel } from "@/db/models/DLQItem.js";

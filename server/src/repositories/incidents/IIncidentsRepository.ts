@@ -7,6 +7,7 @@ export interface IIncidentsRepository {
 	findById(incidentId: string, teamId: string): Promise<Incident>;
 	findActiveByIncidentId(incidentId: string, teamId: string): Promise<Incident | null>;
 	findActiveByMonitorId(monitorId: string, teamId: string): Promise<Incident | null>;
+	findActiveIncidents(): Promise<Incident[]>; // Get all active incidents across all teams
 	findByTeamId(
 		teamId: string,
 		startDate: Date | undefined,

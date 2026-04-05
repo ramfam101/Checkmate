@@ -31,6 +31,7 @@ import {
 } from "@/Components/inputs";
 import { SPACING, LAYOUT } from "@/Utils/Theme/constants";
 import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
+import { patch as apiPatch } from "@/Utils/ApiClient";
 import { useMonitorForm } from "@/Hooks/useMonitorForm";
 import {
 	type Monitor,
@@ -191,6 +192,24 @@ const CreateMonitorPage = () => {
 	);
 
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
+
+	const [escalationEnabled, setEscalationEnabled] = useState(false);
+	const [escalationDelayMinutes, setEscalationDelayMinutes] = useState(30);
+	const [escalationChannelId, setEscalationChannelId] = useState("");
+
+	useEffect(() => {
+		if (!existingMonitor || !notifications) return;
+		const selectedIds: string[] = existingMonitor.notifications ?? [];
+		const escalated = notifications.find(
+			(n) => selectedIds.includes(n.id) && n.escalationEnabled && n.escalations?.[0]
+		);
+		if (escalated?.escalations?.[0]) {
+			setEscalationEnabled(true);
+			setEscalationDelayMinutes(escalated.escalations[0].delayMinutes);
+			setEscalationChannelId(escalated.escalations[0].id);
+		}
+	}, [existingMonitor, notifications]);
+
 	const { data: games } = useGet<GamesMap>("/monitors/games");
 
 	const { schema, defaults } = useMonitorForm({
@@ -260,6 +279,24 @@ const CreateMonitorPage = () => {
 		}
 
 		if (result?.success) {
+			const escalationPayload = escalationEnabled && escalationChannelId && escalationDelayMinutes > 0
+				? { escalationEnabled: true, escalations: [{ id: escalationChannelId, delayMinutes: escalationDelayMinutes, enabled: true, message: null }] }
+				: { escalationEnabled: false, escalations: [] };
+
+			// Build full notification bodies — the edit endpoint requires type + channel fields,
+			// not just the escalation fields, so we merge with the existing notification data.
+			const selectedNotifs = (notifications ?? []).filter((n) =>
+				(data.notifications ?? []).includes(n.id)
+			);
+
+			await Promise.all(
+				selectedNotifs.map(({ id, userId, teamId, createdAt, updatedAt, ...notifFields }) =>
+					apiPatch(`/notifications/${id}`, { ...notifFields, ...escalationPayload }).catch((err) => {
+						logger.error("Failed to update escalation for notification", err, { notifId: id });
+					})
+				)
+			);
+
 			if (pageType === "pagespeed") {
 				navigate("/pagespeed");
 			} else if (pageType === "hardware") {
@@ -762,6 +799,58 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.notifications.form.escalation.title")}
+				subtitle={t("pages.notifications.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Stack
+							direction="row"
+							alignItems="center"
+							spacing={theme.spacing(SPACING.LG)}
+						>
+							<Switch
+								checked={escalationEnabled}
+								onChange={(e) => setEscalationEnabled(e.target.checked)}
+							/>
+							<Typography>
+								{t("pages.notifications.form.escalation.enableEscalation")}
+							</Typography>
+						</Stack>
+						{escalationEnabled && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<TextField
+									type="number"
+									fieldLabel={t("pages.notifications.form.escalation.delayMinutes")}
+									placeholder="30"
+									value={escalationDelayMinutes}
+									onChange={(e) => setEscalationDelayMinutes(Number(e.target.value))}
+									fullWidth
+									inputProps={{ min: 1 }}
+								/>
+								<Select
+									value={escalationChannelId}
+									fieldLabel={t("pages.notifications.form.escalation.notificationChannel")}
+									onChange={(e) => setEscalationChannelId(e.target.value as string)}
+									fullWidth
+								>
+									<MenuItem value="">
+										<Typography color="textSecondary">
+											{t("pages.notifications.form.escalation.selectChannel")}
+										</Typography>
+									</MenuItem>
+									{(notifications ?? []).map((n) => (
+										<MenuItem key={n.id} value={n.id}>
+											<Typography>{n.notificationName}</Typography>
+										</MenuItem>
+									))}
+								</Select>
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 

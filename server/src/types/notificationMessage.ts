@@ -29,6 +29,9 @@ export interface IncidentInfo {
 	createdAt: Date;
 	resolvedAt?: Date;
 	duration?: string;
+	escalationLevel?: number; // Escalation level (1-based)
+	escalationDelay?: number; // Minutes since incident start
+	escalationMessage?: string; // Custom escalation message
 }
 
 export interface NotificationContent {
@@ -49,5 +52,6 @@ export interface NotificationMessage {
 	metadata: {
 		teamId: string;
 		notificationReason: string;
+		isEscalation?: boolean; // Whether this is an escalation notification
 	};
 }
