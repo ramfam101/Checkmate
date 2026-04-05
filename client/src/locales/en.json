@@ -43,6 +43,7 @@
 			"clear": "Clear",
 			"addDemo": "Add demo monitors",
 			"removeMonitors": "Remove monitors",
+			"edit": "Edit",
 			"sendTestEmail": "Send test email",
 			"exportToJSON": "Export to JSON",
 			"importFromJSON": "Import from JSON",
@@ -542,6 +543,13 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+				},
+				"escalationDelay": {
+					"title": "Escalation delay",
+					"description": "Set how many minutes to wait before sending the next escalation notification.",
+					"option": {
+						"label": "Escalation delay (minutes)"
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",

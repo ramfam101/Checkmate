@@ -177,6 +177,70 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation emails and down-since tracking
+				try {
+					const monitorStatus = statusChangeResult.monitor;
+					const nowString = new Date().toISOString();
+
+					this.logger.debug({
+						message: `Step 8: Monitor ${monitorStatus.id} - escalationDelay: ${monitorStatus.escalationDelay}, statusDownSince: ${monitorStatus.statusDownSince}, escalationSentAt: ${monitorStatus.escalationSentAt}, status: ${monitorStatus.status}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
+
+					if (monitorStatus.status === "down") {
+						if (!monitorStatus.statusDownSince) {
+							await this.monitorsRepository.updateById(monitorId, teamId, {
+								statusDownSince: nowString,
+							});
+						}
+
+						if (
+							typeof monitorStatus.escalationDelay === "number" &&
+							monitorStatus.escalationDelay > 0 &&
+							!monitorStatus.escalationSentAt &&
+							monitorStatus.statusDownSince
+						) {
+							const elapsedMs = Date.now() - new Date(monitorStatus.statusDownSince).getTime();
+
+							if (elapsedMs >= monitorStatus.escalationDelay * 60_000) {
+								this.logger.debug({
+									message: `Step 8: Sending escalation notification for monitor ${monitorStatus.id} after ${elapsedMs}ms down`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+
+								this.notificationsService.handleNotifications(monitorStatus, status, { ...decision, shouldSendNotification: true }).catch((error: unknown) => {
+									this.logger.error({
+										message: `Error sending escalation notification for monitor ${monitorStatus.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: error instanceof Error ? error.stack : undefined,
+									});
+								});
+
+								await this.monitorsRepository.updateById(monitorId, teamId, {
+									escalationSentAt: nowString,
+								});
+							}
+						}
+					} else if (monitorStatus.status === "up") {
+						if (monitorStatus.statusDownSince || monitorStatus.escalationSentAt) {
+							await this.monitorsRepository.updateById(monitorId, teamId, {
+								statusDownSince: undefined,
+								escalationSentAt: undefined,
+							});
+						}
+					}
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: error instanceof Error ? error.message : "Unknown error",
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

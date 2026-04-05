@@ -202,17 +202,24 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
+
+	const watchedType = watch("type") as MonitorType;
+	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean | undefined;
+	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean | undefined;
+	const watchedEscalationDelay = watch("escalationDelay") as number | undefined;
+	const [isEditingEscalationDelay, setIsEditingEscalationDelay] = useState(false);
+	const [escalationDelayDraft, setEscalationDelayDraft] = useState<number>(watchedEscalationDelay ?? 0);
+
+	useEffect(() => {
+		if (!isEditingEscalationDelay) {
+			setEscalationDelayDraft(watchedEscalationDelay ?? 0);
+		}
+	}, [watchedEscalationDelay, isEditingEscalationDelay]);
 
 	useEffect(() => {
 		form.reset(defaults);
 	}, [defaults, form]);
-
-	const watchedType = watch("type") as MonitorType;
-
-	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
-	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
-
 	useEffect(() => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
@@ -762,6 +769,62 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationDelay.title")}
+				subtitle={t("pages.createMonitor.form.escalationDelay.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<TextField
+							value={escalationDelayDraft}
+							type="number"
+							fieldLabel={t("pages.createMonitor.form.escalationDelay.option.label")}
+							placeholder="0"
+							fullWidth
+							onChange={(event) => {
+							const value = Number(event.target.value);
+							setEscalationDelayDraft(Number.isNaN(value) ? 0 : value);
+							}}
+							inputProps={{ min: 0, step: 1 }}
+							disabled={!isEditingEscalationDelay}
+						/>
+						<Stack direction="row" spacing={theme.spacing(LAYOUT.SM)} justifyContent="flex-end">
+							{!isEditingEscalationDelay ? (
+								<Button
+									variant="outlined"
+									size="small"
+									onClick={() => setIsEditingEscalationDelay(true)}
+								>
+									{t("common.buttons.edit")}
+								</Button>
+							) : (
+								<>
+									<Button
+										variant="contained"
+										size="small"
+										onClick={() => {
+										setValue("escalationDelay", escalationDelayDraft);
+										setIsEditingEscalationDelay(false);
+									}}
+									>
+										{t("common.buttons.save")}
+									</Button>
+									<Button
+										variant="text"
+										size="small"
+										onClick={() => {
+										setEscalationDelayDraft(watchedEscalationDelay ?? 0);
+										setIsEditingEscalationDelay(false);
+									}}
+									>
+										{t("common.buttons.cancel")}
+									</Button>
+								</>
+							)}
+						</Stack>
+					</Stack>
 				}
 			/>
 

@@ -391,6 +391,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelay: doc.escalationDelay ?? undefined,
+			statusDownSince: doc.statusDownSince ? toDateString(doc.statusDownSince) : undefined,
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
