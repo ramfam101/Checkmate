@@ -48,11 +48,16 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				escalationMinutes: decision.escalationElapsedMinutes,
 			},
 		};
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation_timeout") {
+			return "monitor_escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -81,6 +86,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return "critical";
+			case "monitor_escalation":
+				return "critical";
 			case "threshold_breach":
 				return "warning";
 			case "monitor_up":
@@ -97,6 +104,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_escalation":
+				return this.buildMonitorEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -135,6 +144,34 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const now = Date.now();
+		const startedAt = monitor.escalationTriggeredAt ? new Date(monitor.escalationTriggeredAt).getTime() : null;
+		const elapsedMinutes = startedAt && !Number.isNaN(startedAt) ? Math.max(0, Math.floor((now - startedAt) / 60000)) : null;
+
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary =
+			elapsedMinutes !== null
+				? `Monitor "${monitor.name}" has been down for ${elapsedMinutes} minute(s).`
+				: `Monitor "${monitor.name}" has remained down beyond the escalation timeout.`;
+		const details = [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
 
 		return {
 			title,

@@ -238,7 +238,16 @@ export class StatusService implements IStatusService {
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				const enteringIncidentState = (newStatus === "down" || newStatus === "breached") && prevStatus !== "down" && prevStatus !== "breached";
+				const recovering = newStatus === "up" && (prevStatus === "down" || prevStatus === "breached");
+				if (enteringIncidentState) {
+					monitor.escalationTriggeredAt = new Date().toISOString();
+					monitor.escalationSentAt = null;
+				} else if (recovering) {
+					monitor.escalationTriggeredAt = null;
+					monitor.escalationSentAt = null;
+				}
+
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -346,6 +355,16 @@ export class StatusService implements IStatusService {
 			}
 
 			// Apply the final status
+			const enteringIncidentState = (newStatus === "down" || newStatus === "breached") && prevStatus !== "down" && prevStatus !== "breached";
+			const recovering = newStatus === "up" && (prevStatus === "down" || prevStatus === "breached");
+			if (enteringIncidentState) {
+				monitor.escalationTriggeredAt = new Date().toISOString();
+				monitor.escalationSentAt = null;
+			} else if (recovering) {
+				monitor.escalationTriggeredAt = null;
+				monitor.escalationSentAt = null;
+			}
+
 			monitor.status = newStatus;
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
