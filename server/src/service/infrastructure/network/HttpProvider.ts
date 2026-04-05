@@ -10,14 +10,24 @@ import CacheableLookup from "cacheable-lookup";
 
 export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 	readonly type = "http";
+	private gotWithDnsCache: Got;
+	private gotWithoutDnsCache: Got;
 
 	constructor(
 		private got: Got,
 		private advancedMatcher: IAdvancedMatcher
 	) {
 		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
-		this.got = got.extend({
+		const sharedConfig = {
 			dnsCache: cacheable,
+			timeout: {
+				request: 30000,
+			},
+			retry: { limit: 1 },
+		};
+
+		this.gotWithDnsCache = got.extend(sharedConfig);
+		this.gotWithoutDnsCache = got.extend({
 			timeout: {
 				request: 30000,
 			},
@@ -56,6 +66,15 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 		};
 	}
 
+	private shouldRetryWithoutDnsCache(error: unknown): boolean {
+		if (!(error instanceof RequestError)) {
+			return false;
+		}
+
+		const message = error.message ?? "";
+		return /query[a-z]+\s+econnrefused|getaddrinfo\s+(enotfound|eai_again|econnrefused)/i.test(message);
+	}
+
 	async handle<T>(monitor: Monitor): Promise<MonitorStatusResponse<T>> {
 		const { url, secret, jsonPath, ignoreTlsErrors } = monitor;
 
@@ -71,8 +90,22 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 			https: new HttpsAgent({ rejectUnauthorized: !ignoreTlsErrors }),
 		};
 
+		let response;
 		try {
-			const response = await this.got<string>(url, options);
+			response = await this.gotWithDnsCache<string>(url, options);
+		} catch (error: unknown) {
+			if (this.shouldRetryWithoutDnsCache(error)) {
+				try {
+					response = await this.gotWithoutDnsCache<string>(url, options);
+				} catch (fallbackError: unknown) {
+					return this.handleHttpError(fallbackError, monitor);
+				}
+			} else {
+				return this.handleHttpError(error, monitor);
+			}
+		}
+
+		try {
 			const contentType = response.headers["content-type"] || "";
 			const isJson = contentType.includes("application/json");
 

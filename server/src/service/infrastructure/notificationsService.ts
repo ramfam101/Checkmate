@@ -14,6 +14,17 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		notificationIds: string[],
+		afterMinutes: number
+	) => Promise<boolean>;
+	sendEscalationRecoveryNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		notificationIds: string[]
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -112,14 +123,24 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotificationsToIds = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds: string[],
+		notificationMessageOverride?: NotificationMessage
+	) => {
+		if (!notificationIds.length) {
+			return true;
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage =
+			notificationMessageOverride ?? this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -137,6 +158,11 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const notificationIds = monitor.notifications ?? [];
+		return this.sendNotificationsToIds(monitor, monitorStatusResponse, decision, notificationIds);
+	};
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
@@ -144,6 +170,62 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		notificationIds: string[],
+		afterMinutes: number
+	) => {
+		if (!notificationIds.length) {
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, escalationDecision, clientHost);
+		notificationMessage.content.title = `Escalation: ${notificationMessage.content.title}`;
+		notificationMessage.content.summary = `${notificationMessage.content.summary} Monitor is still down after ${afterMinutes} minute(s).`;
+		notificationMessage.content.details = [
+			`Escalation threshold: ${afterMinutes} minute(s)`,
+			...(notificationMessage.content.details ?? []),
+		];
+
+		return this.sendNotificationsToIds(monitor, monitorStatusResponse, escalationDecision, notificationIds, notificationMessage);
+	};
+
+	sendEscalationRecoveryNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => {
+		if (!notificationIds.length) {
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationRecoveryDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: true,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "escalation_recovery",
+		};
+
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			escalationRecoveryDecision,
+			clientHost
+		);
+
+		return this.sendNotificationsToIds(monitor, monitorStatusResponse, escalationRecoveryDecision, notificationIds, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
