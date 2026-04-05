@@ -13,7 +13,7 @@ import { InitializedServices } from "@/config/services.js";
 import { InitializedControllers } from "@/config/controllers.js";
 import { EnvConfig } from "@/service/system/settingsService.js";
 
-export const createApp = ({
+export const createApp = async ({
 	services,
 	controllers,
 	envSettings,
@@ -98,6 +98,18 @@ export const createApp = ({
 	});
 
 	// Main app routes
+	// Mount a small, unauthenticated monitor escalations API for the demo at /api/monitor
+	// (keeps this feature minimal and separate from existing authenticated monitor routes)
+	try {
+		// lazy import to avoid circulars
+		// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-call
+		const simpleMonitor = await import("@/routes/simpleMonitorRoute.js");
+		app.use("/api/monitor", simpleMonitor.default);
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.warn("Failed to mount simple monitor route", e);
+	}
+
 	setupRoutes(app, controllers, services);
 
 	// FE routes

@@ -43,6 +43,7 @@ export interface IMonitorController {
 	getAllGames: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getGroupsByTeamId: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	updateNotifications: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	triggerEscalations: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class MonitorController implements IMonitorController {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -449,6 +450,29 @@ class MonitorController implements IMonitorController {
 				msg: `Notifications updated successfully on ${modifiedCount} monitor(s)`,
 				data: { modifiedCount },
 			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	triggerEscalations = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+			const teamId = requireTeamId(req.user?.teamId);
+			const monitorId = validatedParams.monitorId;
+			const monitor = await this.monitorService.getMonitorById({ teamId, monitorId });
+
+			const escalationNotificationIds = (monitor.escalations ?? []).map((e) => e.notificationId).filter(Boolean);
+			if (!escalationNotificationIds.length) {
+				return res.status(400).json({ success: false, msg: "No escalations configured for this monitor" });
+			}
+
+			const ok = await this.notificationsService.sendEscalationNotifications(escalationNotificationIds, monitor);
+			if (!ok) {
+				return res.status(500).json({ success: false, msg: "Failed to send one or more escalation notifications" });
+			}
+
+			return res.status(200).json({ success: true, msg: "Escalation notifications sent" });
 		} catch (error) {
 			next(error);
 		}

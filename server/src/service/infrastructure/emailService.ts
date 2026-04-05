@@ -33,7 +33,7 @@ export class EmailService implements IEmailService {
 	private mjml2html: MjmlFn;
 	private nodemailer: Mailer;
 	private logger: ILogger;
-	private transporter: ReturnType<typeof import("nodemailer").createTransport> | null = null;
+	private transporter: any = null;
 	private templateLookup: Record<string, ((context: Record<string, unknown>) => string) | undefined>;
 	private loadTemplate: (templateName: string) => ((context: Record<string, unknown>) => string) | undefined;
 
@@ -146,24 +146,87 @@ export class EmailService implements IEmailService {
 				servername: systemEmailTLSServername,
 			},
 		};
-		this.transporter = this.nodemailer.createTransport(emailConfig);
+		this.transporter = this.nodemailer.createTransport(emailConfig) as any;
 
 		try {
-			await this.transporter.verify();
+			if (this.transporter && typeof this.transporter.verify === "function") {
+				await this.transporter.verify();
+			}
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: "Email transporter verification failed using DB settings, will attempt environment fallback",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,
 			});
-			return false;
+
+			// Try an environment-based fallback (useful for local dev with MailHog or explicit SMTP env vars)
+			const envHost = process.env.SMTP_HOST || "localhost";
+			const envPort = Number(process.env.SMTP_PORT || 1025);
+			const envSecure = (process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+			const envUser = process.env.SMTP_USER;
+			const envPass = process.env.SMTP_PASS;
+			const envFrom = process.env.SMTP_FROM || systemEmailAddress || envUser;
+
+			const envConfig = {
+				host: envHost,
+				port: envPort,
+				secure: envSecure,
+				auth: envUser ? { user: envUser, pass: envPass } : undefined,
+				name: process.env.SMTP_NAME || emailConfig.name || "localhost",
+				connectionTimeout: 5000,
+				pool: false,
+				tls: {
+					rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED
+						? process.env.SMTP_REJECT_UNAUTHORIZED === "true"
+						: Boolean(emailConfig.tls?.rejectUnauthorized),
+					ignoreTLS: process.env.SMTP_IGNORE_TLS === "true",
+					requireTLS: process.env.SMTP_REQUIRE_TLS === "true",
+					servername: process.env.SMTP_TLS_SERVERNAME || undefined,
+				},
+			};
+
+			this.transporter = this.nodemailer.createTransport(envConfig as any) as any;
+			try {
+				if (this.transporter && typeof this.transporter.verify === "function") {
+					await this.transporter.verify();
+				}
+				this.logger.info({
+					message: "Email transporter verified using environment SMTP settings",
+					service: SERVICE_NAME,
+					method: "verifyTransporter",
+				});
+				// ensure from address is set if missing
+				let fromAddress = systemEmailAddress;
+				if (!fromAddress && envFrom) {
+					fromAddress = envFrom;
+				}
+				// overwrite local variable for send below
+				// @ts-ignore assign to a local alias later when sending
+				config = { ...config, systemEmailAddress: fromAddress } as EmailTransportConfig;
+			} catch (envError: unknown) {
+				this.logger.warn({
+					message: "Environment SMTP transporter verification also failed; will attempt send but it may error",
+					service: SERVICE_NAME,
+					method: "verifyTransporterEnv",
+					stack: envError instanceof Error ? envError.stack : undefined,
+				});
+			}
 		}
 
 		try {
+			if (!this.transporter) {
+				this.logger.warn({
+					message: "No transporter available when attempting to send email",
+					service: SERVICE_NAME,
+					method: "sendEmail",
+				});
+				return false;
+			}
+			const fromAddressToUse = config.systemEmailAddress || systemEmailAddress || process.env.SMTP_FROM || process.env.SMTP_USER;
 			const info = await this.transporter.sendMail({
 				to: to,
-				from: systemEmailAddress,
+				from: fromAddressToUse,
 				subject: subject,
 				html: html,
 			});

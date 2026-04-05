@@ -56,6 +56,13 @@ export class EmailProvider implements INotificationProvider {
 		const subject = this.buildSubject(message);
 		const html = await this.buildEmailFromMessage(message);
 
+		this.logger.info({
+			message: "EmailProvider sending message",
+			service: SERVICE_NAME,
+			method: "sendMessage",
+			details: { to: notification.address, subject },
+		});
+
 		if (!html) {
 			this.logger.warn({
 				message: "Failed to build email content",
@@ -78,18 +85,30 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		let baseSubject: string;
 		switch (message.type) {
 			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
+				baseSubject = `Monitor ${message.monitor.name} is down`;
+				break;
 			case "monitor_up":
-				return `Monitor ${message.monitor.name} is back up`;
+				baseSubject = `Monitor ${message.monitor.name} is back up`;
+				break;
 			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
+				baseSubject = `Monitor ${message.monitor.name} threshold exceeded`;
+				break;
 			case "threshold_resolved":
-				return `Monitor ${message.monitor.name} thresholds resolved`;
+				baseSubject = `Monitor ${message.monitor.name} thresholds resolved`;
+				break;
 			default:
-				return `Alert: ${message.monitor.name}`;
+				baseSubject = `Alert: ${message.monitor.name}`;
 		}
+
+		// If the content title includes ESCALATION prefix, mirror it in the subject
+		if (message.content?.title && typeof message.content.title === "string" && message.content.title.startsWith("ESCALATION")) {
+			return `ESCALATION: ${baseSubject}`;
+		}
+
+		return baseSubject;
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {

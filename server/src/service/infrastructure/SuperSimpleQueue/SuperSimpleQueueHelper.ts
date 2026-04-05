@@ -50,6 +50,12 @@ export interface MonitorActionDecision {
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	static SERVICE_NAME = SERVICE_NAME;
 
+	// Track last escalation send timestamp per monitor (ms since epoch)
+	private lastEscalationSentAt: Map<string, number> = new Map();
+
+	// Track last regular down notification send timestamp per monitor (ms since epoch)
+	private lastRegularSentAt: Map<string, number> = new Map();
+
 	private logger: ILogger;
 	private networkService: INetworkService;
 	private statusService: IStatusService;
@@ -137,6 +143,50 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					throw new Error("No network response");
 				}
 
+				// Special-case: if remote returned HTTP 503, notify immediately (useful for upstream Service Unavailable)
+				try {
+					if (typeof status.code !== "undefined" && Number(status.code) === 503 && monitor.status !== "down") {
+						this.logger.info({
+							message: `Immediate notification trigger for monitor ${monitor.id} due to HTTP 503 response`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							details: { monitorId: monitor.id, code: status.code },
+						});
+
+						const immediateDecision: MonitorActionDecision = {
+							shouldCreateIncident: false,
+							shouldResolveIncident: false,
+							shouldSendNotification: true,
+							incidentReason: "status_down",
+							notificationReason: "status_change",
+						};
+
+						// Fire notification path (best-effort, don't block heartbeat)
+						// Use a cloned monitor object with status forced to 'down' so notification content reflects the outage
+						const monitorForNotification = { ...monitor, status: "down" } as unknown as typeof monitor;
+						this.notificationsService
+							.handleNotifications(monitorForNotification, status as any, immediateDecision)
+							.then(() => {
+								this.lastRegularSentAt.set(monitorForNotification.id, Date.now());
+							})
+							.catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending immediate 503 notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+					}
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: error instanceof Error ? error.message : "Unknown error",
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+
 				// Step 3.  Build check
 				const check = this.checkService.buildCheck(status);
 				if (!check) {
@@ -156,15 +206,213 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				// Compute incident start time once (used by delayed regular notifications and escalation timing)
+				let incidentStartTime: number | null = null;
+				try {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(
+						statusChangeResult.monitor.id,
+						statusChangeResult.monitor.teamId
+					);
+					if (activeIncident && activeIncident.startTime) {
+						incidentStartTime = new Date(activeIncident.startTime).getTime();
+					} else {
+						incidentStartTime = check?.createdAt ? new Date(check.createdAt).getTime() : Date.now();
+					}
+				} catch (err) {
+					this.logger.debug({
+						message: "Failed to determine incident start time, using now as fallback",
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
+					incidentStartTime = Date.now();
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
-						});
+					// If monitor is down and has escalations configured, delay sending the regular down notification
+					// until the earliest escalation minutes configured by the user. This ensures the "regular" down
+					// message is sent at the time the user specified in the escalation entries.
+					if (
+						statusChangeResult.monitor.status === "down" &&
+						Array.isArray(statusChangeResult.monitor.escalations) &&
+						statusChangeResult.monitor.escalations.length > 0
+					) {
+						try {
+							const now = Date.now();
+							const elapsed = now - (incidentStartTime ?? now);
+							// Find the earliest configured escalation minutes (in minutes)
+							const escalationConfigs = (statusChangeResult.monitor.escalations ?? []) as Array<{ minutes?: number; notificationId?: string }>;
+							const earliestMinutes = escalationConfigs.reduce((acc, e) => {
+								const m = typeof e.minutes === "number" && !isNaN(e.minutes) ? e.minutes : Infinity;
+								return Math.min(acc, m);
+							}, Infinity);
+							if (earliestMinutes !== Infinity) {
+								const earliestMs = earliestMinutes * 60 * 1000;
+								if (elapsed >= earliestMs) {
+									// Time reached: send the normal down notification now
+									this.notificationsService
+										.handleNotifications(statusChangeResult.monitor, status, decision)
+										.then(() => {
+											this.lastRegularSentAt.set(statusChangeResult.monitor.id, Date.now());
+										})
+										.catch((error: unknown) => {
+											this.logger.error({
+												message: `Error sending regular down notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+												service: SERVICE_NAME,
+												method: "getMonitorJob",
+												stack: error instanceof Error ? error.stack : undefined,
+											});
+										});
+								} else {
+									this.logger.info({
+										message: `Delaying regular down notification for monitor ${statusChangeResult.monitor.id} until ${earliestMinutes} minute(s) have elapsed`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+									});
+								}
+							} else {
+								// No numeric minutes found in escalation configs — fallback to immediate send
+								this.notificationsService
+									.handleNotifications(statusChangeResult.monitor, status, decision)
+									.then(() => {
+										this.lastRegularSentAt.set(statusChangeResult.monitor.id, Date.now());
+									})
+									.catch((error: unknown) => {
+										this.logger.error({
+											message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+											service: SERVICE_NAME,
+											method: "getMonitorJob",
+											stack: error instanceof Error ? error.stack : undefined,
+										});
+									});
+							}
+						} catch (err) {
+							this.logger.warn({
+								message: "Error while evaluating escalation timing for regular notifications",
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+						}
+					} else {
+						// No escalations configured — send as before
+						this.notificationsService
+							.handleNotifications(statusChangeResult.monitor, status, decision)
+							.then(() => {
+								this.lastRegularSentAt.set(statusChangeResult.monitor.id, Date.now());
+							})
+							.catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+					}
+				}
+
+				// Periodic regular down notifications: send regular down emails every 1 minute while monitor remains down
+				try {
+					const REGULAR_NOTIFICATION_INTERVAL_MS = 1 * 60 * 1000; // 1 minute
+					if (statusChangeResult.monitor.status === "down") {
+						const lastRegular = this.lastRegularSentAt.get(statusChangeResult.monitor.id) ?? 0;
+						if (lastRegular > 0 && Date.now() - lastRegular >= REGULAR_NOTIFICATION_INTERVAL_MS) {
+							this.notificationsService
+								.handleNotifications(statusChangeResult.monitor, status, decision)
+								.then(() => {
+									this.lastRegularSentAt.set(statusChangeResult.monitor.id, Date.now());
+								})
+								.catch((err: unknown) => {
+									this.logger.warn({
+										message: `Periodic regular notification failed for monitor ${statusChangeResult.monitor.id}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: err instanceof Error ? err.stack : undefined,
+									});
+								});
+						}
+					} else {
+						// monitor recovered — clear tracker
+						this.lastRegularSentAt.delete(statusChangeResult.monitor.id);
+					}
+				} catch (err: unknown) {
+					this.logger.warn({
+						message: `Error in periodic regular notification logic: ${err instanceof Error ? err.message : "Unknown"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
+				}
+
+				// Escalation logic: if monitor is down, send escalation emails every 3 minutes while incident active
+				try {
+					const MONITOR_ESCALATION_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+					if (statusChangeResult.monitor.status === "down") {
+						// Prefer the active incident start time if available
+						const activeIncident = await this.incidentsRepository.findActiveByMonitorId(
+							statusChangeResult.monitor.id,
+							statusChangeResult.monitor.teamId
+						);
+						let incidentStartTime: number | null = null;
+						if (activeIncident && activeIncident.startTime) {
+							incidentStartTime = new Date(activeIncident.startTime).getTime();
+						} else {
+							// fallback to the check timestamp (time of this failure detection)
+							incidentStartTime = check?.createdAt ? new Date(check.createdAt).getTime() : Date.now();
+						}
+
+						const now = Date.now();
+						const elapsed = now - (incidentStartTime ?? now);
+						if (elapsed >= MONITOR_ESCALATION_INTERVAL_MS) {
+							const lastSent = this.lastEscalationSentAt.get(statusChangeResult.monitor.id) ?? 0;
+							if (now - lastSent >= MONITOR_ESCALATION_INTERVAL_MS) {
+								// Evaluate which escalation configs have reached their configured minutes threshold
+								const escalationConfigs = (statusChangeResult.monitor.escalations ?? []) as Array<{ minutes?: number; notificationId?: string }>;
+								let notificationIds: string[] = [];
+								if (escalationConfigs.length > 0) {
+									const eligible = escalationConfigs.filter((e) => {
+										const mins = typeof e.minutes === "number" && !isNaN(e.minutes) ? e.minutes : 0;
+										return elapsed >= mins * 60 * 1000;
+									});
+									notificationIds = eligible.map((e) => e.notificationId).filter(Boolean) as string[];
+								} else {
+									// If no escalation configs are present, fallback to monitor.notifications
+									notificationIds = statusChangeResult.monitor.notifications ?? [];
+								}
+								if (notificationIds.length > 0) {
+									this.logger.info({
+										message: `Sending escalation notifications for monitor ${statusChangeResult.monitor.id}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: { eligibleCount: notificationIds.length },
+									});
+									this.notificationsService
+										.sendEscalationNotifications(notificationIds, { ...statusChangeResult.monitor, status: "down" } as any)
+										.then((ok) => {
+											if (ok) {
+												this.lastEscalationSentAt.set(statusChangeResult.monitor.id, Date.now());
+											}
+										})
+										.catch((err) => {
+											this.logger.warn({
+												message: `Escalation send failed for monitor ${statusChangeResult.monitor.id}`,
+												service: SERVICE_NAME,
+												method: "getMonitorJob",
+												stack: err instanceof Error ? err.stack : undefined,
+											});
+										});
+								}
+
+								// Also, if escalation targets exist but regular notifications are expected, ensure periodic regular sends start
+								// (we rely on lastRegularSentAt being set when a prior send occurred). If no prior regular send, do not force one here.
+							}
+						}
+					}
+				} catch (escErr: unknown) {
+					this.logger.warn({
+						message: escErr instanceof Error ? escErr.message : "Unknown error in escalation logic",
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: escErr instanceof Error ? escErr.stack : undefined,
 					});
 				}
 

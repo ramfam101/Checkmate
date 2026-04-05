@@ -15,9 +15,19 @@ import { GeoChecksTable } from "@/Pages/Uptime/Details/Components/GeoChecksTable
 import { MonitorStatBoxes } from "@/Components/monitors";
 
 import { useTheme } from "@mui/material/styles";
+import Box from "@mui/material/Box";
+import IconButton from "@mui/material/IconButton";
+import TextField from "@mui/material/TextField";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+// Divider not used
+import { Trash2 } from "lucide-react";
+import { Button } from "@/Components/inputs";
+import { type Monitor } from "@/Types/Monitor";
 import { useIsAdmin } from "@/Hooks/useIsAdmin";
 import { useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import { usePatch } from "@/Hooks/UseApi";
 import { useSelector } from "react-redux";
 import { useGet } from "@/Hooks/UseApi";
 import { type MonitorDetailsResponse, supportsGeoCheck } from "@/Types/Monitor";
@@ -28,6 +38,7 @@ import type {
 	GeoContinent,
 } from "@/Types/GeoCheck";
 import type { RootState } from "@/Types/state";
+import type { Notification } from "@/Types/Notification";
 import { formatDateWithTz } from "@/Utils/TimeUtils";
 import { t } from "i18next";
 import { Typography } from "@mui/material";
@@ -37,6 +48,181 @@ const certificateDateFormat = "MMM D, YYYY h A";
 interface CertificateResponse {
 	certificateDate: string;
 }
+
+const EscalationsEditor = ({
+	monitor,
+	refetch,
+	monitorId,
+}: {
+	monitor: Monitor;
+	refetch: Function;
+	monitorId: string;
+}) => {
+	const { patch, loading: isPatching } = usePatch();
+	const { data: notifications } = useGet<Notification[]>("/notifications/team");
+	const [isEditing, setIsEditing] = useState(false);
+	const [tempEscalations, setTempEscalations] = useState<
+		{ minutes?: number; notificationId?: string }[]
+	>([]);
+
+	// keep local copy in sync when monitor changes
+	useMemo(() => {
+		setTempEscalations(monitor?.escalations ?? []);
+	}, [monitor?.escalations]);
+
+	const onEdit = () => {
+		setTempEscalations((monitor?.escalations ?? []).map((e) => ({ ...e })));
+		setIsEditing(true);
+	};
+
+	const onAdd = () => {
+		setTempEscalations([
+			...tempEscalations,
+			{
+				minutes: 5,
+				notificationId:
+					notifications && notifications.length > 0 ? notifications[0].id : "",
+			},
+		]);
+	};
+
+	const onRemove = (index: number) => {
+		setTempEscalations(tempEscalations.filter((_, i) => i !== index));
+	};
+
+	const updateField = (
+		index: number,
+		key: keyof (typeof tempEscalations)[0],
+		value: any
+	) => {
+		const copy = tempEscalations.map((e) => ({ ...e }));
+		// @ts-ignore
+		copy[index][key] = value;
+		setTempEscalations(copy);
+	};
+
+	const onSave = async () => {
+		try {
+			const payload = { escalations: tempEscalations };
+			const result = await patch(`/monitors/${monitorId}`, payload);
+			if (result?.success) {
+				setIsEditing(false);
+				await refetch();
+			}
+		} catch (err) {
+			console.error("Failed to save escalations", err);
+		}
+	};
+
+	const onCancel = () => {
+		setTempEscalations(monitor?.escalations ?? []);
+		setIsEditing(false);
+	};
+
+	return (
+		<Box
+			sx={{
+				mb: 3,
+				p: 2,
+				border: "1px solid",
+				borderColor: "divider",
+				borderRadius: 1,
+				display: "flex",
+				gap: 2,
+			}}
+		>
+			<Box sx={{ width: 360, background: "#f6f6f6", p: 1, borderRadius: 1 }}>
+				<Typography variant="h6">Escalations JSON</Typography>
+				<pre style={{ maxHeight: "40vh", overflow: "auto" }}>
+					{JSON.stringify(monitor?.escalations ?? [], null, 2)}
+				</pre>
+			</Box>
+			<Box sx={{ flex: 1 }}>
+				<Typography variant="h6">Escalations</Typography>
+				{!isEditing ? (
+					<>
+						{(monitor?.escalations ?? []).length === 0 ? (
+							<Typography>No escalations configured</Typography>
+						) : (
+							<ul>
+								{(monitor?.escalations ?? []).map((e, i) => (
+									<li key={i}>
+										Minutes: {e.minutes ?? 0} — Notification: {e.notificationId ?? ""}
+									</li>
+								))}
+							</ul>
+						)}
+						<Button onClick={onEdit}>Edit</Button>
+					</>
+				) : (
+					<>
+						{tempEscalations.map((e, i) => (
+							<div
+								key={i}
+								style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}
+							>
+								<TextField
+									type="number"
+									label="Minutes"
+									value={e.minutes ?? 0}
+									onChange={(ev) =>
+										updateField(i, "minutes", Number(ev.target.value || 0))
+									}
+								/>
+								<Select
+									value={e.notificationId ?? ""}
+									onChange={(ev) => updateField(i, "notificationId", ev.target.value)}
+									displayEmpty
+									sx={{ minWidth: 240 }}
+								>
+									<MenuItem value="">(choose notification)</MenuItem>
+									{(notifications ?? []).map((n) => (
+										<MenuItem
+											key={n.id}
+											value={n.id}
+										>
+											{n.notificationName} {n.type ? `(${n.type})` : ""}
+										</MenuItem>
+									))}
+								</Select>
+								<IconButton
+									size="small"
+									onClick={() => onRemove(i)}
+									aria-label="Remove escalation"
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</div>
+						))}
+						<Box sx={{ mt: 1 }}>
+							<Button
+								variant="outlined"
+								onClick={onAdd}
+								disabled={false}
+							>
+								Add escalation
+							</Button>
+						</Box>
+						<Box sx={{ mt: 2 }}>
+							<Button
+								onClick={onSave}
+								loading={isPatching}
+							>
+								Save
+							</Button>
+							<Button
+								onClick={onCancel}
+								sx={{ ml: 1 }}
+							>
+								Cancel
+							</Button>
+						</Box>
+					</>
+				)}
+			</Box>
+		</Box>
+	);
+};
 
 const UptimeDetailsPage = () => {
 	const theme = useTheme();
@@ -175,6 +361,14 @@ const UptimeDetailsPage = () => {
 
 	return (
 		<BasePage>
+			{/* Escalations editor - allow admins to edit escalations inline */}
+			{isAdmin && monitor && (
+				<EscalationsEditor
+					monitor={monitor}
+					refetch={refetchMonitor}
+					monitorId={monitorId!}
+				/>
+			)}
 			<HeaderMonitorControls
 				path="uptime"
 				monitor={monitor}

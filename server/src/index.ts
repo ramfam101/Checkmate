@@ -42,7 +42,7 @@ const startApp = async () => {
 	// Initialize controllers
 	const controllers = initializeControllers(services);
 
-	const app = createApp({
+	const app = await createApp({
 		services,
 		controllers,
 		envSettings,
