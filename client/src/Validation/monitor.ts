@@ -4,6 +4,15 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
+// Escalation rule schema
+const escalationRuleSchema = z.object({
+	minutesBeforeEscalation: z
+		.number()
+		.min(1, "Escalation minutes must be at least 1")
+		.max(10080, "Escalation minutes must be at most 10080 (7 days)"),
+	escalationNotifications: z.array(z.string()),
+});
+
 // Common base schema for all monitor types
 const baseSchema = z.object({
 	name: z
@@ -13,6 +22,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationRules: z.array(escalationRuleSchema).optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

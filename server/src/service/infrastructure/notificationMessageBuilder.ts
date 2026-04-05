@@ -53,27 +53,33 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
-		if (monitor.status === "down") {
+		// Decide from action first to avoid relying on potentially stale status snapshots.
+		if (decision.shouldCreateIncident) {
+			if (decision.incidentReason === "threshold_breach") {
+				return "threshold_breach";
+			}
 			return "monitor_down";
 		}
 
-		// Threshold breach (only if not down)
+		if (decision.shouldResolveIncident) {
+			if (monitor.type === "hardware") {
+				return "threshold_resolved";
+			}
+			return "monitor_up";
+		}
+
 		if (decision.notificationReason === "threshold_breach") {
 			return "threshold_breach";
 		}
 
-		// Recovery from threshold breach (only for hardware monitors)
-		if (decision.notificationReason === "status_change" && monitor.status === "up" && monitor.type === "hardware") {
-			return "threshold_resolved";
+		if (monitor.status === "down") {
+			return "monitor_down";
 		}
 
-		// Standard recovery (up)
 		if (monitor.status === "up") {
 			return "monitor_up";
 		}
 
-		// Default to monitor_up for any other case
 		return "monitor_up";
 	}
 
