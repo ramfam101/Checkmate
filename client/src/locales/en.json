@@ -20,6 +20,8 @@
 		},
 		"buttons": {
 			"addMember": "Add member",
+			"editEscalationRules": "Edit escalation rules",
+			"edit": "Edit",
 			"cancel": "Cancel",
 			"close": "Close",
 			"configure": "Configure",
@@ -542,6 +544,23 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+				},
+				"escalation": {
+					"title": "Escalation notification settings",
+					"description": "Add follow-up email alerts that should be sent if the monitor remains down for a specified duration.",
+					"empty": "No escalation rules configured yet.",
+					"option": {
+						"add": "Add escalation rule",
+						"remove": "Remove escalation rule",
+						"duration": {
+							"label": "Duration (minutes)",
+							"placeholder": "15"
+						},
+						"email": {
+							"label": "Email address",
+							"placeholder": "oncall@example.com"
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",

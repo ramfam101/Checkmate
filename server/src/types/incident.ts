@@ -3,6 +3,12 @@
 export const IncidentResolutionTypes = ["automatic", "manual", null] as const;
 export type IncidentResolutionType = (typeof IncidentResolutionTypes)[number];
 
+export interface SentEscalation {
+	durationMinutes: number;
+	email: string;
+	sentAt: string;
+}
+
 export interface Incident {
 	id: string;
 	monitorId: string;
@@ -12,6 +18,7 @@ export interface Incident {
 	status: boolean;
 	message?: string | null;
 	statusCode?: number | null;
+	sentEscalations?: SentEscalation[];
 	resolutionType: IncidentResolutionType;
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;

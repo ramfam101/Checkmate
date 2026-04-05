@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch, type Control, type UseFormSetValue, type UseFormTrigger } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
+import type { Theme } from "@mui/material/styles";
 import Stack from "@mui/material/Stack";
 import RadioGroup from "@mui/material/RadioGroup";
 import FormControl from "@mui/material/FormControl";
@@ -52,6 +52,150 @@ interface GeneralSettingsConfig {
 	showGrpcServiceName: boolean;
 	showIgnoreTls: boolean;
 }
+
+interface EscalationRulesEditorProps {
+	control: Control<MonitorFormData>;
+	setValue: UseFormSetValue<MonitorFormData>;
+	trigger: UseFormTrigger<MonitorFormData>;
+	t: (key: string) => string;
+	theme: Theme;
+}
+
+const EscalationRulesEditor = ({ control, setValue, trigger, t, theme }: EscalationRulesEditorProps) => {
+	const watchedRules = useWatch({ control, name: "escalationRules" }) ?? [];
+	const [draftRules, setDraftRules] = useState(watchedRules);
+	const [isEditing, setIsEditing] = useState(false);
+
+	useEffect(() => {
+		if (!isEditing) {
+			setDraftRules(watchedRules);
+		}
+	}, [isEditing, watchedRules]);
+
+	const beginEdit = () => {
+		setDraftRules(watchedRules);
+		setIsEditing(true);
+	};
+
+	const cancelEdit = () => {
+		setDraftRules(watchedRules);
+		setIsEditing(false);
+	};
+
+	const saveDraft = async () => {
+		setValue("escalationRules", draftRules, { shouldDirty: true, shouldValidate: true });
+		const isValid = await trigger("escalationRules");
+		if (isValid) {
+			setIsEditing(false);
+		}
+	};
+
+	const updateRule = (index: number, patch: { durationMinutes?: number; email?: string }) => {
+		setDraftRules((currentRules) => {
+			const nextRules = [...currentRules];
+			nextRules[index] = {
+				...nextRules[index],
+				...patch,
+			};
+			return nextRules;
+		});
+	};
+
+	const addRule = () => {
+		setDraftRules((currentRules) => [...currentRules, { durationMinutes: 15, email: "" }]);
+	};
+
+	const removeRule = (index: number) => {
+		setDraftRules((currentRules) => currentRules.filter((_: unknown, idx: number) => idx !== index));
+	};
+
+	return (
+		<Stack spacing={theme.spacing(LAYOUT.MD)}>
+			{!isEditing ? (
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					{watchedRules.length === 0 ? (
+						<Typography color="text.secondary">
+							{t("pages.createMonitor.form.escalation.empty")}
+						</Typography>
+					) : (
+						<Stack spacing={theme.spacing(SPACING.SM)}>
+							{watchedRules.map((rule, index) => (
+								<Typography key={`escalation-rule-summary-${index}`} color="text.secondary">
+									{`${rule.durationMinutes} min -> ${rule.email}`}
+								</Typography>
+							))}
+						</Stack>
+					)}
+					<Stack direction="row" justifyContent="flex-end">
+						<Button variant="outlined" onClick={beginEdit}>
+							{t("common.buttons.editEscalationRules")}
+						</Button>
+					</Stack>
+				</Stack>
+			) : (
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					{draftRules.length === 0 && (
+						<Typography color="text.secondary">
+							{t("pages.createMonitor.form.escalation.empty")}
+						</Typography>
+					)}
+
+					{draftRules.map((rule, index) => (
+						<Stack
+							key={`escalation-rule-${index}`}
+							direction={{ xs: "column", md: "row" }}
+							spacing={theme.spacing(LAYOUT.MD)}
+							alignItems={{ xs: "stretch", md: "flex-start" }}
+						>
+							<TextField
+								type="number"
+								fieldLabel={t("pages.createMonitor.form.escalation.option.duration.label")}
+								placeholder={t("pages.createMonitor.form.escalation.option.duration.placeholder")}
+								value={rule.durationMinutes}
+								onChange={(e) => {
+									const parsed = Number(e.target.value);
+									updateRule(index, { durationMinutes: Number.isFinite(parsed) ? parsed : 0 });
+								}}
+								fullWidth
+								inputProps={{ min: 1 }}
+							/>
+
+							<TextField
+								type="email"
+								fieldLabel={t("pages.createMonitor.form.escalation.option.email.label")}
+								placeholder={t("pages.createMonitor.form.escalation.option.email.placeholder")}
+								value={rule.email}
+								onChange={(e) => updateRule(index, { email: e.target.value })}
+								fullWidth
+							/>
+
+							<IconButton
+								size="small"
+								onClick={() => removeRule(index)}
+								aria-label={t("pages.createMonitor.form.escalation.option.remove")}
+								sx={{ mt: { xs: 0, md: 4 } }}
+							>
+								<Trash2 size={16} />
+							</IconButton>
+						</Stack>
+					))}
+
+					<Stack direction="row" gap={theme.spacing(SPACING.MD)} justifyContent="flex-end" flexWrap="wrap">
+						<Button variant="outlined" onClick={addRule}>
+							{t("pages.createMonitor.form.escalation.option.add")}
+						</Button>
+						<Button variant="outlined" onClick={cancelEdit}>
+							{t("common.buttons.cancel")}
+						</Button>
+						<Button variant="contained" onClick={saveDraft}>
+							{t("common.buttons.save")}
+						</Button>
+					</Stack>
+				</Stack>
+			)}
+		</Stack>
+	);
+};
 
 const getGeneralSettingsConfig = (
 	type: MonitorType,
@@ -202,7 +346,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue, trigger } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -763,6 +907,12 @@ const CreateMonitorPage = () => {
 						}}
 					/>
 				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={<EscalationRulesEditor control={control} setValue={setValue} trigger={trigger} t={t} theme={theme} />}
 			/>
 
 			{(watchedType === "http" ||
