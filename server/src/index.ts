@@ -58,11 +58,16 @@ const startApp = async () => {
 };
 
 startApp().catch((error) => {
-	logger.error({
-		message: error.message,
-		service: SERVICE_NAME,
-		method: "startApp",
-		stack: error.stack,
-	});
+	if (logger) {
+		logger.error({
+			message: error instanceof Error ? error.message : String(error),
+			service: SERVICE_NAME,
+			method: "startApp",
+			stack: error instanceof Error ? error.stack : undefined,
+		});
+	} else {
+		console.error("Server startup failed before logger initialization");
+		console.error(error);
+	}
 	process.exit(1);
 });
