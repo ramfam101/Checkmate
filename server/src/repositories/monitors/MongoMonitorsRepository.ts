@@ -293,7 +293,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		// Escalated notification removal functionality here:
+		await MonitorModel.updateMany(
+			{ $or: [{ notifications: notificationId }, { escalationNotifications: notificationId }] },
+			{ $pull: { notifications: notificationId, escalationNotifications: notificationId } }
+		);
 	};
 
 	updateNotifications = async (
@@ -351,6 +355,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((n) => toStringId(n));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +379,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationAfterMinutes: doc.escalationAfterMinutes ?? 0,
+			escalationNotifications: escalationNotificationIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +417,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((n: unknown) => toStringId(n));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +441,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationAfterMinutes: doc.escalationAfterMinutes ?? 0,
+			escalationNotifications: escalationNotificationIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

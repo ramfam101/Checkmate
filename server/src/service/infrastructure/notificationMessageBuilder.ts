@@ -13,7 +13,8 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		options?: { isEscalation?: boolean }
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -27,11 +28,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		options?: { isEscalation?: boolean }
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		if (options?.isEscalation) {
+			content.title = `[Escalated] ${content.title}`;
+		}
 
 		return {
 			type,

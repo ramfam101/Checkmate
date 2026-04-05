@@ -1,7 +1,11 @@
 import { Schema, model, type Types } from "mongoose";
 import { IncidentResolutionTypes, type Incident } from "@/types/incident.js";
 
-type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt"> & {
+type IncidentDocumentBase = Omit<
+	Incident,
+	"id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt" | "escalationNotified"
+> & {
+	escalationNotified: boolean;
 	monitorId: Types.ObjectId;
 	teamId: Types.ObjectId;
 	resolvedBy?: Types.ObjectId | null;
@@ -44,6 +48,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: Boolean,
 			default: true,
 			index: true,
+		},
+		escalationNotified: {
+			type: Boolean,
+			default: false,
 		},
 		message: {
 			type: String,
