@@ -17,6 +17,7 @@ import {
 	CheckService,
 	GeoChecksService,
 	DiagnosticService,
+	EscalationService,
 	InviteService,
 	MaintenanceWindowService,
 	IncidentService,
@@ -40,6 +41,7 @@ import {
 	ICheckService,
 	IGeoChecksService,
 	IDiagnosticService,
+	IEscalationService,
 	IInviteService,
 	IMaintenanceWindowService,
 	IStatusPageService,
@@ -123,6 +125,7 @@ export type InitializedServices = {
 	checkService: ICheckService;
 	geoChecksService: IGeoChecksService;
 	diagnosticService: IDiagnosticService;
+	escalationService: IEscalationService;
 	inviteService: IInviteService;
 	maintenanceWindowService: IMaintenanceWindowService;
 	monitorService: IMonitorService;
@@ -308,6 +311,32 @@ export const initializeServices = async ({
 
 	const statusPageService = new StatusPageService(statusPagesRepository);
 
+	const escalationService = new EscalationService(logger, incidentsRepository, monitorsRepository, notificationsService);
+
+	// Periodically check for escalation conditions and send notifications
+	setInterval(async () => {
+		try {
+			await escalationService.checkAndSendEscalations();
+		} catch (error: unknown) {
+			logger.error({
+				message: `EscalationService periodic check failed: ${error instanceof Error ? error.message : String(error)}`,
+				service: "EscalationService",
+				method: "scheduledCheck",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	}, 60 * 1000);
+
+	// Run one immediate check at startup
+	void escalationService.checkAndSendEscalations().catch((error: unknown) => {
+		logger.error({
+			message: `EscalationService startup check failed: ${error instanceof Error ? error.message : String(error)}`,
+			service: "EscalationService",
+			method: "startupCheck",
+			stack: error instanceof Error ? error.stack : undefined,
+		});
+	});
+
 	const services = {
 		settingsService,
 		db,
@@ -320,6 +349,7 @@ export const initializeServices = async ({
 		checkService,
 		geoChecksService,
 		diagnosticService,
+		escalationService,
 		inviteService,
 		maintenanceWindowService,
 		monitorService,

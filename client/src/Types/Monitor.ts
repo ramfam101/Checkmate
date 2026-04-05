@@ -74,6 +74,8 @@ export interface Monitor {
 	grpcServiceName?: string;
 	group: string | null;
 	geoCheckEnabled?: boolean;
+	escalationAfterMinutes?: number;
+	escalationNotifications?: string[];
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;
 	recentChecks: CheckSnapshot[];
