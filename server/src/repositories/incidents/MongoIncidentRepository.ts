@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+		escalationSent: doc.escalationSent ?? false,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -273,6 +274,21 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			})),
 		};
 	};
+
+	findActiveIncidentsByPage = async (page: number, pageSize: number): Promise<Incident[]> => {
+		const skip = page * pageSize;
+
+		const incidents = await IncidentModel.find({
+			endTime: null,          // incident still open
+			escalationSent: false   // escalation not yet sent
+		})
+		.sort({ startTime: -1 })
+		.skip(skip)
+		.limit(pageSize);
+
+		return incidents.map((incident) => this.toEntity(incident));
+	};
+
 
 	deleteByMonitorId = async (monitorId: string, teamId: string) => {
 		const result = await IncidentModel.deleteMany({
