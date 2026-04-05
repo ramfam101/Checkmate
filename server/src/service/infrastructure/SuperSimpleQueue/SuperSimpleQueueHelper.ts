@@ -156,17 +156,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
-						});
+				// Step 6. Handle notifications + escalations (best effort, continue even in event of failure, don't wait)
+				this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision, statusChangeResult.prevStatus).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
 					});
-				}
+				});
 
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
@@ -431,6 +429,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			// Safety net: if monitor is down but never had an initial down transition recorded,
+			// create incident once so incidents/notifications can recover from missed edge-cases.
+			if (monitor.status === "down" && !monitor.lastDownTime) {
+				decision.shouldCreateIncident = true;
+				decision.incidentReason = "status_down";
+			}
 			return decision;
 		}
 

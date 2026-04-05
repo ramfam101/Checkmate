@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatus, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -13,7 +13,12 @@ export interface INotificationsService {
 	findNotificationsByTeamId: (teamId: string) => Promise<Notification[]>;
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
-	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		prevStatus?: MonitorStatus
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -67,9 +72,6 @@ export class NotificationsService implements INotificationsService {
 
 	private send = async (
 		notification: Notification,
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
 		notificationMessage: NotificationMessage | undefined
 	): Promise<boolean> => {
 		if (!notificationMessage) {
@@ -108,7 +110,10 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds =
+			monitor.notifications?.length && monitor.notifications.length > 0
+				? monitor.notifications
+				: [...new Set((monitor.escalationRules ?? []).flatMap((rule) => rule.escalationNotifications ?? []))];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -116,7 +121,7 @@ export class NotificationsService implements INotificationsService {
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		const tasks = notifications.map((notification) => this.send(notification, notificationMessage));
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
@@ -132,13 +137,179 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+	private sendEscalationNotifications = async (monitor: Monitor, escalationRuleIndex: number) => {
+		const escalationRules = monitor.escalationRules ?? [];
+		if (escalationRuleIndex >= escalationRules.length) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const rule = escalationRules[escalationRuleIndex];
+		const notificationIds = rule.escalationNotifications ?? [];
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		// Build escalation message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		
+		// Create an escalation notification message
+		const escalationMessage: NotificationMessage = {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: monitor ${monitor.name} is still down`,
+				summary: `Monitor ${monitor.name} has been down for ${rule.minutesBeforeEscalation} minutes`,
+				details: [`The monitor "${monitor.name}" is still down after ${rule.minutesBeforeEscalation} minute(s).`],
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+
+		const tasks = notifications.map((notification) => this.send(notification, escalationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+		return succeeded === notifications.length;
+	};
+
+	private checkAndSendEscalations = async (monitor: Monitor): Promise<Monitor> => {
+		if (!monitor.lastDownTime || !monitor.escalationRules || monitor.escalationRules.length === 0) {
+			return monitor;
+		}
+
+		const currentTime = Date.now();
+		const downTimeMinutes = (currentTime - monitor.lastDownTime) / (1000 * 60);
+		let shouldPersistRuleUpdates = false;
+		const updatedRules = [...monitor.escalationRules];
+
+		// Check each escalation rule
+		for (let i = 0; i < updatedRules.length; i++) {
+			const rule = updatedRules[i];
+			const escalationIntervalMs = rule.minutesBeforeEscalation * 60 * 1000;
+			const thresholdReached = downTimeMinutes >= rule.minutesBeforeEscalation;
+			const dueByInterval = !rule.lastEscalationSentAt || currentTime - rule.lastEscalationSentAt >= escalationIntervalMs;
+
+			if (thresholdReached && dueByInterval) {
+				try {
+					await this.sendEscalationNotifications(monitor, i);
+					updatedRules[i] = { ...rule, lastEscalationSentAt: currentTime };
+					shouldPersistRuleUpdates = true;
+				} catch (error) {
+					this.logger.error({
+						message: `Failed to send escalation notification for monitor ${monitor.id}`,
+						service: SERVICE_NAME,
+						method: "checkAndSendEscalations",
+						error,
+					});
+				}
+			}
+		}
+
+		if (shouldPersistRuleUpdates) {
+			const updatedMonitor = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				escalationRules: updatedRules,
+			});
+			return updatedMonitor;
+		}
+
+		return monitor;
+	};
+
+	handleNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		prevStatus?: MonitorStatus
+	) => {
+		let result = false;
+		let currentMonitor = monitor;
+		const shouldSendFallbackInitialDown =
+			!decision.shouldSendNotification && currentMonitor.status === "down" && !currentMonitor.lastDownTime;
+		const shouldSendFallbackRecovery =
+			!decision.shouldSendNotification && currentMonitor.status === "up" && (prevStatus === "down" || prevStatus === "breached");
+
+		if (decision.shouldSendNotification) {
+			// Send notifications only for status changes / threshold events
+			result = await this.sendNotifications(currentMonitor, monitorStatusResponse, decision);
+		} else if (shouldSendFallbackInitialDown) {
+			result = await this.sendNotifications(currentMonitor, monitorStatusResponse, {
+				shouldCreateIncident: true,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: "status_down",
+				notificationReason: "status_change",
+			});
+		} else if (shouldSendFallbackRecovery) {
+			result = await this.sendNotifications(currentMonitor, monitorStatusResponse, {
+				shouldCreateIncident: false,
+				shouldResolveIncident: true,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "status_change",
+			});
+		}
+
+		// If monitor just went down, set lastDownTime and check escalations
+		if ((decision.shouldCreateIncident || shouldSendFallbackInitialDown) && currentMonitor.status === "down") {
+			try {
+				currentMonitor = await this.monitorsRepository.updateById(currentMonitor.id, currentMonitor.teamId, {
+					lastDownTime: Date.now(),
+				});
+			} catch (error) {
+				this.logger.warn({
+					message: `Failed to update monitor lastDownTime`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+					error,
+				});
+			}
+		}
+
+		// If monitor is up, clear escalation tracking
+		if (currentMonitor.status === "up") {
+			try {
+				const clearedRules = (currentMonitor.escalationRules ?? []).map((rule) => ({
+					...rule,
+					lastEscalationSentAt: 0,
+				}));
+				currentMonitor = await this.monitorsRepository.updateById(currentMonitor.id, currentMonitor.teamId, {
+					lastDownTime: 0,
+					escalationRules: clearedRules,
+				});
+			} catch (error) {
+				this.logger.warn({
+					message: `Failed to clear monitor lastDownTime`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+					error,
+				});
+			}
+		}
+
+		// Check and send escalation notifications if monitor is still down
+		if (currentMonitor.status === "down") {
+			currentMonitor = await this.checkAndSendEscalations(currentMonitor);
+		}
+
+		return result;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

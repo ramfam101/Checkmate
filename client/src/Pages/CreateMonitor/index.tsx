@@ -225,6 +225,7 @@ const CreateMonitorPage = () => {
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
 	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
 	const isSubmitting = isCreating || isUpdating;
+
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
@@ -758,6 +759,114 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							// Map notifications to have 'name' property for Autocomplete
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const escalationRule = (field.value ?? [])[0] ?? {
+								minutesBeforeEscalation: 0,
+								escalationNotifications: [],
+							};
+							const selectedEscalationNotifications = notificationOptions.filter((n) =>
+								escalationRule.escalationNotifications.includes(n.id)
+							);
+
+							const updateRule = (minutes: number, escalationNotifications: string[]) => {
+								if (!minutes && escalationNotifications.length === 0) {
+									field.onChange([]);
+									return;
+								}
+
+								field.onChange([
+									{
+										minutesBeforeEscalation: minutes,
+										escalationNotifications,
+									},
+								]);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										<TextField
+											fieldLabel={t("pages.createMonitor.form.escalationRules.option.minutesBeforeEscalation.label")}
+											placeholder="e.g., 5"
+											fullWidth
+											type="number"
+											value={
+												escalationRule.minutesBeforeEscalation > 0
+													? escalationRule.minutesBeforeEscalation
+													: ""
+											}
+											onChange={(e) => {
+												const value = e.target.value;
+												const minutes = value === "" ? 0 : Number(value);
+												updateRule(minutes, escalationRule.escalationNotifications);
+											}}
+											inputProps={{ min: 1, max: 10080 }}
+										/>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedEscalationNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												updateRule(escalationRule.minutesBeforeEscalation, newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t("pages.createMonitor.form.escalationRules.option.escalationNotifications.label")}
+										/>
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																updateRule(
+																	escalationRule.minutesBeforeEscalation,
+																	escalationRule.escalationNotifications.filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
 								</Stack>
 							);
 						}}
