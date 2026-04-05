@@ -37,6 +37,8 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationAfterMinutes: number; // Minutes the monitor must remain down or breached before escalation channels fire. 0 disables escalation.
+	escalationNotifications: string[]; // Notification channel IDs notified after escalation delay (in addition to primary `notifications`).
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

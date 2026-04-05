@@ -10,6 +10,7 @@ export interface Incident {
 	startTime: string;
 	endTime: string | null;
 	status: boolean;
+	escalationNotified?: boolean; // True after escalation alerts were sent for this incident
 	message?: string | null;
 	statusCode?: number | null;
 	resolutionType: IncidentResolutionType;
