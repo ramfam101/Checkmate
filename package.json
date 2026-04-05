@@ -23,6 +23,17 @@
   },
   "homepage": "https://github.com/bluewave-labs/Checkmate#readme",
   "devDependencies": {
+    "@types/dockerode": "^4.0.1",
+    "@types/express": "^5.0.6",
+    "@types/gamedig": "^5.0.3",
+    "@types/jmespath": "^0.15.2",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mjml": "^4.7.4",
+    "@types/ms": "^2.1.0",
+    "@types/multer": "^2.1.0",
+    "@types/nodemailer": "^8.0.0",
+    "@types/ping": "^0.4.4",
+    "@types/ws": "^8.18.1",
     "husky": "^9.1.7"
   },
   "dependencies": {
