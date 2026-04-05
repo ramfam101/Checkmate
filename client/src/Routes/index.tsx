@@ -37,6 +37,7 @@ import CreateNotifications from "@/Pages/Notifications/create";
 // Settings
 import Account from "@/Pages/Account";
 import EditUser from "@/Pages/Account/EditUser";
+import Escalations from "@/Pages/Account/Escalations";
 import Settings from "@/Pages/Settings";
 
 import Maintenance from "@/Pages/Maintenance";
@@ -176,6 +177,14 @@ const Routes = () => {
 				<Route
 					path="account/profile"
 					element={<Account open={"profile"} />}
+				/>
+				<Route
+					path="account/escalations"
+					element={<Escalations />}
+				/>
+				<Route
+					path="account/escalations"
+					element={<Escalations />}
 				/>
 				<Route
 					path="account/password"

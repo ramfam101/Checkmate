@@ -32,6 +32,9 @@ class MonitorRoutes {
 		// General monitor routes
 		this.router.post("/pause/:monitorId", isAllowed(["admin", "superadmin"]), this.monitorController.pauseMonitor);
 
+		// Trigger escalations (admin only) - used for testing/demo to send escalation notifications immediately
+		this.router.post("/:monitorId/trigger-escalations", isAllowed(["admin", "superadmin"]), this.monitorController.triggerEscalations);
+
 		// Util routes
 		this.router.get("/certificate/:monitorId", (req, res, next) => {
 			this.monitorController.getMonitorCertificate(req, res, next);

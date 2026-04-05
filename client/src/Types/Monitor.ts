@@ -60,6 +60,11 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	// Escalated notification settings: notify a channel after X minutes of an incident
+	escalations?: {
+		minutes: number;
+		notificationId: string;
+	}[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

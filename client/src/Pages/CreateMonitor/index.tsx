@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -199,7 +199,7 @@ const CreateMonitorPage = () => {
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema) as unknown as Resolver<MonitorFormData>,
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
@@ -502,6 +502,106 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{(field.value ?? []).length === 0 && (
+										<Typography color="text.secondary">
+											{t("pages.createMonitor.form.escalations.empty")}
+										</Typography>
+									)}
+									{(field.value ?? []).map(
+										(esc: { minutes?: number; notificationId?: string }, idx: number) => (
+											<Stack
+												direction="row"
+												alignItems="center"
+												key={idx}
+												spacing={theme.spacing(LAYOUT.MD)}
+											>
+												<TextField
+													type="number"
+													value={esc.minutes ?? 0}
+													onChange={(e) => {
+														const minutes = Number(e.target.value || 0);
+														const next = [...(field.value ?? [])];
+														next[idx] = { ...next[idx], minutes };
+														field.onChange(next);
+													}}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalations.option.minutes.label"
+													)}
+													fullWidth
+												/>
+												<Select
+													value={esc.notificationId ?? ""}
+													onChange={(e) => {
+														const next = [...(field.value ?? [])];
+														next[idx] = { ...next[idx], notificationId: e.target.value };
+														field.onChange(next);
+													}}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalations.option.notification.label"
+													)}
+												>
+													<MenuItem value="">
+														{t(
+															"pages.createMonitor.form.escalations.option.notification.placeholder"
+														)}
+													</MenuItem>
+													{notificationOptions.map((no) => (
+														<MenuItem
+															key={no.id}
+															value={no.id}
+														>
+															{no.notificationName}
+														</MenuItem>
+													))}
+												</Select>
+												<IconButton
+													size="small"
+													onClick={() => {
+														field.onChange(
+															(field.value ?? []).filter(
+																(_: unknown, i: number) => i !== idx
+															)
+														);
+													}}
+													aria-label="Remove escalation"
+												>
+													<Trash2 size={16} />
+												</IconButton>
+												{idx < (field.value ?? []).length - 1 && <Divider />}
+											</Stack>
+										)
+									)}
+									<Button
+										variant="outlined"
+										onClick={() => {
+											field.onChange([
+												...(field.value ?? []),
+												{ minutes: 5, notificationId: notificationOptions[0]?.id ?? "" },
+											]);
+										}}
+									>
+										{t("pages.createMonitor.form.escalations.add")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
 			<ConfigBox
 				title={t("pages.createMonitor.form.frequency.title")}
 				subtitle={t("pages.createMonitor.form.frequency.description")}
