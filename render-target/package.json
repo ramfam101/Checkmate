@@ -1,0 +1,9 @@
+{
+	"name": "checkmate-target",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Tiny Render target service for testing Checkmate escalation alerts",
+	"scripts": {
+		"start": "node index.js"
+	}
+}

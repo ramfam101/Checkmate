@@ -85,7 +85,7 @@ class IncidentController implements IIncidentController {
 			const teamId = requireTeamId(req.user?.teamId);
 			const userId = requireUserId(req.user?.id);
 			const userEmail = requireUserEmail(req.user?.email);
-			const incidentId = req.params?.incidentId;
+			const incidentId = req.params?.incidentId as string | undefined;
 			if (!incidentId) {
 				throw new AppError({ message: "Incident ID is required", service: SERVICE_NAME, status: 400 });
 			}

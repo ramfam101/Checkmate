@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: checkmate
+    env: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/index.js
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+  - type: web
+    name: checkmate-target
+    env: node
+    rootDir: render-target
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    healthCheckPath: /health
