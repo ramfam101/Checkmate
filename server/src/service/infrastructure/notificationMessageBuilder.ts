@@ -15,6 +15,11 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: import("@/types/incident.js").Incident,
+		clientHost: string
+	): NotificationMessage | undefined;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +275,56 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: import("@/types/incident.js").Incident,
+		clientHost: string
+	): NotificationMessage | undefined {
+		const escalation = monitor.escalation;
+		if (!escalation) {
+			return undefined;
+		}
+
+		const durationMinutes = escalation.durationMinutes;
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for ${durationMinutes} minutes. Escalating notifications.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Down for: ${durationMinutes} minutes`,
+			`Incident started: ${new Date(incident.startTime).toISOString()}`,
+		];
+
+		if (incident.message) {
+			details.push(`Incident message: ${incident.message}`);
+		}
+
+		const content: NotificationContent = {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+
+		return {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
 	}
 }

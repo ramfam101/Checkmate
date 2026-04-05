@@ -30,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -455,4 +456,97 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				this.logger.info({
+					message: "Starting escalation check job",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+
+				// Get all active incidents
+				const pageSize = 100;
+				let page = 0;
+				let processed = 0;
+
+				while (true) {
+					const incidents = await this.incidentsRepository.findActiveIncidentsByPage(page, pageSize);
+
+					if (incidents.length === 0) {
+						break;
+					}
+
+					for (const incident of incidents) {
+						try {
+							// Skip if escalation already sent
+							if (incident.escalationSent) {
+								continue;
+							}
+
+							// Get the monitor
+							const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+
+							// Check if escalation is configured
+							if (!monitor.escalation || !monitor.escalation.durationMinutes) {
+								continue;
+							}
+
+							// Calculate incident duration in minutes
+							const incidentStartTime = new Date(incident.startTime).getTime();
+							const now = Date.now();
+							const durationMinutes = (now - incidentStartTime) / (1000 * 60);
+
+							// Check if incident duration has reached escalation threshold
+							if (durationMinutes >= monitor.escalation.durationMinutes) {
+								// Send escalation notifications
+								const notificationSuccess = await this.notificationsService.handleEscalationNotification(
+									monitor,
+									incident
+								);
+
+								if (notificationSuccess) {
+									// Mark escalation as sent
+									const updatedIncident = { ...incident, escalationSent: true };
+									await this.incidentsRepository.updateById(incident.id, incident.teamId, updatedIncident);
+
+									this.logger.info({
+										message: `Escalation notification triggered for incident ${incident.id}`,
+										service: SERVICE_NAME,
+										method: "getEscalationJob",
+										details: { monitorId: incident.monitorId, durationMinutes },
+									});
+								}
+							}
+
+							processed++;
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Error processing escalation for incident ${incident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getEscalationJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}
+
+					page++;
+				}
+
+				this.logger.info({
+					message: `Escalation check job completed. Processed ${processed} incidents.`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
 }
