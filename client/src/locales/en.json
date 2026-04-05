@@ -553,6 +553,9 @@
 						"channels": {
 							"label": "Escalation notification channels"
 						}
+					},
+					"actions": {
+						"remove": "Remove escalation notification"
 					}
 				},
 				"type": {

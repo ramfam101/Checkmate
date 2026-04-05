@@ -838,7 +838,9 @@ const CreateMonitorPage = () => {
 																	)
 																);
 															}}
-															aria-label="Remove escalation notification"
+															aria-label={t(
+																"pages.createMonitor.form.escalation.actions.remove"
+															)}
 														>
 															<Trash2 size={16} />
 														</IconButton>
