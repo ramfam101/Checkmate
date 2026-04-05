@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.applyEscalationContent(this.buildContent(type, monitor, monitorStatusResponse), decision, monitor);
 
 		return {
 			type,
@@ -49,6 +49,18 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
 			},
+		};
+	}
+
+	private applyEscalationContent(content: NotificationContent, decision: MonitorActionDecision, monitor: Monitor): NotificationContent {
+		if (decision.notificationReason !== "escalation" || monitor.status !== "down") {
+			return content;
+		}
+
+		return {
+			...content,
+			title: `Escalation: Monitor ${monitor.name} is still down`,
+			summary: `Escalation: Monitor "${monitor.name}" is still down.`,
 		};
 	}
 

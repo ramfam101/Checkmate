@@ -97,12 +97,31 @@ export const createApp = ({
 		});
 	});
 
+	app.get("/", (req, res) => {
+		res.json({
+			status: "OK",
+			message: "Checkmate API is running",
+			health: "/api/v1/health",
+			docs: "/api-docs",
+		});
+	});
+
 	// Main app routes
 	setupRoutes(app, controllers, services);
 
 	// FE routes
 	app.get("*", (req, res) => {
-		res.sendFile(path.join(frontendPath, "index.html"));
+		const indexPath = path.join(frontendPath, "index.html");
+		res.sendFile(indexPath, (error) => {
+			if (!error || res.headersSent) {
+				return;
+			}
+
+			res.status(404).json({
+				status: 404,
+				msg: "Frontend asset not found. Use /api/v1/health for backend health check.",
+			});
+		});
 	});
 	app.use(handleErrors);
 	return app;

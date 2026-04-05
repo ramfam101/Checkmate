@@ -213,6 +213,15 @@ const CreateMonitorPage = () => {
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
 
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
+	);
+
 	useEffect(() => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
@@ -252,11 +261,19 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const payload: MonitorFormData = {
+			...data,
+			escalation:
+				data.escalation && data.escalation.channelId && data.escalation.delayMinutes > 0
+					? data.escalation
+					: null,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -705,11 +722,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -758,6 +770,110 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalation"
+						control={control}
+						render={({ field }) => {
+							const selectedEscalationChannel = notificationOptions.find(
+								(notification) => notification.id === field.value?.channelId
+							);
+							const selectedEscalationChannels = selectedEscalationChannel
+								? [selectedEscalationChannel]
+								: [];
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										type="number"
+										fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+										value={field.value?.delayMinutes ?? ""}
+										onChange={(event) => {
+											const value = event.target.value;
+											if (!value) {
+												field.onChange({
+													...(field.value ?? {}),
+													delayMinutes: undefined,
+												});
+												return;
+											}
+
+											field.onChange({
+												...(field.value ?? {}),
+												delayMinutes: Number(value),
+											});
+										}}
+										fullWidth
+									/>
+
+									<Stack spacing={theme.spacing(SPACING.SM)}>
+										<Typography>
+											{t("pages.createMonitor.form.escalation.option.channels.label")}
+										</Typography>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={[]}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: (typeof notificationOptions)) => {
+												const selectedChannel = newValue.at(-1);
+												if (!selectedChannel) {
+													field.onChange({
+														...(field.value ?? {}),
+														channelId: "",
+													});
+													return;
+												}
+
+												field.onChange({
+													...(field.value ?? {}),
+													channelId: selectedChannel.id,
+												});
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+
+										{selectedEscalationChannels.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationChannels.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>{notification.notificationName}</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange({
+																	...(field.value ?? {}),
+																	channelId: "",
+																});
+															}}
+															aria-label={t("pages.createMonitor.form.escalation.option.channels.remove")}
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationChannels.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
 								</Stack>
 							);
 						}}

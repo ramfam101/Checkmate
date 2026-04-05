@@ -165,8 +165,30 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
+	private normalizeEscalation = (escalation?: Monitor["escalation"]): Monitor["escalation"] => {
+		if (!escalation) {
+			return null;
+		}
+
+		if (!escalation.channelId || !Number.isFinite(escalation.delayMinutes) || escalation.delayMinutes <= 0) {
+			return null;
+		}
+
+		return {
+			channelId: escalation.channelId,
+			delayMinutes: Math.floor(escalation.delayMinutes),
+		};
+	};
+
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
-		const monitor = await this.monitorsRepository.create(body, teamId, userId);
+		const monitor = await this.monitorsRepository.create(
+			{
+				...body,
+				escalation: this.normalizeEscalation(body.escalation),
+			},
+			teamId,
+			userId
+		);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
 		}
@@ -437,7 +459,10 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
-		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
+		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, {
+			...body,
+			escalation: this.normalizeEscalation(body.escalation),
+		});
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;
 	};

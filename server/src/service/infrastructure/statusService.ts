@@ -42,6 +42,8 @@ export interface IStatusService {
 
 export class StatusService implements IStatusService {
 	static SERVICE_NAME = SERVICE_NAME;
+	private static readonly OBJECT_ID_REGEX = /^[a-fA-F0-9]{24}$/;
+	private static readonly OBJECT_ID_EMBEDDED_REGEX = /[a-fA-F0-9]{24}/;
 	private logger: ILogger;
 	private buffer: IBufferService;
 	private monitorsRepository: IMonitorsRepository;
@@ -64,6 +66,33 @@ export class StatusService implements IStatusService {
 
 	get serviceName() {
 		return StatusService.SERVICE_NAME;
+	}
+
+	private normalizeNotificationIds(notificationIds: string[] = []): string[] {
+		const normalized = new Set<string>();
+
+		for (const rawNotificationId of notificationIds) {
+			if (typeof rawNotificationId !== "string") {
+				continue;
+			}
+
+			const trimmed = rawNotificationId.trim();
+			if (!trimmed) {
+				continue;
+			}
+
+			if (StatusService.OBJECT_ID_REGEX.test(trimmed)) {
+				normalized.add(trimmed);
+				continue;
+			}
+
+			const embeddedObjectIdMatch = trimmed.match(StatusService.OBJECT_ID_EMBEDDED_REGEX);
+			if (embeddedObjectIdMatch?.[0]) {
+				normalized.add(embeddedObjectIdMatch[0]);
+			}
+		}
+
+		return [...normalized];
 	}
 
 	async updateRunningStats(monitor: Monitor, networkResponse: MonitorStatusResponse) {
@@ -194,6 +223,7 @@ export class StatusService implements IStatusService {
 		try {
 			const { monitorId, teamId, status, code } = statusResponse;
 			const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+			monitor.notifications = this.normalizeNotificationIds(monitor.notifications);
 
 			// Update running stats
 			this.updateRunningStats(monitor, statusResponse);
