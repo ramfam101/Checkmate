@@ -38,7 +38,8 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation_timeout" | null;
+	escalationElapsedMinutes?: number;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -158,14 +159,32 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+					if (decision.notificationReason === "escalation_timeout") {
+						try {
+							const success = await this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision);
+							if (success) {
+								await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, {
+									escalationSentAt: new Date().toISOString(),
+								});
+							}
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					} else {
+						this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -431,6 +450,27 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			const escalationMinutes = monitor.escalationMinutes ?? null;
+			const escalationChannels = monitor.escalationNotificationIds ?? [];
+			const hasEscalationConfig = !!escalationMinutes && escalationMinutes > 0 && escalationChannels.length > 0;
+			const inIncidentState = monitor.status === "down" || monitor.status === "breached";
+
+			if (!hasEscalationConfig || !inIncidentState || monitor.escalationSentAt || !monitor.escalationTriggeredAt) {
+				return decision;
+			}
+
+			const triggerTime = new Date(monitor.escalationTriggeredAt).getTime();
+			if (Number.isNaN(triggerTime)) {
+				return decision;
+			}
+
+			const elapsedMinutes = Math.floor((Date.now() - triggerTime) / 60000);
+			if (elapsedMinutes >= escalationMinutes) {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation_timeout";
+				decision.escalationElapsedMinutes = elapsedMinutes;
+			}
+
 			return decision;
 		}
 
