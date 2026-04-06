@@ -66,6 +66,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTimers: Map<string, NodeJS.Timeout> = new Map();
 
 	constructor(
 		logger: ILogger,
@@ -155,6 +156,41 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
+
+				const updatedMonitor = statusChangeResult.monitor;
+				if (decision.shouldCreateIncident && updatedMonitor.escalationEnabled && (updatedMonitor.escalationNotifications?.length ?? 0) > 0) {
+					if (!this.escalationTimers.has(monitorId)) {
+						const delayMs = (updatedMonitor.escalationDelayMinutes ?? 5) * 60_000;
+						this.logger.info({
+							message: `Scheduling escalation notification for monitor ${monitorId} in ${delayMs}ms`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+						const timer = setTimeout(async () => {
+							this.escalationTimers.delete(monitorId);
+							try {
+								const fresh = await this.monitorsRepository.findById(monitorId, teamId);
+								if (fresh && (fresh.status === "down" || fresh.status === "breached")) {
+									await this.notificationsService.sendEscalationNotifications(fresh, status);
+								}
+							} catch (err: unknown) {
+								this.logger.warn({
+									message: `Escalation send failed for ${monitorId}: ${err instanceof Error ? err.message : "unknown"}`,
+									service: SERVICE_NAME,
+									method: "escalationTimer",
+								});
+							}
+						}, delayMs);
+						this.escalationTimers.set(monitorId, timer);
+					}
+				}
+				if (decision.shouldResolveIncident) {
+					const existing = this.escalationTimers.get(monitorId);
+					if (existing) {
+						clearTimeout(existing);
+						this.escalationTimers.delete(monitorId);
+					}
+				}
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {

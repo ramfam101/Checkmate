@@ -765,6 +765,75 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title="Escalated notifications"
+				subtitle="Send an additional notification if an incident is still ongoing after the configured delay."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable escalated notifications</Typography>
+								</Stack>
+							)}
+						/>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									label="Escalation delay (minutes)"
+									value={field.value ?? 5}
+									onChange={(e) =>
+										field.onChange(Number(e.target.value))
+									}
+									error={fieldState.error?.message}
+									disabled={!watch("escalationEnabled")}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selected = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selected}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										disabled={!watch("escalationEnabled")}
+									/>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
