@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -172,6 +172,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalations for active incidents (best effort, don't wait)
+				this.handleEscalations(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -454,5 +464,46 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async handleEscalations(monitor: Monitor, status: MonitorStatusResponse): Promise<void> {
+		if (!monitor.escalationPolicy || monitor.escalationPolicy.length === 0) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		// Rollout guard: only incidents created after escalation support was introduced.
+		if (activeIncident.escalationVersion !== 1) {
+			return;
+		}
+
+		const elapsedMinutes = this.getElapsedMinutes(activeIncident.startTime);
+		const alreadyNotified = new Set(activeIncident.escalationNotifiedMinutes ?? []);
+		const pendingMilestones = monitor.escalationPolicy
+			.map((step) => step.delayMinutes)
+			.filter((delayMinutes) => delayMinutes <= elapsedMinutes && !alreadyNotified.has(delayMinutes))
+			.sort((a, b) => a - b);
+
+		for (const delayMinutes of pendingMilestones) {
+			const marked = await this.incidentsRepository.markEscalationNotified(activeIncident.id, activeIncident.teamId, delayMinutes);
+			if (!marked) {
+				continue;
+			}
+
+			await this.notificationsService.handleEscalationNotification(monitor, status, activeIncident, delayMinutes);
+		}
+	}
+
+	private getElapsedMinutes(startTime: string): number {
+		const start = new Date(startTime);
+		if (Number.isNaN(start.getTime())) {
+			return 0;
+		}
+
+		return Math.max(0, Math.floor((Date.now() - start.getTime()) / 60000));
 	}
 }

@@ -202,13 +202,21 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const {
+		control,
+		watch,
+		handleSubmit,
+		clearErrors,
+		setValue,
+		formState: { errors },
+	} = form;
 
 	useEffect(() => {
 		form.reset(defaults);
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const watchedEscalationPolicy = watch("escalationPolicy") ?? [];
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
@@ -249,6 +257,27 @@ const CreateMonitorPage = () => {
 
 	const handleDeleteCancel = () => {
 		setIsDeleteDialogOpen(false);
+	};
+
+	const addEscalationStep = () => {
+		if (watchedEscalationPolicy.length >= 5) {
+			return;
+		}
+
+		const lastDelay = watchedEscalationPolicy[watchedEscalationPolicy.length - 1]?.delayMinutes ?? 0;
+		setValue(
+			"escalationPolicy",
+			[...watchedEscalationPolicy, { delayMinutes: Math.max(1, lastDelay + 5) }],
+			{ shouldDirty: true, shouldValidate: true }
+		);
+	};
+
+	const removeEscalationStep = (index: number) => {
+		setValue(
+			"escalationPolicy",
+			watchedEscalationPolicy.filter((_, currentIndex) => currentIndex !== index),
+			{ shouldDirty: true, shouldValidate: true }
+		);
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
@@ -693,6 +722,78 @@ const CreateMonitorPage = () => {
 								/>
 							)}
 						/>
+					</Stack>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Stack
+							direction="row"
+							justifyContent="space-between"
+							alignItems="center"
+						>
+							<Typography color="text.secondary">
+								{t("pages.createMonitor.form.escalation.stepHint", {
+									count: watchedEscalationPolicy.length,
+									max: 5,
+								})}
+							</Typography>
+							<Button
+								size="small"
+								onClick={addEscalationStep}
+								disabled={watchedEscalationPolicy.length >= 5}
+							>
+								{t("pages.createMonitor.form.escalation.addStep")}
+							</Button>
+						</Stack>
+
+						{watchedEscalationPolicy.map((_, index) => (
+							<Stack
+								key={`escalation-step-${index}`}
+								direction="row"
+								spacing={theme.spacing(SPACING.MD)}
+								alignItems="center"
+							>
+								<Controller
+									name={`escalationPolicy.${index}.delayMinutes` as const}
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											fieldLabel={t("pages.createMonitor.form.escalation.delayLabel", {
+												index: index + 1,
+											})}
+											type="number"
+											inputProps={{ min: 1 }}
+											value={field.value ?? 1}
+											onChange={(event) => {
+												const parsed = Number(event.target.value);
+												field.onChange(Number.isNaN(parsed) ? 1 : parsed);
+											}}
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+											fullWidth
+										/>
+									)}
+								/>
+								<IconButton
+									size="small"
+									onClick={() => removeEscalationStep(index)}
+									aria-label={t("pages.createMonitor.form.escalation.removeStep")}
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						))}
+
+						{typeof errors.escalationPolicy?.message === "string" && (
+							<Typography color="error.main">
+								{errors.escalationPolicy.message}
+							</Typography>
+						)}
 					</Stack>
 				}
 			/>

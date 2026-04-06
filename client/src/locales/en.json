@@ -539,6 +539,14 @@
 					},
 					"title": "Incidents"
 				},
+				"escalation": {
+					"title": "Escalation notifications",
+					"description": "Add reminder milestones for long-running incidents. Each step sends one additional alert when the incident duration reaches the configured minute value.",
+					"stepHint": "{{count}} / {{max}} escalation steps configured",
+					"addStep": "Add escalation step",
+					"removeStep": "Remove escalation step",
+					"delayLabel": "Step {{index}} delay (minutes)"
+				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
