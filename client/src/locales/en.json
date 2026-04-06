@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation settings",
+					"description": "Configure escalation for persistent downtime.",
+					"option": {
+						"delay": {
+							"label": "Escalation delay (minutes)",
+							"helper": "Leave empty to disable escalation."
+						},
+						"channel": {
+							"label": "Escalation notification channel",
+							"none": "None"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

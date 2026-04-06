@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation" && monitor.status === "down") {
+			return "monitor_down_escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +84,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_down_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -97,6 +102,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_down_escalation":
+				return this.buildMonitorDownEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -119,6 +126,34 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorDownEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const delayMinutes = monitor.escalationDelayMinutes ?? 0;
+		const title = `Escalation Alert: ${monitor.name} is still down`;
+		const summary = `Monitor "${monitor.name}" is still down after ${delayMinutes} minute${delayMinutes === 1 ? "" : "s"}.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Notification Type: Escalation`,
+			`Escalation Delay: ${delayMinutes} minute${delayMinutes === 1 ? "" : "s"}`,
+		];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
 		if (monitorStatusResponse.message) {
 			details.push(`Error: ${monitorStatusResponse.message}`);
 		}
