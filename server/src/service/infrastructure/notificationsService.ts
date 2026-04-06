@@ -14,7 +14,8 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendSingleNotification: (notificationId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEmailNotification: (email: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -108,7 +109,8 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationConfigs = monitor.notifications ?? [];
+		const notificationIds = notificationConfigs.map((config) => config.notificationId);
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -139,6 +141,73 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendSingleNotification = async (notificationId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		try {
+			const notification = await this.notificationsRepository.findNotificationsByIds([notificationId]);
+			if (!notification || notification.length === 0) {
+				this.logger.warn({
+					message: `Escalation notification ${notificationId} not found`,
+					service: SERVICE_NAME,
+					method: "sendSingleNotification",
+				});
+				return false;
+			}
+
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+			if (!notification || notification.length === 0) {
+				return false;
+			}
+
+			const firstNotification = notification[0];
+			if (!firstNotification) {
+				return false;
+			}
+
+			return await this.send(firstNotification, monitor, monitorStatusResponse, decision, notificationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendSingleNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
+	};
+
+	sendEmailNotification = async (email: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		try {
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+			// Create a temporary email notification object
+			const emailNotification: Notification = {
+				id: "temp-escalation",
+				userId: monitor.userId,
+				teamId: monitor.teamId,
+				type: "email",
+				notificationName: "Escalation Email",
+				address: email,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			return await this.send(emailNotification, monitor, monitorStatusResponse, decision, notificationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation email to ${email}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEmailNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

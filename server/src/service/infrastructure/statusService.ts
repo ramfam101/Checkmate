@@ -239,7 +239,16 @@ export class StatusService implements IStatusService {
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
 				monitor.status = newStatus;
-				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+				const patch: Partial<Monitor> = {
+					status: monitor.status,
+					statusWindow: monitor.statusWindow,
+					recentChecks: monitor.recentChecks,
+					cpuAlertCounter: monitor.cpuAlertCounter,
+					memoryAlertCounter: monitor.memoryAlertCounter,
+					diskAlertCounter: monitor.diskAlertCounter,
+					tempAlertCounter: monitor.tempAlertCounter,
+				};
+				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, patch);
 				return {
 					monitor: updated,
 					statusChanged: false,
@@ -348,7 +357,17 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
-			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+			const patch: Partial<Monitor> = {
+				status: monitor.status,
+				statusWindow: monitor.statusWindow,
+				recentChecks: monitor.recentChecks,
+				cpuAlertCounter: monitor.cpuAlertCounter,
+				memoryAlertCounter: monitor.memoryAlertCounter,
+				diskAlertCounter: monitor.diskAlertCounter,
+				tempAlertCounter: monitor.tempAlertCounter,
+			};
+
+			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, patch);
 
 			return {
 				monitor: updated,

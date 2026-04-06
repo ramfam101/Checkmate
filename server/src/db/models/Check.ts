@@ -276,6 +276,7 @@ const CheckSchema = new Schema<CheckDocument>(
 			metaField: "metadata",
 			granularity: "seconds",
 		},
+		suppressReservedKeysWarning: true,
 	}
 );
 

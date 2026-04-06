@@ -16,13 +16,22 @@ import type {
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
+type NotificationConfigDocument = {
+	notificationId: Types.ObjectId;
+	escalation?: {
+		delayMinutes?: number;
+		channelId?: Types.ObjectId;
+		email?: string;
+	};
+};
+
 type MonitorDocumentBase = Omit<
 	Monitor,
 	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
-	notifications: Types.ObjectId[];
+	notifications: NotificationConfigDocument[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -280,8 +289,23 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		notifications: [
 			{
-				type: Schema.Types.ObjectId,
-				ref: "Notification",
+				notificationId: {
+					type: Schema.Types.ObjectId,
+					ref: "Notification",
+					required: true,
+				},
+				escalation: {
+					delayMinutes: {
+						type: Number,
+						required: false,
+					},
+					channelId: {
+						type: Schema.Types.ObjectId,
+						ref: "Notification",
+						required: false,
+					},
+				},
+			_id: false,
 			},
 		],
 		secret: {
