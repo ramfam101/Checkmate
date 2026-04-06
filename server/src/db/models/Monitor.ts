@@ -49,6 +49,14 @@ const snapshotTimingPhasesSchema = new Schema<GotTimings["phases"]>(
 	{ _id: false }
 );
 
+const escalationSchema = new Schema(
+	{
+		delayMinutes: { type: Number, required: true },
+		channelId: { type: String, required: true },
+	},
+	{ _id: false }
+);
+
 const snapshotTimingsSchema = new Schema<GotTimings>(
 	{
 		start: { type: Number },
@@ -353,6 +361,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
+			default: [],
+		},
+		escalations: {
+			type: [escalationSchema],
 			default: [],
 		},
 	},

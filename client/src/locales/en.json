@@ -622,6 +622,22 @@
 						"description": "This will permanently delete all monitoring history, statistics, and check data for your team. This action cannot be undone.",
 						"confirm": "Yes, clear all stats"
 					}
+				},
+				"escalation": {
+					"title": "Escalation Rules",
+					"description": "Configure escalation notifications for unacknowledged incidents",
+					"option": {
+						"delay": {
+							"label": "Delay (minutes)"
+						},
+						"channel": {
+							"label": "Channel"
+						},
+						"remove": {
+							"ariaLabel": "Remove escalation rule"
+						},
+						"add": "Add Escalation Rule"
+					}
 				}
 			}
 		},

@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendNotification: (notification: Notification, notificationMessage: NotificationMessage, monitor?: Monitor) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -67,9 +67,9 @@ export class NotificationsService implements INotificationsService {
 
 	private send = async (
 		notification: Notification,
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
+		monitor: Monitor | null,
+		monitorStatusResponse: MonitorStatusResponse | null,
+		decision: MonitorActionDecision | null,
 		notificationMessage: NotificationMessage | undefined
 	): Promise<boolean> => {
 		if (!notificationMessage) {
@@ -139,6 +139,10 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendNotification = async (notification: Notification, notificationMessage: NotificationMessage, monitor?: Monitor) => {
+		return await this.send(notification, monitor || null, null, null, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
