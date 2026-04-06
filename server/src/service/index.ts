@@ -8,7 +8,7 @@ export * from "@/service/business/maintenanceWindowService.js";
 export * from "@/service/business/monitorService.js";
 export * from "@/service/business/statusPageService.js";
 export * from "@/service/business/userService.js";
-export * from "@/service/business/escalationService.js"
+export * from "@/service/business/escalationService.js";
 
 // Infrastructure services
 export * from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";

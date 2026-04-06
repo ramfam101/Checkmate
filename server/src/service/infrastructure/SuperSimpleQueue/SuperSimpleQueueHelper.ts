@@ -311,7 +311,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
-	}
+	};
 
 	getHeartbeatGeoJob = () => {
 		return async (monitor: Monitor) => {

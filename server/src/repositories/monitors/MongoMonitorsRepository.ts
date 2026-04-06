@@ -338,11 +338,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return result.modifiedCount;
 	};
 
-	updateEscalation = async (
-		teamId: string,
-		monitorIds: string[],
-		updateData: Partial<Monitor>
-	): Promise<number> => {
+	updateEscalation = async (teamId: string, monitorIds: string[], updateData: Partial<Monitor>): Promise<number> => {
 		let objectIds;
 		try {
 			objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
@@ -356,9 +352,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		let update: any = { ...updateData };
 		if (updateData.escalationNotifications) {
 			try {
-				update.escalationNotifications = updateData.escalationNotifications.map(
-					(id: string) => new mongoose.Types.ObjectId(id)
-				);
+				update.escalationNotifications = updateData.escalationNotifications.map((id: string) => new mongoose.Types.ObjectId(id));
 			} catch {
 				throw new AppError({ message: "One or more escalation notification IDs are invalid", status: 400 });
 			}
@@ -376,11 +370,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			throw new AppError({ message: "Invalid monitor ID", status: 400 });
 		}
 
-		const updatedDocument = await MonitorModel.findOneAndUpdate(
-			{ _id: objectId },
-			{ $set: { lastEscalationSent: date } },
-			{ new: true }
-		);
+		const updatedDocument = await MonitorModel.findOneAndUpdate({ _id: objectId }, { $set: { lastEscalationSent: date } }, { new: true });
 
 		if (!updatedDocument) {
 			throw new AppError({ message: "Monitor not found", status: 404 });

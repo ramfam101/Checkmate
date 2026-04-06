@@ -267,7 +267,10 @@ const CreateMonitorPage = () => {
 				escalationNotifications: data.escalationNotifications,
 			};
 
-			if (escalationData.escalationDelayMinutes !== undefined || escalationData.escalationNotifications !== undefined) {
+			if (
+				escalationData.escalationDelayMinutes !== undefined ||
+				escalationData.escalationNotifications !== undefined
+			) {
 				const escalationPayload = {
 					monitorIds: [result.data.id || monitorId],
 					escalationDelayMinutes: escalationData.escalationDelayMinutes,
@@ -859,7 +862,9 @@ const CreateMonitorPage = () => {
 														>
 															<Trash2 size={16} />
 														</IconButton>
-														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+														{index < selectedEscalationNotifications.length - 1 && (
+															<Divider />
+														)}
 													</Stack>
 												))}
 											</Stack>

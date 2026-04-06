@@ -81,7 +81,13 @@ export interface IMonitorService {
 
 	// notifications
 	updateNotifications(args: { teamId: string; monitorIds: string[]; notificationIds: string[]; action: "add" | "remove" | "set" }): Promise<number>;
-	updateEscalation(args: { teamId: string; monitorIds: string[]; escalationDelayMinutes?: number; escalationNotifications?: string[]; action: "set" | "clear" }): Promise<number>;
+	updateEscalation(args: {
+		teamId: string;
+		monitorIds: string[];
+		escalationDelayMinutes?: number;
+		escalationNotifications?: string[];
+		action: "set" | "clear";
+	}): Promise<number>;
 
 	// other
 	exportMonitorsToJSON(args: { teamId: string }): Promise<Monitor[]>;

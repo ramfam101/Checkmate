@@ -24,7 +24,6 @@ export interface IMonitorsRepository {
 	findMonitorsWithEscalation(): Promise<Monitor[]>;
 	updateLastEscalationSent(monitorId: string, date: Date): Promise<Monitor>;
 
-
 	// collection fetch
 	findAll(): Promise<Monitor[] | null>;
 	findByTeamId(teamId: string, config: TeamQueryConfig): Promise<Monitor[] | null>;

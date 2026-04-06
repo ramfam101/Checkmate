@@ -86,8 +86,7 @@ export class EscalationService implements IEscalationService {
 					continue;
 				}
 
-				const downtimeMinutes =
-					(Date.now() - new Date(activeIncident.startTime).getTime()) / (1000 * 60);
+				const downtimeMinutes = (Date.now() - new Date(activeIncident.startTime).getTime()) / (1000 * 60);
 
 				this.logger.debug({
 					message: `Monitor ${monitor.id}: downtime=${downtimeMinutes.toFixed(2)}min, threshold=${monitor.escalationDelayMinutes}min, lastEscalation=${monitor.lastEscalationSent}`,
@@ -95,14 +94,11 @@ export class EscalationService implements IEscalationService {
 					method: "checkAndSendEscalations",
 				});
 
-				const timeSinceLastEscalation = monitor.lastEscalationSent
-					? Date.now() - new Date(monitor.lastEscalationSent).getTime()
-					: null;
+				const timeSinceLastEscalation = monitor.lastEscalationSent ? Date.now() - new Date(monitor.lastEscalationSent).getTime() : null;
 
 				const shouldSendEscalation =
 					downtimeMinutes >= monitor.escalationDelayMinutes &&
-					(!monitor.lastEscalationSent ||
-						(timeSinceLastEscalation !== null && timeSinceLastEscalation > 24 * 60 * 60 * 1000)); // 24 hour cooldown
+					(!monitor.lastEscalationSent || (timeSinceLastEscalation !== null && timeSinceLastEscalation > 24 * 60 * 60 * 1000)); // 24 hour cooldown
 
 				if (shouldSendEscalation) {
 					this.logger.info({
@@ -115,7 +111,7 @@ export class EscalationService implements IEscalationService {
 					await this.monitorsRepository.updateLastEscalationSent(monitor.id, new Date());
 				} else {
 					this.logger.debug({
-						message: `Escalation conditions not met for monitor ${monitor.id}: downtime=${downtimeMinutes.toFixed(2)} >= ${monitor.escalationDelayMinutes}? ${downtimeMinutes >= monitor.escalationDelayMinutes}, timeSinceLast=${timeSinceLastEscalation ? (timeSinceLastEscalation / (1000 * 60 * 60)).toFixed(2) + 'hrs' : 'never'} (needs >24hrs)`,
+						message: `Escalation conditions not met for monitor ${monitor.id}: downtime=${downtimeMinutes.toFixed(2)} >= ${monitor.escalationDelayMinutes}? ${downtimeMinutes >= monitor.escalationDelayMinutes}, timeSinceLast=${timeSinceLastEscalation ? (timeSinceLastEscalation / (1000 * 60 * 60)).toFixed(2) + "hrs" : "never"} (needs >24hrs)`,
 						service: SERVICE_NAME,
 						method: "checkAndSendEscalations",
 					});
@@ -131,11 +127,7 @@ export class EscalationService implements IEscalationService {
 		}
 	};
 
-	private sendEscalationNotifications = async (
-		monitor: Monitor,
-		incident: Incident,
-		downtimeMinutes: number
-	): Promise<void> => {
+	private sendEscalationNotifications = async (monitor: Monitor, incident: Incident, downtimeMinutes: number): Promise<void> => {
 		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
 			this.logger.warn({
 				message: `No escalation notifications configured for monitor ${monitor.id}`,
@@ -146,9 +138,7 @@ export class EscalationService implements IEscalationService {
 		}
 
 		try {
-			const notifications = await this.notificationsRepository.findNotificationsByIds(
-				monitor.escalationNotifications
-			);
+			const notifications = await this.notificationsRepository.findNotificationsByIds(monitor.escalationNotifications);
 
 			if (!notifications || notifications.length === 0) {
 				this.logger.warn({
@@ -219,9 +209,7 @@ export class EscalationService implements IEscalationService {
 			}
 		} catch (error: unknown) {
 			this.logger.error({
-				message: `Failed to send escalation notifications: ${
-					error instanceof Error ? error.message : "Unknown error"
-				}`,
+				message: `Failed to send escalation notifications: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
 				method: "sendEscalationNotifications",
 				stack: error instanceof Error ? error.stack : undefined,
