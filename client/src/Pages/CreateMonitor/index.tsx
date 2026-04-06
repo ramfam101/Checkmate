@@ -5,6 +5,7 @@ import { useParams, useLocation, useNavigate } from "react-router";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
+import FormHelperText from "@mui/material/FormHelperText";
 import Stack from "@mui/material/Stack";
 import RadioGroup from "@mui/material/RadioGroup";
 import FormControl from "@mui/material/FormControl";
@@ -202,7 +203,14 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const {
+		control,
+		watch,
+		handleSubmit,
+		clearErrors,
+		reset,
+		formState: { isDirty },
+	} = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -249,6 +257,10 @@ const CreateMonitorPage = () => {
 
 	const handleDeleteCancel = () => {
 		setIsDeleteDialogOpen(false);
+	};
+
+	const handleCancel = () => {
+		reset(defaults);
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
@@ -765,6 +777,79 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			{/* Escalation Configuration */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+									type="number"
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value === "" ? null : Number(e.target.value);
+										field.onChange(val);
+									}}
+									error={!!fieldState.error}
+									helperText={
+										fieldState.error?.message ??
+										t("pages.createMonitor.form.escalation.option.delay.helper")
+									}
+									size="small"
+									fullWidth
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationChannelId"
+							control={control}
+							render={({ field, fieldState }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								return (
+									<>
+										<Select
+											{...field}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channel.label"
+											)}
+											value={field.value ?? ""}
+											onChange={(e) => field.onChange(e.target.value || null)}
+											error={!!fieldState.error}
+											size="small"
+											fullWidth
+										>
+											<MenuItem value="">
+												{t("pages.createMonitor.form.escalation.option.channel.none")}
+											</MenuItem>
+											{notificationOptions.map((option) => (
+												<MenuItem
+													key={option.id}
+													value={option.id}
+												>
+													{option.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+										{fieldState.error && (
+											<FormHelperText error>{fieldState.error.message}</FormHelperText>
+										)}
+									</>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1047,7 +1132,17 @@ const CreateMonitorPage = () => {
 			<Stack
 				direction="row"
 				justifyContent="flex-end"
+				spacing={theme.spacing(SPACING.MD)}
 			>
+				<Button
+					type="button"
+					variant="outlined"
+					color="primary"
+					onClick={handleCancel}
+					disabled={!isDirty}
+				>
+					{t("common.buttons.cancel")}
+				</Button>
 				<Button
 					loading={isSubmitting}
 					type="submit"

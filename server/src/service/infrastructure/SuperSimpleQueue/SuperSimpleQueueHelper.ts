@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -38,7 +39,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +178,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation (if configured, runs even if status unchanged)
+				if (statusChangeResult.monitor.escalationDelayMinutes && statusChangeResult.monitor.escalationChannelId) {
+					this.handleEscalation(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +200,44 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private handleEscalation = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> => {
+		if (monitor.status !== "down") return;
+
+		if (!monitor.escalationDelayMinutes || !monitor.escalationChannelId) return;
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+		if (!activeIncident || activeIncident.escalationSent) return;
+
+		const start = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(start)) return;
+
+		const elapsedMinutes = (Date.now() - start) / (1000 * 60);
+
+		if (elapsedMinutes < monitor.escalationDelayMinutes) return;
+
+		const escalationMonitor: Monitor = {
+			...monitor,
+			notifications: [monitor.escalationChannelId],
+		};
+
+		const escalationDecision = {
+			...decision,
+			shouldSendNotification: true,
+			notificationReason: "escalation" as const,
+		};
+
+		await this.notificationsService.handleNotifications(escalationMonitor, monitorStatusResponse, escalationDecision);
+
+		activeIncident.escalationSent = true;
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 	};
 
 	getCleanupOrphanedJob = () => {

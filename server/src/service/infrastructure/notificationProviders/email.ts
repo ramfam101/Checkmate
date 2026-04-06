@@ -81,6 +81,8 @@ export class EmailProvider implements INotificationProvider {
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
+			case "monitor_down_escalation":
+				return `Escalation: Monitor ${message.monitor.name} is still down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":
@@ -101,6 +103,7 @@ export class EmailProvider implements INotificationProvider {
 			monitorType: message.monitor.type,
 			monitorStatus: message.monitor.status,
 			headerColor: this.getColorForSeverity(message.severity),
+			isEscalation: message.type === "monitor_down_escalation",
 			thresholds: message.content.thresholds,
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
