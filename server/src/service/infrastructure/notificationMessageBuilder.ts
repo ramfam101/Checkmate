@@ -53,7 +53,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
+		// Escalation has priority if specified
+		if (decision.notificationReason === "escalation") {
+			return "monitor_escalated";
+		}
+
+		// Down status has priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
 		}
@@ -79,6 +84,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
+			case "monitor_escalated":
 			case "monitor_down":
 				return "critical";
 			case "threshold_breach":
@@ -95,6 +101,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
+			case "monitor_escalated":
+				return this.buildMonitorEscalatedContent(monitor, monitorStatusResponse);
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
@@ -106,6 +114,29 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildMonitorEscalatedContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `[ESCALATION] Monitor Down: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for longer than the configured escalation timeout.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
