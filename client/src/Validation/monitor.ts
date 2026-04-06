@@ -7,7 +7,10 @@ const urlSchema = z.url({ message: "Please enter a valid URL" });
 // Escalation rule schema
 const escalationRuleSchema = z.object({
 	id: z.string().min(1, "Escalation rule ID is required"),
-	escalateAfterMinutes: z.number().min(1, "Escalation time must be at least 1 minute"),
+	escalateAfterMinutes: z
+		.number()
+		.min(1, "Escalation time must be at least 1 minute")
+		.optional(),
 	notificationIds: z.array(z.string()),
 	isEnabled: z.boolean(),
 });

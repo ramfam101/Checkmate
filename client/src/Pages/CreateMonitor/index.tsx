@@ -776,69 +776,61 @@ const CreateMonitorPage = () => {
 							const escalationRules = field.value ?? [];
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
-									{escalationRules.map((rule: any, index: number) => (
-										<Stack
-											key={rule.id}
-											spacing={theme.spacing(LAYOUT.SM)}
-											sx={{
-												p: theme.spacing(LAYOUT.MD),
-												border: `1px solid ${theme.palette.divider}`,
-												borderRadius: theme.shape.borderRadius,
-											}}
-										>
+									{escalationRules.map((rule: any, index: number) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedNotifications = notificationOptions.filter((n) =>
+											(rule.notificationIds ?? []).includes(n.id)
+										);
+										return (
 											<Stack
-												direction="row"
-												justifyContent="space-between"
-												alignItems="center"
+												key={rule.id}
+												spacing={theme.spacing(LAYOUT.SM)}
+												sx={{
+													p: theme.spacing(LAYOUT.MD),
+													border: `1px solid ${theme.palette.divider}`,
+													borderRadius: theme.shape.borderRadius,
+												}}
 											>
 												<Stack
 													direction="row"
-													alignItems="center"
-													spacing={1}
-												>
-													<Typography variant="subtitle2">
-														{t("pages.createMonitor.form.escalationRules.escalateAfter")}
-													</Typography>
-													<TextField
-														type="number"
-														size="small"
-														value={rule.escalateAfterMinutes}
-														onChange={(e) => {
-															const value = parseInt(e.target.value) || 1;
-															const newRules = [...escalationRules];
-															newRules[index] = {
-																...newRules[index],
-																escalateAfterMinutes: Math.max(1, value),
-															};
-															field.onChange(newRules);
-														}}
-														inputProps={{ min: 1 }}
-														sx={{ width: 80 }}
-													/>
-													<Typography variant="subtitle2">
-														{t("pages.createMonitor.form.escalationRules.minutes")}
-													</Typography>
-												</Stack>
-												<Stack
-													direction="row"
-													spacing={1}
+													justifyContent="space-between"
 													alignItems="center"
 												>
-													<Typography variant="body2">
-														{t("pages.createMonitor.form.escalationRules.enabled")}
-													</Typography>
-													<Switch
-														size="small"
-														checked={rule.isEnabled ?? true}
-														onChange={(e) => {
-															const newRules = [...escalationRules];
-															newRules[index] = {
-																...newRules[index],
-																isEnabled: e.target.checked,
-															};
-															field.onChange(newRules);
-														}}
-													/>
+													<Stack
+														direction="row"
+														alignItems="center"
+														spacing={theme.spacing(SPACING.LG)}
+													>
+														<Typography variant="subtitle2">
+															{t(
+																"pages.createMonitor.form.escalationRules.escalateAfter"
+															)}
+														</Typography>
+														<TextField
+															type="number"
+															size="small"
+															value={rule.escalateAfterMinutes ?? ""}
+															placeholder="1"
+															onChange={(e) => {
+																const inputValue = e.target.value;
+																const value =
+																	inputValue === "" ? undefined : parseInt(inputValue);
+																const newRules = [...escalationRules];
+																newRules[index] = {
+																	...newRules[index],
+																	escalateAfterMinutes: value,
+																};
+																field.onChange(newRules);
+															}}
+															sx={{ width: 45 }}
+														/>
+														<Typography variant="subtitle2">
+															{t("pages.createMonitor.form.escalationRules.minutes")}
+														</Typography>
+													</Stack>
 													<IconButton
 														size="small"
 														onClick={() => {
@@ -853,31 +845,71 @@ const CreateMonitorPage = () => {
 														<Trash2 size={16} />
 													</IconButton>
 												</Stack>
-											</Stack>
 
-											<Autocomplete
-												multiple
-												size="small"
-												options={(notifications ?? []).map((n) => ({
-													...n,
-													name: n.notificationName,
-												}))}
-												value={(notifications ?? [])
-													.filter((n) => (rule.notificationIds ?? []).includes(n.id))
-													.map((n) => ({ ...n, name: n.notificationName }))}
-												getOptionLabel={(option) => option.name}
-												onChange={(_: unknown, newValue: any[]) => {
-													const newRules = [...escalationRules];
-													newRules[index] = {
-														...newRules[index],
-														notificationIds: newValue.map((n) => n.id),
-													};
-													field.onChange(newRules);
-												}}
-												isOptionEqualToValue={(option, value) => option.id === value.id}
-											/>
-										</Stack>
-									))}
+												<Stack spacing={theme.spacing(LAYOUT.SM)}>
+													<Autocomplete
+														multiple
+														size="small"
+														options={notificationOptions}
+														value={selectedNotifications}
+														getOptionLabel={(option) => option.name}
+														onChange={(_: unknown, newValue: any[]) => {
+															const newRules = [...escalationRules];
+															newRules[index] = {
+																...newRules[index],
+																notificationIds: newValue.map((n) => n.id),
+															};
+															field.onChange(newRules);
+														}}
+														isOptionEqualToValue={(option, value) =>
+															option.id === value.id
+														}
+													/>
+													{selectedNotifications.length > 0 && (
+														<Stack
+															flex={1}
+															width="100%"
+														>
+															{selectedNotifications.map((notification, notifIndex) => (
+																<Stack
+																	direction="row"
+																	alignItems="center"
+																	key={notification.id}
+																	width="100%"
+																>
+																	<Typography
+																		variant="body2"
+																		flexGrow={1}
+																	>
+																		{notification.notificationName}
+																	</Typography>
+																	<IconButton
+																		size="small"
+																		onClick={() => {
+																			const newRules = [...escalationRules];
+																			newRules[index] = {
+																				...newRules[index],
+																				notificationIds: (
+																					rule.notificationIds ?? []
+																				).filter((id: string) => id !== notification.id),
+																			};
+																			field.onChange(newRules);
+																		}}
+																		aria-label="Remove notification"
+																	>
+																		<Trash2 size={16} />
+																	</IconButton>
+																	{notifIndex < selectedNotifications.length - 1 && (
+																		<Divider />
+																	)}
+																</Stack>
+															))}
+														</Stack>
+													)}
+												</Stack>
+											</Stack>
+										);
+									})}
 
 									<Button
 										variant="outlined"
@@ -885,7 +917,7 @@ const CreateMonitorPage = () => {
 										onClick={() => {
 											const newRule = {
 												id: `escalation-${Date.now()}`,
-												escalateAfterMinutes: 30,
+												escalateAfterMinutes: undefined,
 												notificationIds: [],
 												isEnabled: true,
 											};
