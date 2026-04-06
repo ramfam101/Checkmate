@@ -57,6 +57,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
 			resolutionType: doc.resolutionType ?? null,
+			escalationChannelIdsSent: doc.escalationChannelIdsSent ?? [],
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,

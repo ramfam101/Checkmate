@@ -39,6 +39,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	isEscalation?: boolean;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -169,7 +170,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				this.incidentService
+				.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+				.then(async () => {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+					await this.processEscalations(statusChangeResult.monitor, status, activeIncident, decision);
+				})
+				.catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
@@ -417,6 +424,69 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async processEscalations(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		activeIncident: { id: string; teamId: string; startTime: string; escalationChannelIdsSent?: string[] } | null,
+		decision: MonitorActionDecision
+	) {
+		if (!activeIncident || monitor.status === "up" || monitor.status === "paused" || monitor.status === "maintenance") {
+			return;
+		}
+
+		const escalationRules = monitor.escalations ?? [];
+		if (escalationRules.length === 0) {
+			return;
+		}
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(incidentStart)) {
+			return;
+		}
+
+		const elapsedMs = Date.now() - incidentStart;
+		const sentChannels = new Set(activeIncident.escalationChannelIdsSent ?? []);
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: monitor.status === "breached" ? "threshold_breach" : "status_down",
+			notificationReason: monitor.status === "breached" ? "threshold_breach" : "status_change",
+			isEscalation: true,
+		};
+
+		for (const rule of escalationRules.sort((a, b) => a.delayMinutes - b.delayMinutes)) {
+			if (!rule.channelId || rule.delayMinutes < 0 || sentChannels.has(rule.channelId)) {
+				continue;
+			}
+
+			const delayMs = rule.delayMinutes * 60 * 1000;
+			if (elapsedMs < delayMs) {
+				continue;
+			}
+
+			const sent = await this.notificationsService.sendNotifications(
+				monitor,
+				monitorStatusResponse,
+				escalationDecision,
+				[rule.channelId]
+			);
+
+			if (sent) {
+				sentChannels.add(rule.channelId);
+				await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+					escalationChannelIdsSent: Array.from(sentChannels),
+				});
+			} else {
+				this.logger.warn({
+					message: `Failed to send escalation notification for monitor ${monitor.id} on channel ${rule.channelId}`,
+					service: SERVICE_NAME,
+					method: "processEscalations",
+				});
+			}
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

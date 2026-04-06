@@ -2,12 +2,13 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
 import RadioGroup from "@mui/material/RadioGroup";
 import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
 import { Trans, useTranslation } from "react-i18next";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
@@ -203,6 +204,7 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields: escalationFields, append, remove } = useFieldArray({ control, name: "escalations" as const });
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -433,7 +435,7 @@ const CreateMonitorPage = () => {
 												</MenuItem>
 											))}
 									</Select>
-								)}
+					)}
 							/>
 						)}
 
@@ -569,7 +571,7 @@ const CreateMonitorPage = () => {
 									)}
 								</MenuItem>
 							</Select>
-						)}
+					)}
 					/>
 				}
 			/>
@@ -764,6 +766,88 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+		<ConfigBox
+			title="Escalation Rules"
+			subtitle="Send follow-up alerts to a different notification channel if the incident remains unresolved."
+			rightContent={
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					{escalationFields.map((field, index) => (
+						<Stack
+							key={field.id}
+							direction="column"
+							spacing={theme.spacing(LAYOUT.SM)}
+							sx={{
+								border: `1px solid ${theme.palette.divider}`,
+								borderRadius: 1,
+								p: theme.spacing(2),
+								backgroundColor: theme.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)",
+							}}
+						>
+							<Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+								<Stack direction="row" spacing={2} sx={{ flex: 1 }}>
+									<Controller
+										name={`escalations.${index}.delayMinutes` as const}
+										control={control}
+										render={({ field }) => (
+											<TextField
+												label="Delay (minutes)"
+												type="number"
+												value={field.value}
+												onChange={(event) => field.onChange(Number(event.target.value))}
+												inputProps={{ min: 1 }}
+												size="small"
+												sx={{ width: 140 }}
+											/>
+										)}
+									/>
+									<Controller
+										name={`escalations.${index}.channelId` as const}
+										control={control}
+										render={({ field }) => (
+											<TextField
+												select
+												label="Notification channel"
+												value={field.value ?? ""}
+												onChange={(event) => field.onChange(event.target.value)}
+												size="small"
+												fullWidth
+											>
+												<MenuItem value="">-- Select channel --</MenuItem>
+												{(notifications ?? []).map((notification) => (
+													<MenuItem key={notification.id} value={notification.id}>
+														{notification.notificationName}
+													</MenuItem>
+												))}
+											</TextField>
+										)}
+									/>
+								</Stack>
+								<IconButton
+									onClick={() => remove(index)}
+									aria-label="Remove escalation"
+									size="small"
+									color="error"
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						</Stack>
+					))}
+					<Button
+						variant="outlined"
+						onClick={() => append({ delayMinutes: 1, channelId: "" })}
+					>
+						Add escalation rule
+					</Button>
+					{escalationFields.length === 0 && (
+						<Typography color="text.secondary">
+							No escalation rules configured.
+						</Typography>
+					)}
+				</Stack>
+			}
+		/>
+
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

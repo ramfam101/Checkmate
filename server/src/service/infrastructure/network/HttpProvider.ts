@@ -3,10 +3,11 @@ import { IAdvancedMatcher } from "@/service/infrastructure/network/AdvancedMatch
 import { IStatusProvider } from "@/service/infrastructure/network/IStatusProvider.js";
 import { HttpStatusPayload } from "@/types/network.js";
 import { MonitorStatusResponse } from "@/types/network.js";
+import { Agent as HttpAgent } from "http";
 import { Agent as HttpsAgent } from "https";
+import { lookup } from "dns";
 import { Monitor, MonitorType } from "@/types/monitor.js";
 import { NETWORK_ERROR } from "@/service/infrastructure/network/utils.js";
-import CacheableLookup from "cacheable-lookup";
 
 export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 	readonly type = "http";
@@ -15,9 +16,7 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 		private got: Got,
 		private advancedMatcher: IAdvancedMatcher
 	) {
-		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
 		this.got = got.extend({
-			dnsCache: cacheable,
 			timeout: {
 				request: 30000,
 			},
@@ -68,7 +67,8 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 		};
 
 		options.agent = {
-			https: new HttpsAgent({ rejectUnauthorized: !ignoreTlsErrors }),
+			http: new HttpAgent({ lookup }),
+			https: new HttpsAgent({ rejectUnauthorized: !ignoreTlsErrors, lookup }),
 		};
 
 		try {
