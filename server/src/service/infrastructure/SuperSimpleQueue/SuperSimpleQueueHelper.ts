@@ -39,6 +39,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	shouldEscalate?: boolean;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,13 +155,24 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				if (decision.shouldEscalate) {
+					this.notificationsService.handleEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -418,7 +430,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -426,11 +438,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldEscalate: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
 		if (!statusChanged) {
+			if ((monitor.status === "down" || monitor.status === "breached") && monitor.escalationWaitTime && monitor.escalationWaitTime > 0 && monitor.escalationNotifications && monitor.escalationNotifications.length > 0) {
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+				if (activeIncident && !activeIncident.escalationNotified) {
+					const start = new Date(activeIncident.startTime).getTime();
+					if (Date.now() - start >= monitor.escalationWaitTime * 60 * 1000) {
+						decision.shouldEscalate = true;
+						
+						// Update the db so we don't trigger again
+						activeIncident.escalationNotified = true;
+						await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, activeIncident);
+					}
+				}
+			}
 			return decision;
 		}
 
