@@ -15,6 +15,13 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string,
+		escalationDelayMinutes: number
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +55,36 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string,
+		escalationDelayMinutes: number
+	): NotificationMessage {
+		const type: NotificationType = "escalation";
+		const severity: NotificationSeverity = monitor.status === "breached" ? "warning" : "critical";
+		const content = this.buildEscalationContent(monitor, monitorStatusResponse, escalationDelayMinutes);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
 			},
 		};
 	}
@@ -106,6 +143,42 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, escalationDelayMinutes: number): NotificationContent {
+		const details = [
+			"Escalation triggered: monitor remained unhealthy beyond configured delay",
+			`URL: ${monitor.url}`,
+			`Type: ${monitor.type}`,
+			`Current status: ${monitor.status}`,
+			`Escalation delay reached: ${escalationDelayMinutes} minute(s)`,
+		];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		if (monitor.status === "breached") {
+			const thresholds = this.extractThresholdBreaches(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
+			return {
+				title: `Escalation Triggered: ${monitor.name}`,
+				summary: `Monitor "${monitor.name}" is still breached after ${escalationDelayMinutes} minute(s). Escalation channels were notified.`,
+				details,
+				thresholds,
+				timestamp: new Date(),
+			};
+		}
+
+		return {
+			title: `Escalation Triggered: ${monitor.name}`,
+			summary: `Monitor "${monitor.name}" is still down after ${escalationDelayMinutes} minute(s). Escalation channels were notified.`,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
