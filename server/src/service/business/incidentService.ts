@@ -65,7 +65,8 @@ export class IncidentService implements IIncidentService {
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null> => {
 		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident) {
-			return null;
+    		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+    		return activeIncident;
 		}
 
 		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
