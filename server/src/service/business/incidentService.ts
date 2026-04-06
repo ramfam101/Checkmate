@@ -6,6 +6,7 @@ import { getDateForRange } from "@/utils/dataUtils.js";
 import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from "@/repositories/index.js";
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
+import type { INotificationsService } from "@/service/index.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
 
@@ -39,19 +40,23 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
+	private escalationTimers: Map<string, NodeJS.Timeout> = new Map();
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -91,7 +96,14 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				// Schedule escalation if configured
+				if (monitor.escalateAfter && monitor.escalationNotifications.length > 0) {
+					this.scheduleEscalation(createdIncident.id, monitor, monitor.escalateAfter * 60 * 1000); // minutes to ms
+				}
+
+				return createdIncident;
 			}
 		}
 
@@ -102,24 +114,88 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
+
+			// Cancel escalation timer if exists
+			this.cancelEscalation(activeIncident.id);
+
 			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 		}
 
 		return null;
 	};
 
-	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {
+	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string | undefined {
 		if (!monitorStatusResponse) {
-			return "Threshold breach detected";
+			return undefined;
 		}
 
-		const breaches = this.notificationMessageBuilder.extractThresholdBreaches(monitor, monitorStatusResponse);
-
-		if (breaches.length === 0) {
-			return "Threshold breach detected";
+		const details: string[] = [];
+		if (monitorStatusResponse.code) {
+			details.push(`Status code ${monitorStatusResponse.code}`);
+		}
+		if (monitorStatusResponse.message) {
+			details.push(monitorStatusResponse.message);
 		}
 
-		return breaches.map((b) => `${b.metric.toUpperCase()}: ${b.formattedValue} (threshold: ${b.threshold}${b.unit})`).join(", ");
+		return `Threshold breach detected for monitor ${monitor.name}. ${details.join(" ")}`;
+	}
+
+	private scheduleEscalation(incidentId: string, monitor: Monitor, delayMs: number) {
+		const timeoutId = setTimeout(() => {
+			this.handleEscalation(incidentId, monitor);
+			this.escalationTimers.delete(incidentId);
+		}, delayMs);
+		this.escalationTimers.set(incidentId, timeoutId);
+		this.logger.debug({
+			service: SERVICE_NAME,
+			method: "scheduleEscalation",
+			message: `Escalation scheduled for incident ${incidentId} in ${delayMs}ms`,
+		});
+	}
+
+	private cancelEscalation(incidentId: string) {
+		const timeoutId = this.escalationTimers.get(incidentId);
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+			this.escalationTimers.delete(incidentId);
+			this.logger.debug({
+				service: SERVICE_NAME,
+				method: "cancelEscalation",
+				message: `Escalation cancelled for incident ${incidentId}`,
+			});
+		}
+	}
+
+	private async handleEscalation(incidentId: string, monitor: Monitor) {
+		try {
+			// Check if incident is still active
+			const incident = await this.incidentsRepository.findById(incidentId, monitor.teamId);
+			if (!incident || !incident.status) {
+				this.logger.debug({
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+					message: `Incident ${incidentId} is no longer active, skipping escalation`,
+				});
+				return;
+			}
+
+			// Send escalation notifications
+			await this.notificationsService.handleEscalationNotifications(monitor, incident);
+
+			this.logger.info({
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				message: `Escalation notifications sent for incident ${incidentId}`,
+			});
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				message: error instanceof Error ? error.message : "Unknown error during escalation",
+				details: { incidentId },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	}
 
 	resolveIncident = async (incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string) => {
@@ -152,6 +228,9 @@ export class IncidentService implements IIncidentService {
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;
 			incident.endTime = Date.now().toString();
+
+			// Cancel escalation timer if exists
+			this.cancelEscalation(incident.id);
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
 

@@ -87,6 +87,11 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
+			case "escalation": {
+				const isThresholdBreach = message.metadata.notificationReason === "threshold_breach";
+				const reasonText = isThresholdBreach ? "still breached" : "still down";
+				return `Escalation: ${message.monitor.name} ${reasonText}`;
+			}
 			default:
 				return `Alert: ${message.monitor.name}`;
 		}

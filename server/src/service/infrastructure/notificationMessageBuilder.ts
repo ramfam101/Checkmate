@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Monitor, MonitorStatusResponse, Incident } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -52,6 +53,42 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage {
+		const type: NotificationType = "escalation";
+		const severity: NotificationSeverity = "critical";
+		const isThresholdBreach = incident.statusCode === 9999;
+		const reasonText = isThresholdBreach ? "still breached" : "still down";
+		const content: NotificationContent = {
+			title: `Escalation: ${monitor.name} ${reasonText}`,
+			summary: `The monitor "${monitor.name}" has been in an incident state for an extended period and requires immediate attention.`,
+			details: [
+				`Monitor: ${monitor.name}`,
+				`URL: ${monitor.url}`,
+				`Incident Started: ${new Date(incident.startTime).toISOString()}`,
+				`Status Code: ${incident.statusCode?.toString() || "N/A"}`,
+			],
+			timestamp: new Date(),
+		};
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: isThresholdBreach ? "threshold_breach" : "monitor_down",
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -80,6 +117,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
