@@ -108,8 +108,17 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = decision.notificationReason === "escalation" ? monitor.escalationNotifications ?? [] : monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		if (notifications.length === 0) {
+			this.logger.info({
+				message: decision.notificationReason === "escalation" ? "No escalation notifications configured" : "No notifications configured",
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+			});
+			return false;
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();

@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -430,29 +430,72 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			notificationReason: null,
 		};
 
-		if (!statusChanged) {
-			return decision;
-		}
-
-		if (monitor.status === "down") {
+		if (statusChanged && monitor.status === "down") {
 			// Monitor went down (unreachable)
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
+		} else if (statusChanged && monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+		} else if (statusChanged && monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
 		}
 
+		const escalationDelayMinutes = monitor.escalationDelayMinutes ?? 0;
+		if (monitor.status === "down" && escalationDelayMinutes > 0 && this.shouldEscalate(monitor, escalationDelayMinutes)) {
+			decision.shouldSendNotification = true;
+			decision.notificationReason = "escalation";
+		}
+
 		return decision;
+	}
+
+	private shouldEscalate(monitor: Monitor, escalationDelayMinutes: number): boolean {
+		const recentChecks = monitor.recentChecks ?? [];
+		if (recentChecks.length === 0) {
+			return false;
+		}
+
+		const currentDownDuration = this.getCurrentDownDurationMinutes(recentChecks);
+		if (currentDownDuration < escalationDelayMinutes) {
+			return false;
+		}
+
+		const previousDownDuration = this.getCurrentDownDurationMinutes(recentChecks.slice(0, -1));
+		return previousDownDuration < escalationDelayMinutes;
+	}
+
+	private getCurrentDownDurationMinutes(checks: Monitor["recentChecks"]): number {
+		if (!checks || checks.length === 0) {
+			return 0;
+		}
+
+		let streakStartIndex = checks.length - 1;
+		while (streakStartIndex >= 0 && checks[streakStartIndex]?.status === false) {
+			streakStartIndex -= 1;
+		}
+
+		const startCheckIndex = streakStartIndex + 1;
+		if (startCheckIndex >= checks.length) {
+			return 0;
+		}
+
+		const startCheck = checks[startCheckIndex];
+		const endCheck = checks[checks.length - 1];
+		if (!startCheck || !endCheck) {
+			return 0;
+		}
+
+		const startTime = new Date(startCheck.createdAt).getTime();
+		const endTime = new Date(endCheck.createdAt).getTime();
+		return Math.max(0, (endTime - startTime) / 60000);
 	}
 }
