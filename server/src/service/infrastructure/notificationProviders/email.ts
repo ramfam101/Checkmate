@@ -79,6 +79,8 @@ export class EmailProvider implements INotificationProvider {
 
 	private buildSubject(message: NotificationMessage): string {
 		switch (message.type) {
+			case "escalation":
+				return `Escalation: Monitor ${message.monitor.name} still down`;
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
@@ -112,7 +114,6 @@ export class EmailProvider implements INotificationProvider {
 			method: "buildEmailFromMessage",
 			details: { context },
 		});
-
 		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
 
 		return html;
