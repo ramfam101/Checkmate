@@ -4,6 +4,40 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
+const escalationStepSchema = z.object({
+	delayMinutes: z
+		.number({ message: "Escalation delay is required" })
+		.int("Escalation delay must be a whole number")
+		.min(1, "Escalation delay must be at least 1 minute"),
+});
+
+const escalationPolicySchema = z
+	.array(escalationStepSchema)
+	.max(5, "Escalation policy can contain at most 5 steps")
+	.superRefine((steps, ctx) => {
+		const seen = new Set<number>();
+		for (let i = 0; i < steps.length; i++) {
+			const delay = steps[i].delayMinutes;
+
+			if (seen.has(delay)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "Escalation steps must be unique",
+					path: [i, "delayMinutes"],
+				});
+			}
+			seen.add(delay);
+
+			if (i > 0 && delay <= steps[i - 1].delayMinutes) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "Escalation steps must be in ascending order",
+					path: [i, "delayMinutes"],
+				});
+			}
+		}
+	});
+
 // Common base schema for all monitor types
 const baseSchema = z.object({
 	name: z
@@ -13,6 +47,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationPolicy: escalationPolicySchema.optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

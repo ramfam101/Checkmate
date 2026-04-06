@@ -49,6 +49,43 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const escalationPolicyStepSchema = z.object({
+	delayMinutes: z.number().int().min(1, "Escalation delay must be at least 1 minute"),
+});
+
+const escalationPolicySchema = z
+	.array(escalationPolicyStepSchema)
+	.max(5, "Escalation policy can contain at most 5 steps")
+	.superRefine((steps, ctx) => {
+		const seen = new Set<number>();
+		for (let i = 0; i < steps.length; i++) {
+			const currentStep = steps[i];
+			if (!currentStep) {
+				continue;
+			}
+
+			const delay = currentStep.delayMinutes;
+
+			if (seen.has(delay)) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "Escalation steps must have unique delay values",
+					path: [i, "delayMinutes"],
+				});
+			}
+			seen.add(delay);
+
+			const prevStep = i > 0 ? steps[i - 1] : undefined;
+			if (prevStep && delay <= prevStep.delayMinutes) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "Escalation steps must be sorted in ascending delay order",
+					path: [i, "delayMinutes"],
+				});
+			}
+		}
+	});
+
 export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
@@ -67,6 +104,7 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationPolicy: escalationPolicySchema.optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +127,7 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationPolicy: escalationPolicySchema.optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -144,6 +183,7 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationPolicy: escalationPolicySchema.default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

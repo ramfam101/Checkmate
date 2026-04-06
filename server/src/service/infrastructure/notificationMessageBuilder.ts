@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Incident, Monitor, MonitorStatusResponse } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -13,6 +13,13 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident,
+		delayMinutes: number,
 		clientHost: string
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
@@ -52,6 +59,56 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident,
+		delayMinutes: number,
+		clientHost: string
+	): NotificationMessage {
+		const createdAt = new Date(incident.startTime);
+		const now = new Date();
+		const content: NotificationContent = {
+			title: `Incident Escalation: ${monitor.name}`,
+			summary: `Monitor "${monitor.name}" has been down for ${this.formatDuration(createdAt, now)} and reached the ${delayMinutes}-minute escalation milestone.`,
+			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Escalation milestone: ${delayMinutes} minutes`],
+			incident: {
+				id: incident.id,
+				url: `${clientHost}/infrastructure/${monitor.id}`,
+				createdAt,
+				duration: this.formatDuration(createdAt, now),
+				escalationDelayMinutes: delayMinutes,
+			},
+			timestamp: now,
+		};
+
+		if (monitor.type === "hardware") {
+			const thresholds = this.extractThresholdBreaches(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
+			if (thresholds.length > 0) {
+				content.thresholds = thresholds;
+			}
+		}
+
+		return {
+			type: "incident_escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+				escalationDelayMinutes: delayMinutes,
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -80,6 +137,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "incident_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -180,6 +238,18 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
 			timestamp: new Date(),
 		};
+	}
+
+	private formatDuration(startDate: Date, endDate: Date): string {
+		const totalMinutes = Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 60000));
+		const hours = Math.floor(totalMinutes / 60);
+		const minutes = totalMinutes % 60;
+
+		if (hours === 0) {
+			return `${minutes}m`;
+		}
+
+		return `${hours}h ${minutes}m`;
 	}
 
 	public extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[] {
