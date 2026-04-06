@@ -236,44 +236,29 @@ export class StatusService implements IStatusService {
 			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
-			// Return early if not enough data points
-			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				if (prevStatus === "initializing"){
+			// For basic status transitions (up/down), allow immediate changes
+			// But use sliding window logic when available for more sophisticated threshold detection
+			if (monitor.statusWindow.length >= monitor.statusWindowSize) {
+				// Check if threshold has been met using sliding window
+				const failures = monitor.statusWindow.filter((s) => s === false).length;
+				const failureRate = (failures / monitor.statusWindow.length) * 100;
+
+				// If threshold has been met and the monitor is not already down, mark down:
+				if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+					newStatus = "down";
 					statusChanged = true;
 				}
-				monitor.status = newStatus;
-				if (statusChanged){
-					if (newStatus === "down"){
-						monitor.downtimeStartedAt = new Date().toISOString();
-						monitor.escalationSent = false;
-					} else if (newStatus === "up"){
-						monitor.downtimeStartedAt = null;
-						monitor.escalationSent = false;
-					}
+				// If the failure rate is below the threshold and the monitor is down, recover:
+				else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+					newStatus = "up";
+					statusChanged = true;
 				}
-				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
-				return {
-					monitor: updated,
-					statusChanged,
-					prevStatus,
-					code,
-					timestamp: Date.now(),
-				};
-			}
-
-			// Check if threshold has been met
-			const failures = monitor.statusWindow.filter((s) => s === false).length;
-			const failureRate = (failures / monitor.statusWindow.length) * 100;
-
-			// If threshold has been met and the monitor is not already down, mark down:
-			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
-				newStatus = "down";
-				statusChanged = true;
-			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
-				newStatus = "up";
-				statusChanged = true;
+			} else {
+				// Window not full yet - allow immediate status changes for responsiveness
+				// This ensures monitors can transition to "up" immediately on first success
+				if (newStatus !== prevStatus) {
+					statusChanged = true;
+				}
 			}
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)

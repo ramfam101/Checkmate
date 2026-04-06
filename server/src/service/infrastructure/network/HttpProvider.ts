@@ -76,14 +76,15 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 			const contentType = response.headers["content-type"] || "";
 			const isJson = contentType.includes("application/json");
 
-			if (jsonPath && !isJson) {
+			// Only require JSON if advanced matching is enabled AND jsonPath is set
+			if (monitor.useAdvancedMatching && jsonPath && !isJson) {
 				return {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
 					type: monitor.type,
 					status: false,
 					code: response.statusCode,
-					message: "Response is not JSON",
+					message: "Response is not JSON but JSON path extraction is required",
 					responseTime: response.timings.phases.total ?? 0,
 					timings: response.timings,
 					payload: response.body as unknown as T,
