@@ -781,8 +781,8 @@ const CreateMonitorPage = () => {
 			{/* Escalation Configuration Section */}
 			{(watch("notifications") as any[] | undefined)?.[0] && (
 				<ConfigBox
-					title="Escalation Rules"
-					subtitle="If the monitor stays down for the specified time, notify additional channels"
+					title={t("pages.createMonitor.form.escalation.title")}
+					subtitle={t("pages.createMonitor.form.escalation.description")}
 					rightContent={
 						<Stack spacing={theme.spacing(LAYOUT.MD)}>
 							{(watch("notifications") as any[] | undefined)?.map((config: any, index: number) => {
