@@ -391,6 +391,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalateAfter: doc.escalateAfter ?? 0,
+			escalationChannels: (doc.escalationChannels ?? []).map((channel: unknown) => toStringId(channel)),
+			downtimeStartedAt: doc.downtimeStartedAt ? toDateString(doc.downtimeStartedAt) : null,
+			escalationSent: doc.escalationSent ?? false,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	handleEscalationNotifications: (monitor: Monitor) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -140,6 +140,63 @@ export class NotificationsService implements INotificationsService {
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
+
+	handleEscalationNotifications = async (monitor: Monitor): Promise<boolean> => {
+		const escalationIds = monitor.escalationChannels ?? [];
+		if (escalationIds.length === 0){
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escalationIds);
+		if (notifications.length === 0) {
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		const fakeStatusResponse = {
+			monitorId: monitor.id,
+			teamId: monitor.teamId,
+			type: monitor.type,
+			status: false,
+			code: 0,
+			message: "Monitor is down - escalation triggered",
+			timestamp: Date.now()
+		} as MonitorStatusResponse;
+
+		const fakeDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		// standard base message
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, fakeStatusResponse, fakeDecision, clientHost);
+		// override subject line for escalation
+		if (notificationMessage){
+			notificationMessage.content.title = `Escalation: Monitor ${monitor.name} still down`;
+		}
+		// send to all escalation channels
+		const tasks = notifications.map((notification) =>
+		this.send(notification, monitor, fakeStatusResponse, fakeDecision, notificationMessage)
+	);
+
+	const outcomes = await Promise.all(tasks);
+	const succeeded = outcomes.filter(Boolean).length;
+	const failed = outcomes.length - succeeded;
+
+	if (failed > 0){
+		this.logger.warn({
+			message: `Escalation send completed ${succeeded} success, ${failed} failure(s)`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
+	}
+	return succeeded === notifications.length;
+};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {

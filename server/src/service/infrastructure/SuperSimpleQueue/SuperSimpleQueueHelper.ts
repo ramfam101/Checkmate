@@ -167,6 +167,36 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						});
 					});
 				}
+				// step 6.5 - escalation check
+				const updatedMonitor = statusChangeResult.monitor;
+				const shouldCheckEscalation = updatedMonitor.status === "down" && !updatedMonitor.escalationSent && (updatedMonitor.escalateAfter ?? 0) > 0 && updatedMonitor.downtimeStartedAt != null && (updatedMonitor.escalationChannels?.length ?? 0) > 0;
+				if (shouldCheckEscalation){
+					const downtimeStarted = new Date(updatedMonitor.downtimeStartedAt!).getTime();
+					const downtimeDurationMs = Date.now() - downtimeStarted;
+					const escalateAfterMs = updatedMonitor.escalateAfter! * 60 * 1000;
+					if (downtimeDurationMs >= escalateAfterMs) {
+						this.logger.info({
+							message: `Escalation threshold reached for monitor ${monitorId}`,
+							service: SERVICE_NAME,
+							method: "getHeartbeatJob",
+						});
+
+						// mark as sent
+						await this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true});
+						
+						// notification trigger
+						if (typeof (this.notificationsService as any).handleEscalationNotifications === "function"){
+							(this.notificationsService as any).handleEscalationNotifications(updatedMonitor).catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending escalation for ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getHeartbeatJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+						}
+					}
+				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {

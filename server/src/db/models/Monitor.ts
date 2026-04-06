@@ -284,6 +284,24 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalateAfter: {
+			type: Number,
+			default: 0,
+		},
+		escalationChannels: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		downtimeStartedAt: {
+			type: Date,
+			default: null,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
 		secret: {
 			type: String,
 		},
