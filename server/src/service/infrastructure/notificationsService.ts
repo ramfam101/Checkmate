@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotification: (notification: Notification, message: NotificationMessage) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -172,6 +173,42 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 		return true;
+	};
+
+	sendEscalationNotification = async (notification: Notification, message: NotificationMessage): Promise<boolean> => {
+		try {
+			switch (notification.type) {
+				case "email":
+					return await this.emailProvider.sendMessage!(notification, message);
+				case "slack":
+					return await this.slackProvider.sendMessage!(notification, message);
+				case "discord":
+					return await this.discordProvider.sendMessage!(notification, message);
+				case "teams":
+					return await this.teamsProvider.sendMessage!(notification, message);
+				case "matrix":
+					return await this.matrixProvider.sendMessage!(notification, message);
+				case "webhook":
+					return await this.webhookProvider.sendMessage!(notification, message);
+				case "pager_duty":
+					return await this.pagerDutyProvider.sendMessage!(notification, message);
+				default:
+					this.logger.error({
+						message: `Unsupported notification type for escalation: ${notification.type}`,
+						service: SERVICE_NAME,
+						method: "sendEscalationNotification",
+					});
+					return false;
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Failed to send escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

@@ -78,6 +78,8 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationDelayMinutes: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +109,8 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationDelayMinutes: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -162,6 +166,8 @@ const importedMonitorSchema = z.object({
 	geoCheckInterval: z.number().min(300000).default(300000),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
+	escalationDelayMinutes: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 export const importMonitorsBodyValidation = z.object({
@@ -176,4 +182,11 @@ export const getHardwareDetailsByIdParamValidation = z.object({
 
 export const getHardwareDetailsByIdQueryValidation = z.object({
 	dateRange: z.enum(["recent", "hour", "day", "week", "month", "all"]).optional(),
+});
+
+export const updateEscalationValidation = z.object({
+	monitorIds: z.array(z.string().min(1)).min(1, "At least one monitor ID is required"),
+	escalationDelayMinutes: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	action: z.enum(["set", "clear"]).default("set"),
 });

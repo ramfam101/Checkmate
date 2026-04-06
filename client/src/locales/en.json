@@ -543,6 +543,18 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Configure escalation notifications that trigger after a downtime threshold",
+					"title": "Escalation Settings",
+					"delay": {
+						"label": "Escalation delay (minutes)",
+						"placeholder": "e.g. 30",
+						"helper": "Send escalation notifications after this many minutes of continuous downtime"
+					},
+					"notifications": {
+						"placeholder": "Select escalation notification channels"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

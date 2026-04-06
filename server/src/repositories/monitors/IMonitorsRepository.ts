@@ -21,6 +21,9 @@ export interface IMonitorsRepository {
 	// single fetch
 	findById(monitorId: string, teamId: string): Promise<Monitor>;
 
+	findMonitorsWithEscalation(): Promise<Monitor[]>;
+	updateLastEscalationSent(monitorId: string, date: Date): Promise<Monitor>;
+
 	// collection fetch
 	findAll(): Promise<Monitor[] | null>;
 	findByTeamId(teamId: string, config: TeamQueryConfig): Promise<Monitor[] | null>;
@@ -42,6 +45,7 @@ export interface IMonitorsRepository {
 	findGroupsByTeamId(teamId: string): Promise<string[]>;
 	removeNotificationFromMonitors(notificationId: string): Promise<void>;
 	updateNotifications(teamId: string, monitorIds: string[], notificationIds: string[], action: "add" | "remove" | "set"): Promise<number>;
+	updateEscalation(teamId: string, monitorIds: string[], updateData: Partial<Monitor>): Promise<number>;
 	deleteByTeamIdsNotIn(teamIds: string[]): Promise<number>;
 	findAllMonitorIds(): Promise<string[]>;
 }

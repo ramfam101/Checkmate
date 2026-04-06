@@ -81,6 +81,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return this.mapDocuments(documents);
 	};
 
+	findMonitorsWithEscalation = async (): Promise<Monitor[]> => {
+		const documents = await MonitorModel.find({
+			escalationDelayMinutes: { $exists: true, $ne: null },
+		});
+		return this.mapDocuments(documents);
+	};
+
 	findByIds = async (monitorIds: string[]): Promise<Monitor[]> => {
 		const objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
 		const monitors = await MonitorModel.find({ _id: { $in: objectIds } });
@@ -331,6 +338,47 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return result.modifiedCount;
 	};
 
+	updateEscalation = async (teamId: string, monitorIds: string[], updateData: Partial<Monitor>): Promise<number> => {
+		let objectIds;
+		try {
+			objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
+		} catch {
+			throw new AppError({ message: "One or more monitor IDs are invalid", status: 400 });
+		}
+
+		const filter = { _id: { $in: objectIds }, teamId: new mongoose.Types.ObjectId(teamId) };
+
+		// Convert notification IDs to ObjectIds if they exist
+		let update: any = { ...updateData };
+		if (updateData.escalationNotifications) {
+			try {
+				update.escalationNotifications = updateData.escalationNotifications.map((id: string) => new mongoose.Types.ObjectId(id));
+			} catch {
+				throw new AppError({ message: "One or more escalation notification IDs are invalid", status: 400 });
+			}
+		}
+
+		const result = await MonitorModel.updateMany(filter, { $set: update });
+		return result.modifiedCount;
+	};
+
+	updateLastEscalationSent = async (monitorId: string, date: Date): Promise<Monitor> => {
+		let objectId;
+		try {
+			objectId = new mongoose.Types.ObjectId(monitorId);
+		} catch {
+			throw new AppError({ message: "Invalid monitor ID", status: 400 });
+		}
+
+		const updatedDocument = await MonitorModel.findOneAndUpdate({ _id: objectId }, { $set: { lastEscalationSent: date } }, { new: true });
+
+		if (!updatedDocument) {
+			throw new AppError({ message: "Monitor not found", status: 404 });
+		}
+
+		return this.toEntity(updatedDocument);
+	};
+
 	private mapDocuments = (documents: MonitorDocument[]): Monitor[] => {
 		if (!documents?.length) {
 			return [];
@@ -374,6 +422,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification) => toStringId(notification)),
+			lastEscalationSent: doc.lastEscalationSent ? toDateString(doc.lastEscalationSent) : null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +484,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification)),
+			lastEscalationSent: doc.lastEscalationSent ? toDateString(doc.lastEscalationSent) : null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
