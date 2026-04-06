@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			firedEscalations: (doc as unknown as { firedEscalations?: string[] }).firedEscalations ?? [],
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -147,6 +148,22 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			throw new AppError({ message: `Failed to update incident with id ${incidentId}`, status: 500 });
 		}
 		return this.toEntity(updatedIncident);
+	};
+
+	addFiredEscalation = async (incidentId: string, teamId: string, notificationId: string): Promise<Incident> => {
+		const updated = await IncidentModel.findOneAndUpdate(
+			{
+				_id: new mongoose.Types.ObjectId(incidentId),
+				teamId: new mongoose.Types.ObjectId(teamId),
+				status: true,
+			},
+			{ $addToSet: { firedEscalations: notificationId } },
+			{ new: true }
+		);
+		if (!updated) {
+			throw new AppError({ message: `Failed to update escalation for incident ${incidentId}`, status: 500 });
+		}
+		return this.toEntity(updated);
 	};
 
 	countByTeamId = async (

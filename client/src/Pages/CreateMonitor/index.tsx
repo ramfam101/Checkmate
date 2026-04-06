@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -39,6 +39,7 @@ import {
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
+import type { EscalationRule } from "@/Types/Monitor";
 import type { MonitorFormData } from "@/Validation/monitor";
 
 interface GeneralSettingsConfig {
@@ -758,6 +759,129 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Configure delayed notifications that fire if an incident remains unresolved after a specified time."
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalations: EscalationRule[] = field.value ?? [];
+							const notificationOptions = (notifications ?? []).map(
+								(n) => ({
+									...n,
+									name: n.notificationName,
+								})
+							);
+
+							const addEscalation = () => {
+								field.onChange([
+									...escalations,
+									{ notificationId: "", delayMinutes: 5 },
+								]);
+							};
+
+							const removeEscalation = (index: number) => {
+								field.onChange(
+									escalations.filter((_, i) => i !== index)
+								);
+							};
+
+							const updateEscalation = (
+								index: number,
+								updates: Partial<EscalationRule>
+							) => {
+								const updated = escalations.map((esc, i) =>
+									i === index ? { ...esc, ...updates } : esc
+								);
+								field.onChange(updated);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalations.map((esc, index) => (
+										<Stack
+											key={index}
+											direction="row"
+											spacing={theme.spacing(LAYOUT.SM)}
+											alignItems="center"
+										>
+											<Select
+												value={esc.notificationId}
+												onChange={(e) =>
+													updateEscalation(index, {
+														notificationId:
+															e.target.value as string,
+													})
+												}
+												fieldLabel={
+													index === 0
+														? "Channel"
+														: undefined
+												}
+												sx={{ flex: 2 }}
+											>
+												<MenuItem value="">
+													Select channel...
+												</MenuItem>
+												{notificationOptions.map((n) => (
+													<MenuItem
+														key={n.id}
+														value={n.id}
+													>
+														{n.notificationName} (
+														{n.type})
+													</MenuItem>
+												))}
+											</Select>
+											<TextField
+												type="number"
+												value={esc.delayMinutes}
+												onChange={(e) =>
+													updateEscalation(index, {
+														delayMinutes:
+															Number(
+																e.target.value
+															) || 1,
+													})
+												}
+												fieldLabel={
+													index === 0
+														? "Delay (min)"
+														: undefined
+												}
+												sx={{ flex: 1, minWidth: 100 }}
+											/>
+											<IconButton
+												size="small"
+												onClick={() =>
+													removeEscalation(index)
+												}
+												aria-label="Remove escalation"
+												sx={{
+													mt: index === 0 ? "20px" : 0,
+												}}
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										onClick={addEscalation}
+										startIcon={<Plus size={16} />}
+										sx={{ alignSelf: "flex-start" }}
+									>
+										Add escalation
+									</Button>
 								</Stack>
 							);
 						}}

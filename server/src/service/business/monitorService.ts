@@ -567,6 +567,7 @@ export class MonitorService implements IMonitorService {
 			id: "",
 			teamId,
 			userId,
+			escalations: [],
 			recentChecks: [],
 			createdAt: "",
 			updatedAt: "",
