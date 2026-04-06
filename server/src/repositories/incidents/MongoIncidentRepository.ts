@@ -115,6 +115,11 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		return this.toEntity(incident);
 	};
 
+	findActiveIncidents = async (): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({ status: true });
+		return incidents.map(this.toEntity);
+	};
+
 	findByTeamId = async (
 		teamId: string,
 		startDate: Date | undefined,

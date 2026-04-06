@@ -18,6 +18,7 @@ import {
 	GeoChecksService,
 	DiagnosticService,
 	InviteService,
+	EscalationService,
 	MaintenanceWindowService,
 	IncidentService,
 	// Notification providers
@@ -246,6 +247,8 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(monitorsRepository, incidentsRepository, notificationsRepository, notificationsService, logger);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -262,7 +265,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationService
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);

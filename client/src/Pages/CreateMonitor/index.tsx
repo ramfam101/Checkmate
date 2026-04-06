@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -758,6 +758,142 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const escalationRules = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationRules.map((rule: any, index: number) => (
+										<Stack
+											key={rule.id}
+											spacing={theme.spacing(LAYOUT.SM)}
+											sx={{
+												p: theme.spacing(LAYOUT.MD),
+												border: `1px solid ${theme.palette.divider}`,
+												borderRadius: theme.shape.borderRadius,
+											}}
+										>
+											<Stack
+												direction="row"
+												justifyContent="space-between"
+												alignItems="center"
+											>
+												<Stack
+													direction="row"
+													alignItems="center"
+													spacing={1}
+												>
+													<Typography variant="subtitle2">
+														{t("pages.createMonitor.form.escalationRules.escalateAfter")}
+													</Typography>
+													<TextField
+														type="number"
+														size="small"
+														value={rule.escalateAfterMinutes}
+														onChange={(e) => {
+															const value = parseInt(e.target.value) || 1;
+															const newRules = [...escalationRules];
+															newRules[index] = {
+																...newRules[index],
+																escalateAfterMinutes: Math.max(1, value),
+															};
+															field.onChange(newRules);
+														}}
+														inputProps={{ min: 1 }}
+														sx={{ width: 80 }}
+													/>
+													<Typography variant="subtitle2">
+														{t("pages.createMonitor.form.escalationRules.minutes")}
+													</Typography>
+												</Stack>
+												<Stack
+													direction="row"
+													spacing={1}
+													alignItems="center"
+												>
+													<Typography variant="body2">
+														{t("pages.createMonitor.form.escalationRules.enabled")}
+													</Typography>
+													<Switch
+														size="small"
+														checked={rule.isEnabled ?? true}
+														onChange={(e) => {
+															const newRules = [...escalationRules];
+															newRules[index] = {
+																...newRules[index],
+																isEnabled: e.target.checked,
+															};
+															field.onChange(newRules);
+														}}
+													/>
+													<IconButton
+														size="small"
+														onClick={() => {
+															field.onChange(
+																escalationRules.filter((_: any, i: number) => i !== index)
+															);
+														}}
+														aria-label={t(
+															"pages.createMonitor.form.escalationRules.removeRule"
+														)}
+													>
+														<Trash2 size={16} />
+													</IconButton>
+												</Stack>
+											</Stack>
+
+											<Autocomplete
+												multiple
+												size="small"
+												options={(notifications ?? []).map((n) => ({
+													...n,
+													name: n.notificationName,
+												}))}
+												value={(notifications ?? [])
+													.filter((n) => (rule.notificationIds ?? []).includes(n.id))
+													.map((n) => ({ ...n, name: n.notificationName }))}
+												getOptionLabel={(option) => option.name}
+												onChange={(_: unknown, newValue: any[]) => {
+													const newRules = [...escalationRules];
+													newRules[index] = {
+														...newRules[index],
+														notificationIds: newValue.map((n) => n.id),
+													};
+													field.onChange(newRules);
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+											/>
+										</Stack>
+									))}
+
+									<Button
+										variant="outlined"
+										startIcon={<Plus size={16} />}
+										onClick={() => {
+											const newRule = {
+												id: `escalation-${Date.now()}`,
+												escalateAfterMinutes: 30,
+												notificationIds: [],
+												isEnabled: true,
+											};
+											field.onChange([...escalationRules, newRule]);
+										}}
+									>
+										{t("pages.createMonitor.form.escalationRules.addRule")}
+									</Button>
 								</Stack>
 							);
 						}}
