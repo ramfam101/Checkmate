@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -38,7 +39,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +178,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalations if incident is active past configured delay
+				if (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") {
+					this.handleEscalations(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalations for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -454,5 +467,68 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private handleEscalations = async (monitor: Monitor, status: MonitorStatusResponse, decision: MonitorActionDecision): Promise<void> => {
+		try {
+			const notificationConfigs = monitor.notifications ?? [];
+			if (!notificationConfigs.length) {
+				return;
+			}
+
+			// Check for active incident
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident) {
+				return;
+			}
+
+			const now = Date.now();
+			const incidentStartTime = new Date(activeIncident.startTime).getTime();
+			const incidentDurationMs = now - incidentStartTime;
+
+			// For each configured escalation
+			for (const config of notificationConfigs) {
+				if (!config.escalation) {
+					continue; // No escalation for this notification
+				}
+
+				const delayMs = config.escalation.delayMinutes * 60 * 1000;
+
+				// Check if incident has exceeded the escalation delay
+				if (incidentDurationMs >= delayMs) {
+					// Send escalation notification
+					const escalation = config.escalation!;
+					const escalationDecision = { ...decision, notificationReason: "escalation" as const };
+					if (escalation.email) {
+						// Send email directly
+						await this.notificationsService.sendEmailNotification(escalation.email, monitor, status, escalationDecision).catch((error: unknown) => {
+							this.logger.error({
+								message: `Failed to send escalation email to ${escalation.email} for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "handleEscalations",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					} else if (escalation.channelId) {
+						// Send via existing notification channel
+						await this.notificationsService.sendSingleNotification(escalation.channelId, monitor, status, escalationDecision).catch((error: unknown) => {
+							this.logger.error({
+								message: `Failed to send escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "handleEscalations",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					}
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error in handleEscalations: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	}
 }

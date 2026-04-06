@@ -142,13 +142,13 @@ class NotificationController implements INotificationController {
 			const teamId = requireTeamId(req.user?.teamId);
 
 			const monitor = await this.monitorsRepository.findById(validatedBody.monitorId, teamId);
-			const notifications = monitor.notifications || [];
+			const notificationIds = monitor.notifications?.map((config) => config.notificationId) ?? [];
 
-			if (notifications.length === 0) {
+			if (notificationIds.length === 0) {
 				throw new AppError({ message: "No notifications", status: 400 });
 			}
 
-			const result = await this.notificationsService.testAllNotifications(notifications);
+			const result = await this.notificationsService.testAllNotifications(notificationIds);
 
 			if (!result) {
 				throw new AppError({ message: "Failed to send all notifications", status: 500 });

@@ -49,6 +49,54 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const escalationSchema = z
+	.object({
+		delayMinutes: z
+			.preprocess((value) => {
+				if (typeof value === "string" && value.trim() === "") {
+					return undefined;
+				}
+				return value;
+			}, z.number().min(1, "Delay must be at least 1 minute").optional()),
+		channelId: z
+			.preprocess((value) => {
+				if (typeof value === "string" && value.trim() === "") {
+					return undefined;
+				}
+				return value;
+			}, z.string().min(1, "Escalation channel is required").optional()),
+		email: z
+			.preprocess((value) => {
+				if (typeof value === "string" && value.trim() === "") {
+					return undefined;
+				}
+				return value;
+			}, z.string().email("Invalid email address").optional()),
+	})
+	.refine((value) => {
+		const hasDelay = value.delayMinutes !== undefined;
+		const hasChannel = value.channelId !== undefined;
+		const hasEmail = value.email !== undefined;
+		return (!hasDelay && !hasChannel && !hasEmail) || (hasDelay && (hasChannel || hasEmail));
+	}, {
+		message: "Both delayMinutes and either channelId or email are required when escalation is configured",
+	})
+	.optional()
+	.transform((value) => {
+		if (!value || value.delayMinutes === undefined || (!value.channelId && !value.email)) {
+			return undefined;
+		}
+		return {
+			delayMinutes: value.delayMinutes,
+			channelId: value.channelId,
+		};
+	});
+
+const notificationConfigSchema = z.object({
+	notificationId: z.string().min(1, "Notification ID is required"),
+	escalation: escalationSchema,
+});
+
 export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
@@ -66,7 +114,7 @@ export const createMonitorBodyValidation = z.object({
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
+	notifications: z.array(notificationConfigSchema).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -88,7 +136,6 @@ export const editMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -107,6 +154,7 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	notifications: z.array(notificationConfigSchema).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({

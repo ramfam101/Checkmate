@@ -80,11 +80,15 @@ export class EmailProvider implements INotificationProvider {
 	private buildSubject(message: NotificationMessage): string {
 		switch (message.type) {
 			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
+				return message.metadata.notificationReason === "escalation"
+					? `Escalation: Monitor ${message.monitor.name} still down`
+					: `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
+				return message.metadata.notificationReason === "escalation"
+					? `Escalation: Monitor ${message.monitor.name} threshold exceeded`
+					: `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
 			default:

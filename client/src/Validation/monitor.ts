@@ -12,7 +12,46 @@ const baseSchema = z.object({
 		.max(50, "Monitor name must be at most 50 characters"),
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
-	notifications: z.array(z.string()),
+	notifications: z
+		.array(
+			z.object({
+				notificationId: z.string().min(1),
+				escalation: z
+					.object({
+						delayMinutes: z
+							.preprocess((value) => {
+								if (typeof value === "string" && value.trim() === "") {
+									return undefined;
+								}
+								return value;
+							}, z.number().min(1).optional()),
+						channelId: z
+							.preprocess((value) => {
+								if (typeof value === "string" && value.trim() === "") {
+									return undefined;
+								}
+								return value;
+							}, z.string().min(1).optional()),
+						email: z
+							.preprocess((value) => {
+								if (typeof value === "string" && value.trim() === "") {
+									return undefined;
+								}
+								return value;
+							}, z.string().email("Invalid email address").optional()),
+					})
+					.refine((escalation) => {
+						const hasDelay = escalation.delayMinutes !== undefined;
+						const hasChannel = escalation.channelId !== undefined;
+						const hasEmail = escalation.email !== undefined;
+						return (!hasDelay && !hasChannel && !hasEmail) || (hasDelay && (hasChannel || hasEmail));
+					}, {
+						message: "Both delayMinutes and either channelId or email are required when escalation is configured",
+					})
+					.optional(),
+			})
+		)
+		.optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -135,6 +174,7 @@ export const monitorSchema = z.discriminatedUnion("type", [
 	websocketSchema,
 ]);
 
+export type MonitorFormInput = z.input<typeof monitorSchema>;
 export type MonitorFormData = z.infer<typeof monitorSchema>;
 
 // Type-specific schemas exported for individual use

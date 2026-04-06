@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -39,7 +39,7 @@ import {
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
-import type { MonitorFormData } from "@/Validation/monitor";
+import type { MonitorFormData, MonitorFormInput } from "@/Validation/monitor";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -198,7 +198,7 @@ const CreateMonitorPage = () => {
 		defaultType,
 	});
 
-	const form = useForm<MonitorFormData>({
+	const form = useForm<MonitorFormInput, any, MonitorFormData>({
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
@@ -251,7 +251,7 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
-	const onSubmit = async (data: MonitorFormData) => {
+	const onSubmit: SubmitHandler<MonitorFormData> = async (data) => {
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -710,8 +710,12 @@ const CreateMonitorPage = () => {
 								...n,
 								name: n.notificationName,
 							}));
+							// Extract notification IDs from config objects
+							const selectedNotificationIds = (field.value ?? []).map((c: any) =>
+								typeof c === "string" ? c : c.notificationId
+							);
 							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+								selectedNotificationIds.includes(n.id)
 							);
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
@@ -721,7 +725,12 @@ const CreateMonitorPage = () => {
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+											// Transform to config objects with notificationId
+											const configs = newValue.map((n) => ({
+												notificationId: n.id,
+												escalation: undefined,
+											}));
+											field.onChange(configs);
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
@@ -745,12 +754,16 @@ const CreateMonitorPage = () => {
 														onClick={() => {
 															field.onChange(
 																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
+																	(c: any) =>
+																		(typeof c === "string"
+																			? c
+																			: c.notificationId) !==
+																		notification.id
 																)
-															);
-														}}
-														aria-label="Remove notification"
-													>
+														);
+													}}
+													aria-label="Remove notification"
+												>
 														<Trash2 size={16} />
 													</IconButton>
 													{index < selectedNotifications.length - 1 && <Divider />}
@@ -764,6 +777,71 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			{/* Escalation Configuration Section */}
+			{(watch("notifications") as any[] | undefined)?.[0] && (
+				<ConfigBox
+					title="Escalation Rules"
+					subtitle="If the monitor stays down for the specified time, notify additional channels"
+					rightContent={
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							{(watch("notifications") as any[] | undefined)?.map((config: any, index: number) => {
+								const notifId =
+									typeof config === "string" ? config : config.notificationId;
+								const notif = notifications?.find((n) => n.id === notifId);
+								if (!notif) return null;
+
+								return (
+									<Stack key={notifId} spacing={theme.spacing(LAYOUT.SM)}>
+										<Controller
+											name={`notifications.${index}.escalation.delayMinutes`}
+											control={control}
+											render={({ field: delayField }) => (
+												<TextField
+													{...delayField}
+													type="number"
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.option.delayLabel"
+													)}
+													inputProps={{ min: 1 }}
+													value={delayField.value ?? ""}
+													onChange={(e) =>
+														delayField.onChange(
+															e.target.value ? parseInt(e.target.value, 10) : null
+														)
+													}
+												/>
+											)}
+										/>
+										<Controller
+											name={`notifications.${index}.escalation.channelId`}
+											control={control}
+											render={({ field: channelField }) => (
+												<Select
+													{...channelField}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.option.channelLabel"
+													)}
+													value={channelField.value ?? ""}
+												>
+													<MenuItem value="">
+														{t("pages.createMonitor.form.escalation.option.none")}
+													</MenuItem>
+													{notifications?.map((notif2) => (
+														<MenuItem key={notif2.id} value={notif2.id}>
+															{notif2.notificationName}
+														</MenuItem>
+													))}
+												</Select>
+											)}
+										/>
+									</Stack>
+								);
+							})}
+						</Stack>
+					}
+				/>
+			)}
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
