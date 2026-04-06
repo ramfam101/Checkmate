@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (monitor: Monitor, incident: Incident) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -64,6 +65,47 @@ export class NotificationsService implements INotificationsService {
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
+
+	private sendEscalation = async (
+		notification: Notification,
+		monitor: Monitor,
+		incident: Incident,
+		notificationMessage: NotificationMessage | undefined
+	): Promise<boolean> => {
+		if (!notificationMessage) {
+			this.logger.warn({
+				message: "Escalation notification message not provided",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+			});
+			return false;
+		}
+
+		// Route to provider based on notification type
+		switch (notification.type) {
+			case "webhook":
+				return await this.webhookProvider.sendMessage!(notification, notificationMessage);
+			case "slack":
+				return await this.slackProvider.sendMessage!(notification, notificationMessage);
+			case "matrix":
+				return await this.matrixProvider.sendMessage!(notification, notificationMessage);
+			case "pager_duty":
+				return await this.pagerDutyProvider.sendMessage!(notification, notificationMessage);
+			case "discord":
+				return await this.discordProvider.sendMessage!(notification, notificationMessage);
+			case "email":
+				return await this.emailProvider.sendMessage!(notification, notificationMessage);
+			case "teams":
+				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
+			default:
+				this.logger.warn({
+					message: `Unknown notification type: ${notification.type}`,
+					service: SERVICE_NAME,
+					method: "sendEscalation",
+				});
+				return false;
+		}
+	};
 
 	private send = async (
 		notification: Notification,
@@ -139,6 +181,35 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotifications = async (monitor: Monitor, incident: Incident) => {
+		const notificationIds = monitor.escalationNotifications ?? [];
+		if (notificationIds.length === 0) {
+			return true;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		// Build escalation notification message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incident, clientHost);
+
+		const tasks = notifications.map((notification) => this.sendEscalation(notification, monitor, incident, notificationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+		}
+		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
