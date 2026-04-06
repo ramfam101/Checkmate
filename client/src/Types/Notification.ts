@@ -20,6 +20,11 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalationRules?: {
+		id?: string;
+		afterMinutes: number;
+		notificationId?: string; // optional target notification id (if set, escalation will send to that channel)
+	}[];
 	createdAt: string;
 	updatedAt: string;
 }

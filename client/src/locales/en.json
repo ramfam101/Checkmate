@@ -951,6 +951,17 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"escalationRules": {
+					"title": "Escalation Rules",
+					"description": "Configure rules for escalating notifications based on incident duration",
+					"afterMinutes": "After Minutes",
+					"afterMinutesError": "Must be a positive number",
+					"edit": "Edit",
+					"save": "Save",
+					"cancel": "Cancel",
+					"addRule": "Add Rule",
+					"delete": "Delete"
 				}
 			},
 			"table": {

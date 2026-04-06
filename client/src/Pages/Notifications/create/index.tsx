@@ -5,7 +5,7 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import { useTheme } from "@mui/material/styles";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
@@ -41,8 +41,17 @@ const NotificationsCreatePage = () => {
 
 	const { control, watch, reset, handleSubmit, clearErrors, trigger, getValues } = form;
 
+	const { data: teamNotifications } = useGet<Notification[]>("/notifications/team");
+
+	const [localRules, setLocalRules] = useState<NonNullable<Notification["escalationRules"]>>(
+		defaults.escalationRules || []
+	);
+	const [editingIndex, setEditingIndex] = useState<number | null>(null);
+	const backupRef = useRef<NonNullable<Notification["escalationRules"]> | null>(null);
+
 	useEffect(() => {
 		reset(defaults);
+		setLocalRules(defaults.escalationRules || []);
 	}, [defaults, reset]);
 
 	const watchedType = watch("type");
@@ -77,9 +86,19 @@ const NotificationsCreatePage = () => {
 	}, [watchedType, t]);
 
 	const onSubmit = async (data: NotificationFormData) => {
+		// merge escalation rules into payload
+		const payload = {
+			...data,
+			escalationRules: localRules?.map((r) => ({
+				id: r.id,
+				afterMinutes: Number(r.afterMinutes),
+				notificationId: r.notificationId,
+			})),
+		};
+
 		const result = isEditMode
-			? await patch(`/notifications/${notificationId}`, data)
-			: await post("/notifications", data);
+			? await patch(`/notifications/${notificationId}`, payload)
+			: await post("/notifications", payload);
 		if (result) {
 			navigate("/notifications");
 		}
@@ -90,6 +109,50 @@ const NotificationsCreatePage = () => {
 		if (!isValid) return;
 		const data = getValues();
 		await testPost("/notifications/test", data);
+	};
+
+	const startEdit = (idx: number) => {
+		backupRef.current = [...localRules];
+		setEditingIndex(idx);
+	};
+
+	const addRule = () => {
+		setLocalRules((prev) => {
+			const next = [...prev, { id: undefined, afterMinutes: 5, notificationId: undefined }];
+			backupRef.current = [...prev];
+			setEditingIndex(prev.length);
+			return next;
+		});
+	};
+
+	const updateRuleField = (idx: number, field: keyof NonNullable<Notification["escalationRules"]>[0], value: any) => {
+		setLocalRules((prev) =>
+			prev.map((rule, i) => (i === idx ? { ...rule, [field]: value } : rule))
+		);
+	};
+
+	const saveRule = (idx: number) => {
+		// basic validation: afterMinutes must be >=1
+		const rule = localRules[idx];
+		if (!rule || Number(rule.afterMinutes) < 1) return;
+		setEditingIndex(null);
+		backupRef.current = null;
+	};
+
+	const cancelEdit = () => {
+		if (backupRef.current) {
+			setLocalRules(backupRef.current);
+		}
+		setEditingIndex(null);
+		backupRef.current = null;
+	};
+
+	const deleteRule = (idx: number) => {
+		setLocalRules((prev) => prev.filter((_, i) => i !== idx));
+		if (editingIndex === idx) {
+			setEditingIndex(null);
+			backupRef.current = null;
+		}
 	};
 
 	return (
@@ -171,6 +234,68 @@ const NotificationsCreatePage = () => {
 					}
 				/>
 			)}
+				<ConfigBox
+					title={t("pages.notifications.form.escalation.title")}
+					subtitle={t("pages.notifications.form.escalation.description")}
+					rightContent={
+						<Stack spacing={theme.spacing(4)}>
+							{(localRules || []).map((rule, idx) => (
+								<Stack key={rule.id ?? idx} direction="row" spacing={2} alignItems="center">
+									{editingIndex === idx ? (
+										<>
+											<TextField
+												type="number"
+												value={String(rule.afterMinutes)}
+												fieldLabel={t("pages.notifications.form.escalation.afterMinutes")}
+												onChange={(e: any) => updateRuleField(idx, "afterMinutes", Number(e.target.value))}
+												error={Number(rule.afterMinutes) < 1}
+												helperText={Number(rule.afterMinutes) < 1 ? t("pages.notifications.form.escalation.afterMinutesError") : ""}
+												style={{ width: 120 }}
+											/>
+											<Select
+												value={rule.notificationId || ""}
+												fieldLabel={t("pages.notifications.form.escalation.target")}
+												onChange={(e: any) => updateRuleField(idx, "notificationId", e.target.value)}
+												style={{ minWidth: 220 }}
+											>
+												<MenuItem value="">{t("pages.notifications.form.escalation.thisChannel")}</MenuItem>
+												{(teamNotifications || [])
+													.filter((n) => n.id !== notificationId)
+													.map((n) => (
+														<MenuItem key={n.id} value={n.id}>{n.notificationName}</MenuItem>
+													))}
+											</Select>
+											<Button size="small" variant="contained" color="primary" onClick={() => saveRule(idx)}>
+												{t("common.buttons.save")}
+											</Button>
+											<Button size="small" variant="outlined" color="secondary" onClick={cancelEdit}>
+												{t("common.buttons.cancel")}
+											</Button>
+											<Button size="small" variant="outlined" color="error" onClick={() => deleteRule(idx)}>
+												{t("common.buttons.delete")}
+											</Button>
+										</>
+									) : (
+										<>
+											<Typography flexGrow={1}>
+												{t("pages.notifications.form.escalation.after")}: {rule.afterMinutes} {t("common.words.minutes")} → {rule.notificationId ? (teamNotifications || []).find((n) => n.id === rule.notificationId)?.notificationName : t("pages.notifications.form.escalation.thisChannel")}
+											</Typography>
+											<Button size="small" variant="outlined" onClick={() => startEdit(idx)}>
+												{t("common.buttons.edit")}
+											</Button>
+											<Button size="small" variant="outlined" color="error" onClick={() => deleteRule(idx)}>
+												{t("common.buttons.delete")}
+											</Button>
+										</>
+									)}
+								</Stack>
+							))}
+							<Button size="small" variant="contained" onClick={addRule}>
+								{t("pages.notifications.form.escalation.addRule")}
+							</Button>
+						</Stack>
+					}
+				/>
 			{watchedType === "matrix" && (
 				<ConfigBox
 					title={t("pages.notifications.form.matrix.title")}
