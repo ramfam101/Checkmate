@@ -27,6 +27,8 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalateAfter: z.number().min(1, "Escalation time must be at least 1 minute").optional(),
+	escalationChannels: z.array(z.string()).optional(),
 });
 
 // HTTP monitor schema

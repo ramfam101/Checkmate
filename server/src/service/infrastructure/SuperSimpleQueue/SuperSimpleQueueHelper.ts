@@ -177,6 +177,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Check for escalation (best effort, don't wait)
+				this.checkAndSendEscalation(statusChangeResult.monitor).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error checking escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +197,29 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private checkAndSendEscalation = async (monitor: Monitor): Promise<void> => {
+		if (!monitor.escalateAfter || !monitor.escalationChannels?.length) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalationSent) {
+			return;
+		}
+
+		const downDurationMs = Date.now() - new Date(activeIncident.startTime).getTime();
+		const downDurationMinutes = downDurationMs / 60000;
+
+		if (downDurationMinutes < monitor.escalateAfter) {
+			return;
+		}
+
+		// Mark escalation as sent before sending to prevent duplicate sends
+		await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, { ...activeIncident, escalationSent: true });
+
+		await this.notificationsService.sendEscalationNotifications(monitor, monitor.escalationChannels);
 	};
 
 	getCleanupOrphanedJob = () => {
