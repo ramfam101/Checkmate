@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { IIncidentService } from "@/service/business/incidentService.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -20,6 +21,7 @@ export interface INotificationsService {
 }
 
 const SERVICE_NAME = "NotificationsService";
+
 
 export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -36,6 +38,8 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private incidentService: IIncidentService;
+	private escalatedIncidents: Map<string, number> = new Map();
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -49,7 +53,8 @@ export class NotificationsService implements INotificationsService {
 		teamsProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		incidentService: IIncidentService
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -63,6 +68,7 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.incidentService = incidentService;
 	}
 
 	private send = async (
@@ -133,12 +139,92 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
-			return false;
+		const shouldSend = decision.shouldSendNotification;
+
+		// Prototype escalation logic (in-memory, non-persistent)
+		let activeIncident = null;
+		try {
+			activeIncident = await this.incidentService.handleIncident(
+				monitor,
+				monitorStatusResponse?.code ?? 0,
+				decision,
+				monitorStatusResponse
+			);
+		} catch (err: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "handleNotifications",
+				message: err instanceof Error ? err.message : "Unknown error getting incident",
+				stack: err instanceof Error ? err.stack : undefined,
+			});
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		let sent = false;
+		if (shouldSend) {
+			sent = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		}
+		// If incident was resolved in this cycle, clear any in-memory escalation suppression
+		if (activeIncident && activeIncident.status === false) {
+			this.escalatedIncidents.delete(activeIncident.id);
+		}
+
+		this.logger.info({
+  		message: "DEBUG INCIDENT STATE",
+  		details: {
+    		exists: !!activeIncident,
+    		status: activeIncident?.status,
+    		startTime: activeIncident?.startTime,
+  			}
+			});
+
+		// If there's an active incident, compute down duration and trigger escalation
+		if (activeIncident && activeIncident.status) {
+			const startMs = new Date(activeIncident.startTime).getTime();
+			if (!Number.isNaN(startMs)) {
+				const downMs = Date.now() - startMs;
+				const thresholdMinutes = .05; // prototype threshold
+				if (downMs >= thresholdMinutes * 60 * 1000) {
+					// Suppression: avoid re-sending escalations too frequently for the same incident
+					const suppressionTtlMs = 60 * 60 * 1000; // 1 hour
+					const incidentId = activeIncident.id;
+					const lastEscalatedAt = this.escalatedIncidents.get(incidentId);
+					if (lastEscalatedAt && Date.now() - lastEscalatedAt < suppressionTtlMs) {
+						this.logger.debug({
+							service: SERVICE_NAME,
+							method: "handleNotifications",
+							message: "Skipping repeated escalation",
+							details: { incidentId, downMinutes: Math.floor(downMs / 60000) },
+						});
+					} else {
+						this.logger.info({
+							service: SERVICE_NAME,
+							method: "handleNotifications",
+							message: `Escalation threshold reached for monitor ${monitor.id}`,
+							details: { incidentId, downMinutes: Math.floor(downMs / 60000) },
+						});
+
+						// mark suppression timestamp and trigger escalation
+						this.escalatedIncidents.set(incidentId, Date.now());
+						const escalationDecision = {
+  						...decision,
+  					escalation: true
+                            };
+							
+						const escalationResult = await this.sendNotifications(monitor, monitorStatusResponse, escalationDecision);
+						if (!escalationResult) {
+							this.logger.warn({
+								service: SERVICE_NAME,
+								method: "handleNotifications",
+								message: `Escalation notification failed for monitor ${monitor.id}`,
+								details: { incidentId },
+							});
+						}
+					}
+				}
+			}
+		}
+
+		return sent;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
@@ -198,3 +284,6 @@ export class NotificationsService implements INotificationsService {
 		return deleted;
 	};
 }
+
+
+// (incident service imported and injected above)

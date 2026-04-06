@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision);
 
 		return {
 			type,
@@ -93,10 +93,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, decision);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -108,28 +108,41 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
-		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+	 private buildMonitorDownContent(
+  		monitor: Monitor,
+  		monitorStatusResponse: MonitorStatusResponse,
+  		decision?: MonitorActionDecision
+		): NotificationContent {
 
-		// Add response code if available
-		if (monitorStatusResponse.code) {
-			details.push(`Response Code: ${monitorStatusResponse.code}`);
-		}
+  		// default (normal down alert)
+  		let title = `Monitor Down: ${monitor.name}`;
+  		let summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 
-		// Add error message if available
-		if (monitorStatusResponse.message) {
-			details.push(`Error: ${monitorStatusResponse.message}`);
-		}
+  		//  escalation override
+  		if ((decision as any)?.escalation) {
+    		title = `ESCALATION: Monitor ${monitor.name} still down`;
+    		summary = `Monitor "${monitor.name}" has been down for an extended period.`;
+ 			 }
 
-		return {
-			title,
-			summary,
-			details,
-			timestamp: new Date(),
-		};
-	}
+  		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+  		// Add response code if available
+  		if (monitorStatusResponse.code) {
+    	details.push(`Response Code: ${monitorStatusResponse.code}`);
+  		}
+
+  		// Add error message if available
+  		if (monitorStatusResponse.message) {
+    	details.push(`Error: ${monitorStatusResponse.message}`);
+  		}
+
+  	return {
+    	title,
+    	summary,
+    	details,
+    	timestamp: new Date(),
+  	};
+}
 
 	private buildMonitorUpContent(monitor: Monitor): NotificationContent {
 		const title = `Monitor Recovered: ${monitor.name}`;
