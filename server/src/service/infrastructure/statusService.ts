@@ -348,6 +348,19 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
+			// track downtime 
+			if (statusChanged) {
+				if (newStatus === "down"){
+					// record start time of monitor down
+					monitor.downtimeStartedAt = new Date().toISOString();
+					monitor.escalationSent = false;
+				} else if (newStatus === "up"){
+					// clear escalation state, monitor back up
+					monitor.downtimeStartedAt = null;
+					monitor.escalationSent = false;
+				}
+			}
+
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
 			return {
