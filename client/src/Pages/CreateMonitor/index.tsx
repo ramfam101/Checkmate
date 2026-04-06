@@ -765,6 +765,101 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+<ConfigBox
+    title={t("pages.createMonitor.form.escalationRules.title")}
+    subtitle={t(`pages.createMonitor.form.escalationRules.description`)}
+    rightContent={
+        <Stack spacing={theme.spacing(LAYOUT.MD)}>
+            {/* Escalation Delay Field */}
+            <Controller
+                name="escalationDelay"
+                control={control}
+                render={({ field, fieldState }) => (
+                    <TextField
+                        {...field}
+                        type="number"
+                        fieldLabel={t("pages.createMonitor.form.escalationRules.option.delay.label")}
+                        fullWidth
+                        error={!!fieldState.error}
+                        helperText={fieldState.error?.message ?? ""}
+                        onChange={(e) => field.onChange(Number(e.target.value))} // Convert to number
+                    />
+                )}
+            />
+
+            {/* Escalation Notification Channels */}
+            <Controller
+                name="notificationChannelIds"
+                control={control}
+                render={({ field }) => {
+                    // Map notifications to have 'name' property for Autocomplete
+                    const options = (notifications ?? []).map((n) => ({
+                        ...n,
+                        name: n.notificationName,
+                    }));
+                    const selectedOptions = options.filter((n) =>
+                        (field.value ?? []).includes(n.id)
+                    );
+
+                    return (
+                        <Stack spacing={theme.spacing(LAYOUT.MD)}>
+                            {/* Autocomplete for selecting notification channels */}
+                            <Autocomplete
+                                multiple
+                                options={options}
+                                value={selectedOptions}
+                                getOptionLabel={(option) => option.name}
+                                onChange={(_: unknown, newValue: typeof options) => {
+                                    field.onChange(newValue.map((n) => n.id));
+                                }}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                fieldLabel={t(
+                                    "pages.createMonitor.form.escalationRules.option.notificationsChannels.label"
+                                )}
+                            />
+
+                            {/* Display selected notification channels */}
+                            {selectedOptions.length > 0 && (
+                                <Stack
+                                    flex={1}
+                                    width="100%"
+                                >
+                                    {selectedOptions.map((notification, index) => (
+                                        <Stack
+                                            direction="row"
+                                            alignItems="center"
+                                            key={notification.id}
+                                            width="100%"
+                                        >
+                                            <Typography flexGrow={1}>
+                                                {notification.notificationName}
+                                            </Typography>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => {
+                                                    field.onChange(
+                                                        (field.value ?? []).filter(
+                                                            (id: string) => id !== notification.id
+                                                        )
+                                                    );
+                                                }}
+                                                aria-label="Remove notification"
+                                            >
+                                                <Trash2 size={16} />
+                                            </IconButton>
+                                            {index < selectedOptions.length - 1 && <Divider />}
+                                        </Stack>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Stack>
+                    );
+                }}
+            />
+        </Stack>
+    }
+/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1043,6 +1138,8 @@ const CreateMonitorPage = () => {
 					}
 				/>
 			)}
+
+			
 
 			<Stack
 				direction="row"

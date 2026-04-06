@@ -18,6 +18,11 @@ export class EmailProvider implements INotificationProvider {
 		const subject = "Test notification";
 		const html = await buildTestEmail(this.emailService);
 
+		this.logger.warn({
+			message: "Send test Alert called",
+			
+		});
+
 		if (!notification.address) {
 			this.logger.warn({
 				message: "Missing address",
@@ -87,6 +92,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
+			case "escalation":
+				return `Escalation: Monitor ${message.monitor.name} still down`;
 			default:
 				return `Alert: ${message.monitor.name}`;
 		}

@@ -393,6 +393,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
+			escalationDelay: doc.escalationDelay ?? 0,
+			notificationChannelIds: (doc.notificationChannelIds ?? []).map((id) => toStringId(id)),
+			escalationSent: doc.escalationSent ?? false,
 		};
 	};
 
@@ -452,6 +455,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
+			escalationDelay: doc.escalationDelay ?? 0,
+			notificationChannelIds: doc.notificationChannelIds ?? [],
+			escalationSent: doc.escalationSent ?? false,
 		};
 	};
 

@@ -148,7 +148,8 @@ export class EmailService implements IEmailService {
 		};
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
-		try {
+		
+		try {		
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({

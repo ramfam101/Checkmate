@@ -445,27 +445,6 @@
 					},
 					"title": "Advanced settings"
 				},
-				"frequency": {
-					"description": "How often do you want to check the status of this monitor?",
-					"option": {
-						"frequency": {
-							"label": "Check frequency",
-							"value": {
-								"fifteenMinutes": "15 minutes",
-								"fifteenSeconds": "15 seconds",
-								"fiveMinutes": "5 minutes",
-								"fourMinutes": "4 minutes",
-								"oneMinute": "1 minute",
-								"tenMinutes": "10 minutes",
-								"thirtyMinutes": "30 minutes",
-								"thirtySeconds": "30 seconds",
-								"threeMinutes": "3 minutes",
-								"twoMinutes": "2 minutes"
-							}
-						}
-					},
-					"title": "Check frequency"
-				},
 				"general": {
 					"option": {
 						"container": {
@@ -507,7 +486,7 @@
 					},
 					"title": "General settings",
 					"description": {
-						"http": "Enter the URL or IP to monitor (e.g., https://example.com/ or 192.168.1.100) and add a clear display name that appears on the dashboard.",
+						"http": "Enter the :/ or IP to monitor (e.g., https://example.com/ or 192.168.1.100) and add a clear display name that appears on the dashboard.",
 						"ping": "Enter the IP address or hostname to ping (e.g., 192.168.1.100 or example.com) and add a clear display name that appears on the dashboard.",
 						"port": "Enter the URL or IP of the server, the port number and a clear display name that appears on the dashboard.",
 						"docker": "Enter the Docker container name or ID. You can use either the container name (e.g., my-app) or the container ID (full 64-char ID or short ID).",
@@ -517,6 +496,40 @@
 						"websocket": "Enter the WebSocket URL to monitor (e.g., wss://example.com/socket) and add a display name.",
 						"hardware": "Monitor CPU, memory, disk usage, and temperature for your infrastructure."
 					}
+				},
+				"frequency": {
+					"description": "How often do you want to check the status of this monitor?",
+					"option": {
+						"frequency": {
+							"label": "Check frequency",
+							"value": {
+								"fifteenMinutes": "15 minutes",
+								"fifteenSeconds": "15 seconds",
+								"fiveMinutes": "5 minutes",
+								"fourMinutes": "4 minutes",
+								"oneMinute": "1 minute",
+								"tenMinutes": "10 minutes",
+								"thirtyMinutes": "30 minutes",
+								"thirtySeconds": "30 seconds",
+								"threeMinutes": "3 minutes",
+								"twoMinutes": "2 minutes"
+							}
+						}
+					},
+					"title": "Check frequency"
+				},
+				"escalationRules": {
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					
+					"option": {
+						"delay": {
+							"label": "Escalate after (minutes)"
+						},
+						"notificationsChannels": {
+							"label": "Escalation notification channels"
+						}
+					},
+					"title": "Escalation rules"
 				},
 				"ignoreTls": {
 					"description": "Configure TLS/SSL certificate validation for HTTPS connections.",

@@ -1,32 +1,38 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
+//import { not } from "joi";
 
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
 // Common base schema for all monitor types
 const baseSchema = z.object({
-	name: z
-		.string()
-		.min(1, "Monitor name is required")
-		.max(50, "Monitor name must be at most 50 characters"),
-	description: z.string().optional(),
-	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
-	notifications: z.array(z.string()),
-	statusWindowSize: z
-		.number({ message: "Status window size is required" })
-		.min(1, "Status window size must be at least 1")
-		.max(25, "Status window size must be at most 25"),
-	statusWindowThreshold: z
-		.number({ message: "Threshold percentage is required" })
-		.min(1, "Incident percentage must be at least 1")
-		.max(100, "Incident percentage must be at most 100"),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z
+    name: z
+        .string()
+        .min(1, "Monitor name is required")
+        .max(50, "Monitor name must be at most 50 characters"),
+    description: z.string().optional(),
+    interval: z.number().min(15000, "Interval must be at least 15 seconds"),
+    notifications: z.array(z.string()),
+    statusWindowSize: z
+        .number({ message: "Status window size is required" })
+        .min(1, "Status window size must be at least 1")
+        .max(25, "Status window size must be at most 25"),
+    statusWindowThreshold: z
+        .number({ message: "Threshold percentage is required" })
+        .min(1, "Incident percentage must be at least 1")
+        .max(100, "Incident percentage must be at most 100"),
+    geoCheckEnabled: z.boolean().optional(),
+    geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+    geoCheckInterval: z
+        .number()
+        .min(300000, "Interval must be at least 5 minutes")
+        .optional(),
+	escalationDelay: z
 		.number()
-		.min(300000, "Interval must be at least 5 minutes")
+		.min(0, "Escalation delay must be at least 0 minutes")
 		.optional(),
+	notificationChannelIds: z.array(z.string()).optional(),
 });
 
 // HTTP monitor schema
