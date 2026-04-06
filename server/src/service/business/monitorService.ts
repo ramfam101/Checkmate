@@ -81,6 +81,7 @@ export interface IMonitorService {
 
 	// notifications
 	updateNotifications(args: { teamId: string; monitorIds: string[]; notificationIds: string[]; action: "add" | "remove" | "set" }): Promise<number>;
+	updateEscalation(args: { teamId: string; monitorIds: string[]; escalationDelayMinutes?: number; escalationNotifications?: string[]; action: "set" | "clear" }): Promise<number>;
 
 	// other
 	exportMonitorsToJSON(args: { teamId: string }): Promise<Monitor[]>;
@@ -456,6 +457,47 @@ export class MonitorService implements IMonitorService {
 		const modifiedCount = await this.monitorsRepository.updateNotifications(teamId, monitorIds, notificationIds, action);
 
 		// If notifications were updated, we should update the jobs in the queue
+		if (modifiedCount > 0) {
+			const monitors = await this.monitorsRepository.findByIds(monitorIds);
+			await Promise.all(monitors.map((monitor) => this.jobQueue.updateJob(monitor)));
+		}
+
+		return modifiedCount;
+	};
+
+	updateEscalation = async ({
+		teamId,
+		monitorIds,
+		escalationDelayMinutes,
+		escalationNotifications,
+		action,
+	}: {
+		teamId: string;
+		monitorIds: string[];
+		escalationDelayMinutes?: number;
+		escalationNotifications?: string[];
+		action: "set" | "clear";
+	}): Promise<number> => {
+		let updateData: Partial<Monitor> = {};
+
+		if (action === "clear") {
+			updateData = {
+				escalationDelayMinutes: undefined,
+				escalationNotifications: [],
+			};
+		} else {
+			// action === "set"
+			if (escalationDelayMinutes !== undefined) {
+				updateData.escalationDelayMinutes = escalationDelayMinutes;
+			}
+			if (escalationNotifications !== undefined) {
+				updateData.escalationNotifications = escalationNotifications;
+			}
+		}
+
+		const modifiedCount = await this.monitorsRepository.updateEscalation(teamId, monitorIds, updateData);
+
+		// If escalation settings were updated, we should update the jobs in the queue
 		if (modifiedCount > 0) {
 			const monitors = await this.monitorsRepository.findByIds(monitorIds);
 			await Promise.all(monitors.map((monitor) => this.jobQueue.updateJob(monitor)));

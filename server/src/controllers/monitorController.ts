@@ -14,6 +14,7 @@ import {
 	getUptimeDetailsByIdParamValidation,
 	getUptimeDetailsByIdQueryValidation,
 	importMonitorsBodyValidation,
+	updateEscalationValidation,
 } from "@/validation/monitorValidation.js";
 import sslChecker from "ssl-checker";
 import { fetchMonitorCertificate, requireTeamId, requireUserId } from "@/controllers/controllerUtils.js";
@@ -43,6 +44,7 @@ export interface IMonitorController {
 	getAllGames: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getGroupsByTeamId: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	updateNotifications: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	updateEscalation: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class MonitorController implements IMonitorController {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -447,6 +449,45 @@ class MonitorController implements IMonitorController {
 			return res.status(200).json({
 				success: true,
 				msg: `Notifications updated successfully on ${modifiedCount} monitor(s)`,
+				data: { modifiedCount },
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	updateEscalation = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			updateEscalationValidation.parse(req.body);
+
+			const teamId = requireTeamId(req.user?.teamId);
+			const { monitorIds, escalationDelayMinutes, escalationNotifications, action } = req.body;
+
+			// Verify all requested notification IDs actually belong to this team (if provided)
+			if (escalationNotifications && escalationNotifications.length > 0) {
+				const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+				const validNotificationIds = teamNotifications.map((n) => n.id);
+
+				const invalidIds = escalationNotifications.filter((id: string) => !validNotificationIds.includes(id));
+				if (invalidIds.length > 0) {
+					throw new AppError({
+						message: `The following escalation notification IDs are invalid or do not belong to your team: ${invalidIds.join(", ")}`,
+						status: 403,
+					});
+				}
+			}
+
+			const modifiedCount = await this.monitorService.updateEscalation({
+				teamId,
+				monitorIds,
+				escalationDelayMinutes,
+				escalationNotifications,
+				action,
+			});
+
+			return res.status(200).json({
+				success: true,
+				msg: `Escalation settings updated successfully on ${modifiedCount} monitor(s)`,
 				data: { modifiedCount },
 			});
 		} catch (error) {

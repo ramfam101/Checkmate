@@ -103,6 +103,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
