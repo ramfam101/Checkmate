@@ -3655,6 +3655,9 @@
 					"geoCheckInterval": {
 						"type": "integer",
 						"minimum": 300000
+					},
+					"escalationNotifications": {
+						"type": "string"
 					}
 				}
 			},
