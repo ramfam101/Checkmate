@@ -284,6 +284,16 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationChannel: {
+			type: String,
+			enum: ["email", "slack", "discord", "webhook"],
+			default: "email",
+		},
+		escalationDelayMinutes: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
 		secret: {
 			type: String,
 		},

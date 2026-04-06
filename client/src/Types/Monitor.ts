@@ -60,6 +60,8 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationChannel: "email" | "slack" | "discord" | "webhook";
+	escalationDelayMinutes: number;
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

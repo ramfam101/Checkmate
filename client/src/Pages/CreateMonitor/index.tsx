@@ -352,7 +352,7 @@ const CreateMonitorPage = () => {
 									</RadioGroup>
 								</FormControl>
 							)}
-						/>
+						/>	
 					}
 				/>
 			)}
@@ -762,6 +762,45 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Set up escalated notifications if the monitor stays down"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field }) => (
+								<TextField
+									{...field}
+									value={field.value ?? 0}
+									onChange={(e) => field.onChange(Number(e.target.value))}
+									type="number"
+									fieldLabel="Escalate after (minutes)"
+									placeholder="0"
+									fullWidth
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationChannel"
+							control={control}
+							render={({ field }) => (
+								<Select
+									{...field}
+									value={field.value ?? "email"}
+									fieldLabel="Escalation channel"
+								>
+									<MenuItem value="email">Email</MenuItem>
+									<MenuItem value="slack">Slack</MenuItem>
+									<MenuItem value="discord">Discord</MenuItem>
+									<MenuItem value="webhook">Webhook</MenuItem>
+								</Select>
+							)}
+						/>
+					</Stack>
 				}
 			/>
 
