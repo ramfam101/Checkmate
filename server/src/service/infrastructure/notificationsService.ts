@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	handleEscalationNotifications: (monitor: Monitor, incident: Incident) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -141,6 +141,7 @@ export class NotificationsService implements INotificationsService {
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
 
+
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {
 			case "email":
@@ -186,6 +187,28 @@ export class NotificationsService implements INotificationsService {
 
 	findNotificationsByTeamId = async (teamId: string): Promise<Notification[]> => {
 		return await this.notificationsRepository.findByTeamId(teamId);
+	};
+	handleEscalationNotifications = async (monitor: Monitor, incident: Incident) => {
+		const escNotificationIds = monitor.escalationNotifications ?? [];
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escNotificationIds);
+
+		// Build escalation message using existing buildMessage method
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			{ code: 9999, message: `ESCALATION: Monitor has been down for ${Math.floor((Date.now() - new Date(incident.startTime).getTime()) / 60000)} minutes` } as any,
+			{ shouldSendNotification: true, shouldCreateIncident: false, shouldResolveIncident: false, incidentReason: null, notificationReason: "status_change" },
+			clientHost
+		);
+
+		// Send via all providers
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, { code: 9999, message: `ESCALATION: Monitor has been down for ${Math.floor((Date.now() - new Date(incident.startTime).getTime()) / 60000)} minutes` } as any,
+			{ shouldSendNotification: true, shouldCreateIncident: false, shouldResolveIncident: false, incidentReason: null, notificationReason: "status_change" }, notificationMessage)
+		);
+		await Promise.all(tasks);
+		return true;
 	};
 
 	updateById = async (id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification> => {

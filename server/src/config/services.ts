@@ -205,8 +205,6 @@ export const initializeServices = async ({
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
-
 	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
 	const globalPingService = new GlobalPingService(logger);
@@ -254,7 +252,6 @@ export const initializeServices = async ({
 		checkService,
 		settingsService,
 		bufferService,
-		incidentService,
 		maintenanceWindowsRepository,
 		monitorsRepository,
 		teamsRepository,
@@ -266,6 +263,11 @@ export const initializeServices = async ({
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+
+	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder, superSimpleQueue);
+
+	// Set incident service in queue helper to resolve circular dependency
+	superSimpleQueueHelper.setIncidentService(incidentService);
 
 	// Business services
 	const userService = new UserService({
