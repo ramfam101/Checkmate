@@ -3,6 +3,26 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const monitorEscalationStepValidation = z.object({
+	delayMinutes: z.number().min(0.1),
+	notifications: z.array(z.string().min(1)).min(1),
+});
+
+const monitorEscalationPolicyValidation = z.array(monitorEscalationStepValidation).superRefine((steps, ctx) => {
+	const seen = new Set<string>();
+	for (const [index, step] of steps.entries()) {
+		const normalizedDelay = step.delayMinutes.toFixed(3);
+		if (seen.has(normalizedDelay)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: [index, "delayMinutes"],
+				message: "Escalation delays must be unique",
+			});
+		}
+		seen.add(normalizedDelay);
+	}
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -67,6 +87,7 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationPolicy: monitorEscalationPolicyValidation.optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +110,7 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationPolicy: monitorEscalationPolicyValidation.optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -144,6 +166,7 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationPolicy: monitorEscalationPolicyValidation.default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

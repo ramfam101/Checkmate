@@ -83,18 +83,14 @@ export const SummaryCard = ({
 };
 
 interface SummaryCardActiveIncidentsProps {
-	summary?: IncidentSummary | null;
+	activeCount: number;
 }
 
 export const SummaryCardActiveIncidents = ({
-	summary,
+	activeCount,
 }: SummaryCardActiveIncidentsProps) => {
 	const { t } = useTranslation();
 	const theme = useTheme();
-
-	if (!summary) return null;
-
-	const activeCount = summary.totalActive;
 	const hasActive = activeCount > 0;
 	const color = hasActive ? theme.palette.error.main : theme.palette.success.main;
 	const icon = hasActive ? (

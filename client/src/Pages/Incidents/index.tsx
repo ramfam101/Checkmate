@@ -21,6 +21,25 @@ import type { Incident, IncidentsResponse, IncidentSummary } from "@/Types/Incid
 import type { Monitor } from "@/Types/Monitor";
 import { useTheme } from "@mui/material";
 
+const mapSummaryIncidentToIncident = (
+	incident: NonNullable<IncidentSummary["latestIncidents"]>[number]
+): Incident => ({
+	id: incident.id,
+	monitorId: incident.monitorId,
+	teamId: "",
+	startTime: incident.startTime,
+	endTime: incident.endTime,
+	status: incident.status,
+	message: incident.message,
+	statusCode: incident.statusCode,
+	resolutionType: incident.resolutionType,
+	resolvedBy: null,
+	resolvedByEmail: null,
+	comment: null,
+	createdAt: incident.createdAt,
+	updatedAt: incident.createdAt,
+});
+
 const IncidentsPage = () => {
 	const { t } = useTranslation();
 	const theme = useTheme();
@@ -96,7 +115,9 @@ const IncidentsPage = () => {
 
 	// Fetch incident summary
 	const { data: summaryData, refetch: refetchSummary } = useGet<IncidentSummary>(
-		"/incidents/team/summary"
+		"/incidents/team/summary",
+		{},
+		{ refreshInterval: 10000 }
 	);
 
 	// Reset page when filters change
@@ -108,7 +129,15 @@ const IncidentsPage = () => {
 	const incidents = incidentsData?.incidents ?? [];
 	const incidentsCount = incidentsData?.count ?? 0;
 	const activeIncidents = activeIncidentsData?.incidents ?? [];
-	const activeIncidentsCount = activeIncidentsData?.count ?? 0;
+	const summaryActiveIncidents = (summaryData?.latestIncidents ?? [])
+		.filter((incident) => incident.status)
+		.map(mapSummaryIncidentToIncident);
+	const activeIncidentsForDisplay =
+		activeIncidents.length > 0 ? activeIncidents : summaryActiveIncidents;
+	const activeIncidentsCount =
+		activeIncidentsData?.count ??
+		summaryData?.totalActive ??
+		activeIncidentsForDisplay.length;
 
 	const handleClearFilters = () => {
 		setSelectedMonitor("0");
@@ -159,7 +188,7 @@ const IncidentsPage = () => {
 				direction={{ xs: "column", md: "row" }}
 				gap={theme.spacing(8)}
 			>
-				<SummaryCardActiveIncidents summary={summaryData} />
+				<SummaryCardActiveIncidents activeCount={activeIncidentsCount} />
 				<SummaryCardLatestIncidents summary={summaryData} />
 				<SummaryCardStats summary={summaryData} />
 			</Stack>
@@ -171,7 +200,7 @@ const IncidentsPage = () => {
 				setSelectedResolutionType={setFilter}
 				onClearFilters={handleClearFilters}
 			/>
-			{activeIncidentsCount > 0 ? (
+			{activeIncidentsForDisplay.length > 0 ? (
 				<>
 					<Typography
 						variant="h6"
@@ -181,7 +210,7 @@ const IncidentsPage = () => {
 					</Typography>
 
 					<IncidentsTable
-						incidents={activeIncidents}
+						incidents={activeIncidentsForDisplay}
 						monitors={monitorsData ?? undefined}
 						incidentsCount={activeIncidentsCount}
 						page={activeIncidentsPage}

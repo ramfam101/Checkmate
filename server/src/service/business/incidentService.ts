@@ -89,6 +89,8 @@ export class IncidentService implements IIncidentService {
 					startTime: Date.now().toString(),
 					status: true,
 					statusCode,
+					sentEscalationDelays: [],
+					sentEscalationKeys: [],
 					message,
 				};
 				return await this.incidentsRepository.create(incident);

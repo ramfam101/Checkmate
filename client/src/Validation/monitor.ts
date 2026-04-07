@@ -5,6 +5,13 @@ import { GeoContinents } from "@/Types/GeoCheck";
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
 // Common base schema for all monitor types
+const escalationStepSchema = z.object({
+	delayMinutes: z.number().min(0.1, "Escalation time must be at least 0.1 minutes"),
+	notifications: z
+		.array(z.string())
+		.min(1, "Select at least one escalation notification"),
+});
+
 const baseSchema = z.object({
 	name: z
 		.string()
@@ -21,6 +28,7 @@ const baseSchema = z.object({
 		.number({ message: "Threshold percentage is required" })
 		.min(1, "Incident percentage must be at least 1")
 		.max(100, "Incident percentage must be at most 100"),
+	escalationPolicy: z.array(escalationStepSchema),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z
