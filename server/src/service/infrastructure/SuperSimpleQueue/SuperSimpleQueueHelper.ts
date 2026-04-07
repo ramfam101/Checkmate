@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +177,36 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications after the incident delay
+				if (decision.shouldResolveIncident && statusChangeResult.monitor.escalationSent) {
+					await this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: false });
+				}
+
+				if ((statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") &&
+					(statusChangeResult.monitor.escalationDelay ?? 0) > 0 &&
+					Array.isArray(statusChangeResult.monitor.escalationChannels) &&
+					statusChangeResult.monitor.escalationChannels.length > 0 &&
+					!statusChangeResult.monitor.escalationSent) {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+					if (activeIncident) {
+						const incidentStartTime = new Date(activeIncident.startTime).getTime();
+						if (!Number.isNaN(incidentStartTime)) {
+							const elapsedMinutes = (Date.now() - incidentStartTime) / 60000;
+							if (elapsedMinutes >= statusChangeResult.monitor.escalationDelay!) {
+								this.notificationsService.handleEscalationNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+									this.logger.error({
+										message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: error instanceof Error ? error.stack : undefined,
+									});
+								});
+								await this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true });
+							}
+						}
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -268,6 +298,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					service: SERVICE_NAME,
 					method: "getCleanupOrphanedJob",
 				});
+
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -342,6 +373,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					service: SERVICE_NAME,
 					method: "getHeartbeatGeoJob",
 				});
+
 			} catch (error: unknown) {
 				this.logger.error({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -407,6 +439,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					service: SERVICE_NAME,
 					method: "getCleanupRetentionJob",
 				});
+
 			} catch (error: unknown) {
 				this.logger.error({
 					message: error instanceof Error ? error.message : "Unknown error",

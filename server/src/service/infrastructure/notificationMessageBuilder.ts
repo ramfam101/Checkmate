@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";

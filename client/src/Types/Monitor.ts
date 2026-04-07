@@ -70,6 +70,8 @@ export interface Monitor {
 	tempAlertThreshold: number;
 	tempAlertCounter: number;
 	selectedDisks: string[];
+	escalationDelay?: number;
+	escalationChannels?: string[];
 	gameId?: string;
 	grpcServiceName?: string;
 	group: string | null;
