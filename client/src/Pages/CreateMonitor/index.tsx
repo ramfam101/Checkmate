@@ -212,6 +212,8 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const [escalationMinutes, setEscalationMinutes] = useState<string>("");
+	const [escalationNotificationIds, setEscalationNotificationIds] = useState<string[]>([]);
 
 	useEffect(() => {
 		clearErrors();
@@ -764,7 +766,83 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+				<ConfigBox
+					title={t("pages.createMonitor.form.escalatingNotifications.title")}
+					subtitle={t("pages.createMonitor.form.escalatingNotifications.description")}
+					rightContent={
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
 
+							<TextField
+								type="number"
+								fieldLabel={t("pages.createMonitor.form.escalatingNotifications.timeOption")}
+								placeholder="Insert minutes until escalation"
+								value={escalationMinutes}
+								onChange={(e) => setEscalationMinutes(e.target.value)}
+								fullWidth
+							/>
+							{(() => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedEscalationNotifications = notificationOptions.filter((n) =>
+									escalationNotificationIds.includes(n.id)
+								);
+
+								return (
+									<>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedEscalationNotifications}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalatingNotifications.channelOption"
+											)}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												setEscalationNotificationIds(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+															setEscalationNotificationIds(
+																escalationNotificationIds.filter(
+																	(id) => id !== notification.id
+																)
+															);
+														}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</>
+								);
+							})()}
+						</Stack>
+					}
+				/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
