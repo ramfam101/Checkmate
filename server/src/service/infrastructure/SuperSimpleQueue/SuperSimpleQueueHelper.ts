@@ -38,7 +38,10 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+
+	// add escalation case here 
+	
+	notificationReason: "status_change" | "threshold_breach" |"escalation" |  null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -155,7 +158,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
-
+				this.logger.debug({
+  				service: SERVICE_NAME,
+  				method: "getMonitorJob",
+  				message: "DEBUG: Monitor decision computed",
+  				details: {
+    			monitorId: statusChangeResult.monitor.id,
+    			prevStatus: statusChangeResult.prevStatus,
+    			newStatus: statusChangeResult.monitor.status,
+    			statusChanged: statusChangeResult.statusChanged,
+   				shouldCreateIncident: decision.shouldCreateIncident,
+    			shouldResolveIncident: decision.shouldResolveIncident,
+    			shouldSendNotification: decision.shouldSendNotification,
+    			incidentReason: decision.incidentReason,
+  				},
+			});
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -169,6 +186,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
+
+				
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -177,7 +196,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
-			} catch (error: unknown) {
+			} catch (error: unknown) { 	
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
@@ -419,40 +438,103 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
-		const { monitor, statusChanged, prevStatus } = statusChangeResult;
+  const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
-		// Initialize result
-		const decision: MonitorActionDecision = {
-			shouldCreateIncident: false,
-			shouldResolveIncident: false,
-			shouldSendNotification: false,
-			incidentReason: null,
-			notificationReason: null,
-		};
+  const decision: MonitorActionDecision = {
+    shouldCreateIncident: false,
+    shouldResolveIncident: false,
+    shouldSendNotification: false,
+    incidentReason: null,
+    notificationReason: null,
+  };
 
-		if (!statusChanged) {
-			return decision;
-		}
+  // 1) Recovery: send once when service actually comes back
+  if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+    if (statusChanged) {
+      decision.shouldResolveIncident = true;
+      decision.shouldSendNotification = true;
+      decision.notificationReason = "status_change";
+    }
+    return decision;
+  }
 
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
-		}
+  // 2) First time going down: send once
+  if (monitor.status === "down" && prevStatus !== "down") {
+    if (statusChanged) {
+      decision.shouldCreateIncident = true;
+      decision.incidentReason = "status_down";
+      decision.shouldSendNotification = true;
+      decision.notificationReason = "status_change";
+    }
+    return decision;
+  }
 
-		return decision;
-	}
+  // 3) Threshold breach
+  if (monitor.status === "breached") {
+    if (statusChanged) {
+      decision.shouldCreateIncident = true;
+      decision.shouldSendNotification = true;
+      decision.incidentReason = "threshold_breach";
+      decision.notificationReason = "threshold_breach";
+    }
+    return decision;
+  }
+
+  // 4) Still down: send escalation once after configured delay
+  if (monitor.status === "down" && prevStatus === "down") {
+    const delayMinutes = monitor.escalationDelay ?? 0;
+
+    this.logger.info({
+      message: `[ESCALATION DEBUG] Checking escalation for monitor ${monitor.name}`,
+      service: SERVICE_NAME,
+      method: "evaluateMonitorAction",
+      details: {
+        delayMinutes,
+        hasDownSince: !!monitor.downSince,
+        downSince: monitor.downSince,
+        escalationSentAt: monitor.escalationSentAt,
+        hasEscalationNotifications: !!(monitor.escalationNotifications?.length),
+      },
+    });
+
+    if (delayMinutes <= 0 || !monitor.downSince || (monitor.escalationSentAt && new Date(monitor.escalationSentAt) >= new Date(monitor.downSince))) {
+      this.logger.info({
+        message: `[ESCALATION DEBUG] Escalation blocked by condition check`,
+        service: SERVICE_NAME,
+        method: "evaluateMonitorAction",
+      });
+      return decision;
+    }
+
+    // Calculate time since downSince
+    const downSinceTime = new Date(monitor.downSince).getTime();
+    const timeSinceDown = Date.now() - downSinceTime;
+    const shouldTrigger = timeSinceDown >= delayMinutes * 60 * 1000;
+
+    this.logger.info({
+      message: `[ESCALATION DEBUG] Time calculation`,
+      service: SERVICE_NAME,
+      method: "evaluateMonitorAction",
+      details: {
+        downSinceTime: new Date(downSinceTime).toISOString(),
+        timeSinceDown,
+        delayMs: delayMinutes * 60 * 1000,
+        shouldTrigger,
+      },
+    });
+
+    if (shouldTrigger) {
+      decision.shouldSendNotification = true;
+      decision.notificationReason = "escalation";
+      this.logger.info({
+        message: `[ESCALATION DEBUG] ESCALATION TRIGGERED!`,
+        service: SERVICE_NAME,
+        method: "evaluateMonitorAction",
+      });
+    }
+
+    return decision;
+  }
+  return decision;
+}
 }

@@ -67,6 +67,12 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+
+	//backend for escalation
+	escalationDelay: z.coerce.number().optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	//end 
+
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -88,7 +94,14 @@ export const editMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
+	
+	//same here add smth for escalation
+	
 	notifications: z.array(z.string()).optional(),
+	escalationDelay: z.coerce.number().optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+    //end
+
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -144,6 +157,13 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+
+	//for escalation just in case 
+	escalationDelay: z.coerce.number().optional(),
+	escalationNotifications: z.array(z.string()).default([]),
+	downSince: z.string().nullable().optional(),
+	escalationSentAt: z.string().nullable().optional(),
+
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),
@@ -162,6 +182,8 @@ const importedMonitorSchema = z.object({
 	geoCheckInterval: z.number().min(300000).default(300000),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
+
+	
 });
 
 export const importMonitorsBodyValidation = z.object({

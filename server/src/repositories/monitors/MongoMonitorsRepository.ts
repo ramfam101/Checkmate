@@ -352,6 +352,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
 
+		//escalation
+
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) =>
+	toStringId(notification)
+);
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -374,6 +380,14 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+
+			//escalation
+			escalationDelay: doc.escalationDelay ?? 0,
+			escalationNotifications: escalationNotificationIds,
+
+			downSince: doc.downSince ? toDateString(doc.downSince) : undefined,
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : undefined,
+
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -411,6 +425,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
+		//escalation
+
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) =>
+	toStringId(notification)
+);
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -433,6 +453,14 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			//escalation
+
+			escalationDelay: doc.escalationDelay ?? 0,
+			escalationNotifications: escalationNotificationIds,
+
+			downSince: doc.downSince ? toDateString(doc.downSince) : undefined,
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : undefined,
+
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
