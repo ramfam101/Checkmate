@@ -168,7 +168,19 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
+				// Step 7. Handle escalation (best effort, don't wait)
+				if (statusChangeResult.monitor.status === "down" && statusChangeResult.statusChanged && statusChangeResult.prevStatus !== "down") {
+					this.handleEscalation(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 8. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -455,4 +467,44 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private handleEscalation = async (monitor: Monitor) => {
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0 || monitor.escalationDelayMinutes <= 0) {
+			return;
+		}
+
+		const delayMs = monitor.escalationDelayMinutes * 60 * 1000;
+
+		this.logger.info({
+			message: `Scheduling escalation for monitor ${monitor.id} in ${monitor.escalationDelayMinutes} minutes`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+
+		// Schedule escalation after delay
+		setTimeout(async () => {
+			try {
+				// Check if monitor is still down
+				const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+				if (currentMonitor.status !== "down") {
+					this.logger.info({
+						message: `Monitor ${monitor.id} is no longer down, cancelling escalation`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+					});
+					return;
+				}
+
+				// Send escalation notifications
+				await this.notificationsService.handleEscalation(currentMonitor);
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error sending escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}, delayMs);
+	};
 }

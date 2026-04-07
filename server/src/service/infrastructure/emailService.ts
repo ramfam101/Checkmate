@@ -128,7 +128,17 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
-		const emailConfig = {
+		// Validate required email configuration
+		if (!systemEmailHost || !systemEmailPort || !systemEmailAddress || !systemEmailPassword) {
+			this.logger.warn({
+				message: "Email configuration incomplete - missing required fields",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
+
+		const emailConfig: Record<string, unknown> = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
 			secure: systemEmailSecure,
@@ -136,25 +146,40 @@ export class EmailService implements IEmailService {
 				user: systemEmailUser || systemEmailAddress,
 				pass: systemEmailPassword,
 			},
-			name: systemEmailConnectionHost || "localhost",
 			connectionTimeout: 5000,
 			pool: systemEmailPool,
 			tls: {
 				rejectUnauthorized: systemEmailRejectUnauthorized,
 				ignoreTLS: systemEmailIgnoreTLS,
 				requireTLS: systemEmailRequireTLS,
-				servername: systemEmailTLSServername,
+				...(systemEmailTLSServername ? { servername: systemEmailTLSServername } : {}),
 			},
 		};
+
+		if (systemEmailConnectionHost) {
+			emailConfig.name = systemEmailConnectionHost;
+		}
+
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: error instanceof Error ? error.message : "Email transporter verification failed",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
+				details: {
+					host: systemEmailHost,
+					port: Number(systemEmailPort),
+					secure: systemEmailSecure,
+					tls: {
+						rejectUnauthorized: systemEmailRejectUnauthorized,
+						ignoreTLS: systemEmailIgnoreTLS,
+						requireTLS: systemEmailRequireTLS,
+						...(systemEmailTLSServername ? { servername: systemEmailTLSServername } : {}),
+					},
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;

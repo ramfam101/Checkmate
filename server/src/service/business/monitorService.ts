@@ -568,6 +568,8 @@ export class MonitorService implements IMonitorService {
 			teamId,
 			userId,
 			recentChecks: [],
+			escalationNotifications: monitor.escalationNotifications ?? [],
+			escalationDelayMinutes: monitor.escalationDelayMinutes ?? 0,
 			createdAt: "",
 			updatedAt: "",
 		}));

@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalation: (monitor: Monitor) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,6 +108,42 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
+	private sendEscalation = async (notification: Notification, monitor: Monitor, escalationMessage: NotificationMessage) => {
+		try {
+			switch (notification.type) {
+				case "webhook":
+					return await this.webhookProvider.sendMessage!(notification, escalationMessage);
+				case "slack":
+					return await this.slackProvider.sendMessage!(notification, escalationMessage);
+				case "matrix":
+					return await this.matrixProvider.sendMessage!(notification, escalationMessage);
+				case "pager_duty":
+					return await this.pagerDutyProvider.sendMessage!(notification, escalationMessage);
+				case "discord":
+					return await this.discordProvider.sendMessage!(notification, escalationMessage);
+				case "email":
+					return await this.emailProvider.sendMessage!(notification, escalationMessage);
+				case "teams":
+					return await this.teamsProvider.sendMessage!(notification, escalationMessage);
+				default:
+					this.logger.warn({
+						message: `Unknown notification type: ${notification.type}`,
+						service: SERVICE_NAME,
+						method: "sendEscalation",
+					});
+					return false;
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation to ${notification.type}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
+	};
+
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
@@ -139,6 +176,34 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalation = async (monitor: Monitor) => {
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(monitor.escalationNotifications);
+
+		// Create escalation message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, clientHost);
+
+		const tasks = notifications.map((notification) => this.sendEscalation(notification, monitor, escalationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+			});
+		}
+		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
