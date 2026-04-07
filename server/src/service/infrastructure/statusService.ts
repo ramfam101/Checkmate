@@ -233,12 +233,11 @@ export class StatusService implements IStatusService {
 			}
 
 			const prevStatus = monitor.status;
-			let newStatus: MonitorStatus = status === true ? "up" : "down";
+			let newStatus: MonitorStatus = monitor.status;
 			let statusChanged = false;
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -253,13 +252,13 @@ export class StatusService implements IStatusService {
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 
-			// If threshold has been met and the monitor is not already down, mark down:
-			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+			// If threshold has been met on a failing check and the monitor is not already down, mark down:
+			if (failureRate >= monitor.statusWindowThreshold && status === false && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
 			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			// If the failure rate is below the threshold on a successful check and the monitor is down, recover:
+			else if (failureRate < monitor.statusWindowThreshold && status === true && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
 			}

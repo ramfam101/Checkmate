@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalationSteps = watch("escalationSteps") ?? [];
 
 	useEffect(() => {
 		clearErrors();
@@ -220,6 +221,14 @@ const CreateMonitorPage = () => {
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
 		[watchedType, t]
+	);
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
 	);
 
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
@@ -705,11 +714,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -762,6 +766,140 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.notifications.escalation.title")}
+				subtitle={t("pages.createMonitor.form.notifications.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{watchedEscalationSteps.map((step, index) => {
+							const selectedEscalationNotifications = notificationOptions.filter((notification) =>
+								(step.notifications ?? []).includes(notification.id)
+							);
+
+							return (
+								<Stack
+									key={`escalation-${index}`}
+									spacing={theme.spacing(SPACING.MD)}
+								>
+									<TextField
+										type="number"
+										fieldLabel={t(
+											"pages.createMonitor.form.notifications.escalation.option.afterMinutes.label"
+										)}
+										value={step.afterMinutes}
+										onChange={(event) => {
+											const next = [...watchedEscalationSteps];
+											next[index] = {
+												...next[index],
+												afterMinutes: Number(event.target.value),
+											};
+											setValue("escalationSteps", next, { shouldDirty: true, shouldValidate: true });
+										}}
+										fullWidth
+									/>
+
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedEscalationNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											const next = [...watchedEscalationSteps];
+											const nextNotifications = newValue.map((notification) => notification.id);
+											if (nextNotifications.length === 0) {
+												next.splice(index, 1);
+											} else {
+												next[index] = {
+													...next[index],
+													notifications: nextNotifications,
+												};
+											}
+											setValue("escalationSteps", next, { shouldDirty: true, shouldValidate: true });
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t(
+											"pages.createMonitor.form.notifications.escalation.option.channels.label"
+										)}
+									/>
+									{selectedEscalationNotifications.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedEscalationNotifications.map((notification, notificationIndex) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={notification.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{notification.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															const next = [...watchedEscalationSteps];
+															const nextNotifications = (next[index].notifications ?? []).filter(
+																(id: string) => id !== notification.id
+															);
+															if (nextNotifications.length === 0) {
+																next.splice(index, 1);
+															} else {
+																next[index] = {
+																	...next[index],
+																	notifications: nextNotifications,
+																};
+															}
+															setValue("escalationSteps", next, {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+														}}
+														aria-label="Remove escalation notification"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{notificationIndex < selectedEscalationNotifications.length - 1 && (
+														<Divider />
+													)}
+												</Stack>
+											))}
+										</Stack>
+									)}
+
+									<Stack direction="row" justifyContent="flex-end">
+										<Button
+											variant="outlined"
+											color="error"
+											onClick={() => {
+												const next = watchedEscalationSteps.filter((_, stepIndex) => stepIndex !== index);
+												setValue("escalationSteps", next, { shouldDirty: true, shouldValidate: true });
+											}}
+										>
+											{t("pages.createMonitor.form.notifications.escalation.option.remove")}
+										</Button>
+									</Stack>
+								</Stack>
+							);
+						})}
+
+						<Button
+							variant="outlined"
+							onClick={() => {
+								setValue(
+									"escalationSteps",
+									[...watchedEscalationSteps, { afterMinutes: 15, notifications: [] }],
+									{ shouldDirty: true, shouldValidate: true }
+								);
+							}}
+						>
+							{t("pages.createMonitor.form.notifications.escalation.option.add")}
+						</Button>
+					</Stack>
 				}
 			/>
 

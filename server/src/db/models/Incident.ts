@@ -72,6 +72,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		sentEscalationMinutes: {
+			type: [Number],
+			default: [],
+		},
 	},
 	{ timestamps: true }
 );

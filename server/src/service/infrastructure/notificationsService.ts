@@ -1,6 +1,6 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Incident, Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IIncidentsRepository, IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -26,6 +26,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -40,6 +41,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -53,6 +55,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -132,9 +135,87 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	private sendEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<boolean> => {
+		const escalationSteps = [...(monitor.escalationSteps ?? [])].sort((a, b) => a.afterMinutes - b.afterMinutes);
+		if (escalationSteps.length === 0) {
+			return false;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			this.logger.warn({
+				message: `Skipping escalation notification: no active incident for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+			return false;
+		}
+
+		const incidentStartMs = new Date(activeIncident.startTime).getTime();
+		const elapsedMinutes = Math.floor((Date.now() - incidentStartMs) / 60000);
+		const alreadySent = new Set(activeIncident.sentEscalationMinutes ?? []);
+		const dueSteps = escalationSteps.filter((step) => step.afterMinutes <= elapsedMinutes && !alreadySent.has(step.afterMinutes));
+
+		if (dueSteps.length === 0) {
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		let allSucceeded = true;
+		const sentMinutes: number[] = [];
+
+		for (const step of dueSteps) {
+			if (!Array.isArray(step.notifications) || step.notifications.length === 0) {
+				this.logger.warn({
+					message: `Skipping escalation step at ${step.afterMinutes} minute(s): no notification channels configured`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotifications",
+				});
+				allSucceeded = false;
+				continue;
+			}
+
+			const stepDecision: MonitorActionDecision = {
+				...decision,
+				notificationReason: "escalation",
+				escalationAfterMinutes: step.afterMinutes,
+			};
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, stepDecision, clientHost);
+			const notifications = await this.notificationsRepository.findNotificationsByIds(step.notifications);
+			const outcomes = await Promise.all(
+				notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, stepDecision, notificationMessage))
+			);
+			const succeeded = outcomes.filter(Boolean).length;
+			if (succeeded !== notifications.length) {
+				allSucceeded = false;
+			}
+			if (succeeded > 0) {
+				sentMinutes.push(step.afterMinutes);
+			}
+		}
+
+		if (sentMinutes.length > 0) {
+			const nextSent = Array.from(new Set([...(activeIncident.sentEscalationMinutes ?? []), ...sentMinutes])).sort((a, b) => a - b);
+			await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+				sentEscalationMinutes: nextSent,
+			} as Partial<Incident>);
+		}
+
+		return allSucceeded;
+	};
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
+		}
+
+		if (decision.notificationReason === "escalation") {
+			return await this.sendEscalationNotifications(monitor, monitorStatusResponse, decision);
 		}
 
 		// Send notifications based on decision

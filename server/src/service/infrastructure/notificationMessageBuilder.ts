@@ -48,6 +48,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				escalationAfterMinutes: decision.escalationAfterMinutes,
 			},
 		};
 	}

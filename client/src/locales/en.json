@@ -541,7 +541,21 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"escalation": {
+						"title": "Escalated notifications",
+						"description": "Add additional notifications to be sent when an incident remains active for specific durations.",
+						"option": {
+							"afterMinutes": {
+								"label": "Notify after (minutes)"
+							},
+							"channels": {
+								"label": "Escalation notification channels"
+							},
+							"add": "Add escalation step",
+							"remove": "Remove step"
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",
