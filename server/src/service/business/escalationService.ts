@@ -18,6 +18,7 @@ export class EscalationService implements IEscalationService {
 	private notificationsRepository: INotificationsRepository;
 	private notificationsService: INotificationsService;
 	private logger: ILogger;
+	private sentEscalations: Set<string>; // Track sent escalations as "incidentId-ruleId"
 
 	constructor(
 		monitorsRepository: IMonitorsRepository,
@@ -31,6 +32,7 @@ export class EscalationService implements IEscalationService {
 		this.notificationsRepository = notificationsRepository;
 		this.notificationsService = notificationsService;
 		this.logger = logger;
+		this.sentEscalations = new Set();
 	}
 
 	get serviceName() {
@@ -47,6 +49,15 @@ export class EscalationService implements IEscalationService {
 
 			// Find all active incidents
 			const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+			const activeIncidentIds = new Set(activeIncidents.map((incident) => incident.id));
+
+			// Clean up sent escalations for resolved incidents
+			for (const key of this.sentEscalations) {
+				const incidentId = key.split("-")[0];
+				if (incidentId && !activeIncidentIds.has(incidentId)) {
+					this.sentEscalations.delete(key);
+				}
+			}
 
 			for (const incident of activeIncidents) {
 				await this.checkEscalationForIncident(incident);
@@ -151,73 +162,60 @@ export class EscalationService implements IEscalationService {
 				notificationReason: "status_change" as const,
 			};
 
-			// Send notifications to escalation channels
-			for (const notification of emailNotifications) {
-				try {
-					// Build escalation-specific message
-					const escalationMessage = {
-						type: "monitor_down" as const,
-						severity: "critical" as const,
-						monitor: {
-							id: monitor.id,
-							name: monitor.name,
-							url: monitor.url,
-							type: monitor.type,
-							status: monitor.status,
-						},
-						content: {
-							title: `ESCALATION: ${monitor.name} is still down`,
-							summary: `Monitor "${monitor.name}" has been down for ${rule.escalateAfterMinutes} minutes`,
-							details: [
-								`Original incident started at: ${new Date(incident.startTime).toISOString()}`,
-								`Status Code: ${incident.statusCode || "N/A"}`,
-								`Message: ${incident.message || "N/A"}`,
-								"Please take immediate action.",
-							],
-							timestamp: new Date(),
-						},
-						clientHost: "", // Will be set by notification service
-						metadata: {
-							teamId: monitor.teamId,
-							notificationReason: "escalation" as const,
-							escalationRuleId: rule.id,
-							incidentId: incident.id,
-						},
-					};
+			// Build escalation-specific message
+			const escalationMessage = {
+				type: "monitor_down" as const,
+				severity: "critical" as const,
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: monitor.url,
+					type: monitor.type,
+					status: monitor.status,
+				},
+				content: {
+					title: `ESCALATION: ${monitor.name} is still down`,
+					summary: `Monitor "${monitor.name}" has been down for ${rule.escalateAfterMinutes} minutes`,
+					details: [
+						`Original incident started at: ${new Date(incident.startTime).toISOString()}`,
+						`Status Code: ${incident.statusCode || "N/A"}`,
+						`Message: ${incident.message || "N/A"}`,
+						"Please take immediate action.",
+					],
+					timestamp: new Date(),
+				},
+				clientHost: "", // Will be set by notification service
+				metadata: {
+					teamId: monitor.teamId,
+					notificationReason: "escalation" as const,
+					escalationRuleId: rule.id,
+					incidentId: incident.id,
+				},
+			};
 
-					// Send the notification
-					const success = await this.notificationsService.sendNotificationsByIds(
-						rule.notificationIds,
-						monitor,
-						mockMonitorStatusResponse,
-						escalationDecision,
-						escalationMessage
-					);
+			// Send escalation notifications once per rule
+			const success = await this.notificationsService.sendNotificationsByIds(
+				rule.notificationIds,
+				monitor,
+				mockMonitorStatusResponse,
+				escalationDecision,
+				escalationMessage
+			);
 
-					if (success) {
-						this.logger.info({
-							message: `Escalation notification sent for monitor ${monitor.id}, rule ${rule.id}`,
-							service: SERVICE_NAME,
-							method: "sendEscalationNotifications",
-							details: { monitorId: monitor.id, incidentId: incident.id, ruleId: rule.id, notificationId: notification.id },
-						});
-					} else {
-						this.logger.warn({
-							message: `Failed to send escalation notification for monitor ${monitor.id}, rule ${rule.id}`,
-							service: SERVICE_NAME,
-							method: "sendEscalationNotifications",
-							details: { monitorId: monitor.id, incidentId: incident.id, ruleId: rule.id, notificationId: notification.id },
-						});
-					}
-				} catch (error: unknown) {
-					this.logger.error({
-						message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "sendEscalationNotifications",
-						details: { monitorId: monitor.id, incidentId: incident.id, ruleId: rule.id, notificationId: notification.id },
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				}
+			if (success) {
+				this.logger.info({
+					message: `Escalation notification sent for monitor ${monitor.id}, rule ${rule.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotifications",
+					details: { monitorId: monitor.id, incidentId: incident.id, ruleId: rule.id },
+				});
+			} else {
+				this.logger.warn({
+					message: `Failed to send escalation notification for monitor ${monitor.id}, rule ${rule.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotifications",
+					details: { monitorId: monitor.id, incidentId: incident.id, ruleId: rule.id },
+				});
 			}
 		} catch (error: unknown) {
 			this.logger.error({
@@ -230,17 +228,13 @@ export class EscalationService implements IEscalationService {
 	};
 
 	private hasEscalationBeenSent = async (incidentId: string, ruleId: string): Promise<boolean> => {
-		// For now, we'll use a simple approach: check if there's an escalation record
-		// In a production system, you'd want a dedicated EscalationLog collection
-		// For this implementation, we'll use a simple in-memory check or database field
-		// Since we don't have a dedicated table yet, we'll return false (always send)
-		// This is a simplification - in production you'd track sent escalations
-		return false;
+		const key = `${incidentId}-${ruleId}`;
+		return this.sentEscalations.has(key);
 	};
 
 	private markEscalationAsSent = async (incidentId: string, ruleId: string): Promise<void> => {
-		// For now, we'll skip persistence of sent escalations
-		// In production, you'd create an EscalationLog record
+		const key = `${incidentId}-${ruleId}`;
+		this.sentEscalations.add(key);
 		this.logger.debug({
 			message: `Marked escalation as sent for incident ${incidentId}, rule ${ruleId}`,
 			service: SERVICE_NAME,
