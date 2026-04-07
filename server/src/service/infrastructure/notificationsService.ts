@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	testAllNotificationsWithEscalation: (monitor: Monitor, regularNotificationIds: string[], escalationNotificationIds: string[]) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -172,6 +173,92 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 		return true;
+	};
+
+	testAllNotificationsWithEscalation = async (monitor: Monitor, regularNotificationIds: string[], escalationNotificationIds: string[]) => {
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		// Send regular test notifications
+		const regularOutcomes: boolean[] = [];
+		if (regularNotificationIds.length > 0) {
+			const regularNotifications = await this.notificationsRepository.findNotificationsByIds(regularNotificationIds);
+			const regularTasks = regularNotifications.map((notification) => this.sendTestNotification(notification));
+			regularOutcomes.push(...(await Promise.all(regularTasks)));
+		}
+
+		// Send escalation test notifications with simulated downtime
+		const escalationOutcomes: boolean[] = [];
+		if (escalationNotificationIds.length > 0) {
+			const escalationNotifications = await this.notificationsRepository.findNotificationsByIds(escalationNotificationIds);
+			try {
+				// Simulate 30 minutes of downtime for testing
+				const simulatedDowntimeMinutes = 30;
+				const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, simulatedDowntimeMinutes, clientHost);
+				for (const notification of escalationNotifications) {
+					const success = await this.sendMessageToProvider(notification, escalationMessage);
+					escalationOutcomes.push(success);
+				}
+			} catch (error) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error while building or sending escalation notifications",
+					service: SERVICE_NAME,
+					method: "testAllNotificationsWithEscalation",
+					stack: error instanceof Error ? error.stack : undefined,
+					details: {
+						monitorId: monitor.id,
+						escalationNotificationIds,
+					},
+				});
+				return false;
+			}
+		}
+
+		// Combine results
+		const allOutcomes = [...regularOutcomes, ...escalationOutcomes];
+		const succeeded = allOutcomes.filter(Boolean).length;
+		const failed = allOutcomes.length - succeeded;
+
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Test notifications completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "testAllNotificationsWithEscalation",
+			});
+			return false;
+		}
+		return true;
+	};
+
+	private sendMessageToProvider = async (notification: Notification, message: NotificationMessage): Promise<boolean> => {
+		try {
+			switch (notification.type) {
+				case "email":
+					return await this.emailProvider.sendMessage!(notification, message);
+				case "slack":
+					return await this.slackProvider.sendMessage!(notification, message);
+				case "discord":
+					return await this.discordProvider.sendMessage!(notification, message);
+				case "pager_duty":
+					return await this.pagerDutyProvider.sendMessage!(notification, message);
+				case "matrix":
+					return await this.matrixProvider.sendMessage!(notification, message);
+				case "webhook":
+					return await this.webhookProvider.sendMessage!(notification, message);
+				case "teams":
+					return await this.teamsProvider.sendMessage!(notification, message);
+				default:
+					return false;
+			}
+		} catch (error) {
+			this.logger.error({
+				message: `Failed to send message to ${notification.type} provider`,
+				service: SERVICE_NAME,
+				method: "sendMessageToProvider",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

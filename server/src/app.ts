@@ -5,7 +5,7 @@ import helmet from "helmet";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import swaggerUi, { type JsonObject } from "swagger-ui-express";
-import { handleErrors } from "@/middleware/handleErrors.js";
+import { createHandleErrors } from "@/middleware/handleErrors.js";
 import { generalApiLimiter } from "@/middleware/rateLimiter.js";
 import { sanitizeBody, sanitizeQuery } from "@/middleware/sanitization.js";
 import { setupRoutes } from "@/config/routes.js";
@@ -104,6 +104,6 @@ export const createApp = ({
 	app.get("*", (req, res) => {
 		res.sendFile(path.join(frontendPath, "index.html"));
 	});
-	app.use(handleErrors);
+	app.use(createHandleErrors(services.logger));
 	return app;
 };
