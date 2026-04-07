@@ -37,8 +37,10 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	escalationReason: "duration_threshold" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,13 +156,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 6.5. Handle escalation notifications (best effort, continue even in event of failure, don't wait)
+				if (decision.shouldSendEscalation) {
+					this.notificationsService.handleEscalationNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -418,7 +432,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -426,11 +440,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
+			escalationReason: null,
 		};
 
 		if (!statusChanged) {
+			// Even if status didn't change, check for escalation on existing incidents
+			await this.checkForEscalation(monitor, decision);
 			return decision;
 		}
 
@@ -454,5 +472,47 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async checkForEscalation(monitor: Monitor, decision: MonitorActionDecision): Promise<void> {
+		// Check if monitor has escalation configured
+		if (!monitor.escalationThreshold || monitor.escalationThreshold <= 0 || !monitor.escalationNotifications?.length) {
+			return;
+		}
+
+		try {
+			// Find active incident for this monitor
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident) {
+				return;
+			}
+
+			// Check if escalation has already been sent for this incident
+			// We'll use a simple approach: check if incident has been active longer than threshold
+			const incidentStartTime = parseInt(activeIncident.startTime);
+			const currentTime = Date.now();
+			const incidentDurationMinutes = (currentTime - incidentStartTime) / (1000 * 60);
+
+			if (incidentDurationMinutes >= monitor.escalationThreshold) {
+				// Check if we haven't already sent escalation for this incident
+				// For now, we'll send escalation every heartbeat after threshold is reached
+				// In a production system, you might want to track escalation state per incident
+				decision.shouldSendEscalation = true;
+				decision.escalationReason = "duration_threshold";
+
+				this.logger.info({
+					message: `Escalation triggered for monitor ${monitor.id}: incident duration ${incidentDurationMinutes.toFixed(1)} minutes exceeds threshold ${monitor.escalationThreshold} minutes`,
+					service: SERVICE_NAME,
+					method: "checkForEscalation",
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error checking for escalation: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "checkForEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	}
 }

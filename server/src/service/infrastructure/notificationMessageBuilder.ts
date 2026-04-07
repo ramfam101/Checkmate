@@ -15,6 +15,12 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +54,36 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Escalation is always for down monitors
+		const severity: NotificationSeverity = "critical"; // Escalation should be critical
+		const content = this.buildEscalationContent(monitor, monitorStatusResponse, decision);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+				escalationReason: decision.escalationReason || "duration_threshold",
 			},
 		};
 	}
@@ -178,6 +214,43 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			title: `Monitor: ${monitor.name}`,
 			summary: `Status update for monitor "${monitor.name}".`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const title = `🚨 ESCALATION: Monitor Still Down - ${monitor.name}`;
+		const summary = `URGENT: Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Still Down`,
+			`Type: ${monitor.type}`,
+			`Escalation Reason: ${decision.escalationReason === "duration_threshold" ? "Exceeded duration threshold" : "Unknown"}`,
+		];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		// Add escalation threshold info
+		if (monitor.escalationThreshold) {
+			details.push(`Escalation Threshold: ${monitor.escalationThreshold} minutes`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
 			timestamp: new Date(),
 		};
 	}
