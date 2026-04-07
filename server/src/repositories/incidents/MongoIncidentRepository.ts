@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationSentAt: doc.escalationSentAt ? this.toDateString(doc.escalationSentAt) : undefined,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -147,6 +148,10 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			throw new AppError({ message: `Failed to update incident with id ${incidentId}`, status: 500 });
 		}
 		return this.toEntity(updatedIncident);
+	};
+
+	markEscalationSent = async (incidentId: string): Promise<void> => {
+		await IncidentModel.findByIdAndUpdate(incidentId, { $set: { escalationSentAt: new Date() } });
 	};
 
 	countByTeamId = async (

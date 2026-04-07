@@ -15,37 +15,47 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	async sendTestAlert(notification: Partial<Notification>): Promise<boolean> {
-		const subject = "Test notification";
-		const html = await buildTestEmail(this.emailService);
+		try {
+			const subject = "Test notification";
+			const html = await buildTestEmail(this.emailService);
 
-		if (!notification.address) {
-			this.logger.warn({
-				message: "Missing address",
+			if (!notification.address) {
+				this.logger.warn({
+					message: "Missing address",
+					service: SERVICE_NAME,
+					method: "sendTestAlert",
+				});
+				return false;
+			}
+
+			if (!html) {
+				this.logger.warn({
+					message: "Failed to build test email content",
+					service: SERVICE_NAME,
+					method: "sendTestAlert",
+				});
+				return false;
+			}
+
+			const messageId = await this.emailService.sendEmail(notification.address, subject, html);
+			if (!messageId) {
+				this.logger.warn({
+					message: "Email test alert failed",
+					service: SERVICE_NAME,
+					method: "sendTestAlert",
+				});
+				return false;
+			}
+			return true;
+		} catch (error) {
+			this.logger.error({
+				message: error instanceof Error ? error.message : "Unknown error sending test alert",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
 		}
-
-		if (!html) {
-			this.logger.warn({
-				message: "Failed to build test email content",
-				service: SERVICE_NAME,
-				method: "sendTestAlert",
-			});
-			return false;
-		}
-
-		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
-		if (!messageId) {
-			this.logger.warn({
-				message: "Email test alert failed",
-				service: SERVICE_NAME,
-				method: "sendTestAlert",
-			});
-			return false;
-		}
-		return true;
 	}
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
@@ -83,6 +93,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
+			case "escalation":
+				return `ESCALATION: Monitor ${message.monitor.name} is still down`;
 			case "threshold_breach":
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":

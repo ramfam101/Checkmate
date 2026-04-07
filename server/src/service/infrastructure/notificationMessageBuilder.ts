@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalation has highest priority
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -99,6 +105,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "threshold_breach":
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
@@ -119,6 +127,27 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for more than ${monitor.escalateAfterMinutes} minute(s). This issue has been escalated.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down (Escalated)`, `Type: ${monitor.type}`, `Escalation threshold: ${monitor.escalateAfterMinutes} minute(s)`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
 		if (monitorStatusResponse.message) {
 			details.push(`Error: ${monitorStatusResponse.message}`);
 		}
