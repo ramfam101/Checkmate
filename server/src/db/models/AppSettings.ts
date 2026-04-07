@@ -35,7 +35,7 @@ const AppSettingsSchema = new Schema<AppSettingsDocument>(
 		systemEmailIgnoreTLS: { type: Boolean, default: false },
 		systemEmailRequireTLS: { type: Boolean, default: false },
 		systemEmailRejectUnauthorized: { type: Boolean, default: true },
-		
+
 		// --- New Escalation Email Settings ---
 		escalationEmailEnabled: { type: Boolean, default: false },
 		escalationEmailAddress: { type: String },

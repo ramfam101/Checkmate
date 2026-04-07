@@ -99,8 +99,8 @@ export class IncidentService implements IIncidentService {
 
 				// <-- FIX: Safely check for array and cast ObjectIds to strings
 				if (monitor.escalation && Array.isArray(monitor.escalation.notificationIds) && monitor.escalation.notificationIds.length > 0) {
-					const safeNotificationIds = monitor.escalation.notificationIds.map(id => id.toString());
-					
+					const safeNotificationIds = monitor.escalation.notificationIds.map((id) => id.toString());
+
 					await this.escalationService.createEscalationTracker(
 						createdIncident.id,
 						safeNotificationIds,
@@ -122,11 +122,7 @@ export class IncidentService implements IIncidentService {
 			activeIncident.endTime = new Date().toISOString(); // <-- FIX: Valid ISO string
 			activeIncident.resolutionType = "automatic";
 
-			const resolvedIncident = await this.incidentsRepository.updateById(
-				activeIncident.id,
-				activeIncident.teamId,
-				activeIncident
-			);
+			const resolvedIncident = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 
 			await this.escalationService.resolveEscalations(activeIncident.id);
 
@@ -147,9 +143,7 @@ export class IncidentService implements IIncidentService {
 			return "Threshold breach detected";
 		}
 
-		return breaches
-			.map((b) => `${b.metric.toUpperCase()}: ${b.formattedValue} (threshold: ${b.threshold}${b.unit})`)
-			.join(", ");
+		return breaches.map((b) => `${b.metric.toUpperCase()}: ${b.formattedValue} (threshold: ${b.threshold}${b.unit})`).join(", ");
 	}
 
 	resolveIncident = async (incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string) => {

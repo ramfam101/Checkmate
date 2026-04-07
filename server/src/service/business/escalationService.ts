@@ -12,13 +12,7 @@ const SERVICE_NAME = "EscalationService";
 
 export interface IEscalationService {
 	readonly serviceName: string;
-	createEscalationTracker(
-		incidentId: string,
-		notificationIds: string[],
-		delayMinutes: number,
-		monitorId: string,
-		teamId: string
-	): Promise<void>;
+	createEscalationTracker(incidentId: string, notificationIds: string[], delayMinutes: number, monitorId: string, teamId: string): Promise<void>;
 	checkAndProcessEscalations(): Promise<void>;
 	resolveEscalations(incidentId: string): Promise<void>;
 }
@@ -134,18 +128,11 @@ export class EscalationService implements IEscalationService {
 					const now = Date.now();
 
 					if (now - incidentStartTime >= delayMs) {
-						const escalationNotification = await this.notificationsRepository.findById(
-							escalation.notificationId,
-							escalation.teamId
-						);
+						const escalationNotification = await this.notificationsRepository.findById(escalation.notificationId, escalation.teamId);
 
 						const monitor = await this.monitorsRepository.findById(escalation.monitorId, escalation.teamId);
 
-						await this.notificationsService.sendEscalationNotification(
-							escalationNotification,
-							monitor,
-							incident
-						);
+						await this.notificationsService.sendEscalationNotification(escalationNotification, monitor, incident);
 
 						// FIX: We intentionally DO NOT mark this as escalated anymore.
 						// By leaving it 'pending', the queue will send a new email every single minute!

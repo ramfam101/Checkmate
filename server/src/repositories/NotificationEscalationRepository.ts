@@ -74,16 +74,9 @@ export class MongoNotificationEscalationRepository implements INotificationEscal
 		}
 	}
 
-	async updateStatus(
-		id: string,
-		status: "pending" | "escalated" | "resolved"
-	): Promise<NotificationEscalation> {
+	async updateStatus(id: string, status: "pending" | "escalated" | "resolved"): Promise<NotificationEscalation> {
 		try {
-			const escalation = await NotificationEscalationModel.findByIdAndUpdate(
-				id,
-				{ status },
-				{ new: true }
-			);
+			const escalation = await NotificationEscalationModel.findByIdAndUpdate(id, { status }, { new: true });
 			if (!escalation) {
 				throw new AppError({ message: "Escalation not found", status: 404 });
 			}
@@ -100,11 +93,7 @@ export class MongoNotificationEscalationRepository implements INotificationEscal
 
 	async markEscalated(id: string): Promise<NotificationEscalation> {
 		try {
-			const escalation = await NotificationEscalationModel.findByIdAndUpdate(
-				id,
-				{ status: "escalated", escalatedAt: new Date() },
-				{ new: true }
-			);
+			const escalation = await NotificationEscalationModel.findByIdAndUpdate(id, { status: "escalated", escalatedAt: new Date() }, { new: true });
 			if (!escalation) {
 				throw new AppError({ message: "Escalation not found", status: 404 });
 			}

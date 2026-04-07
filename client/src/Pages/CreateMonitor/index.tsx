@@ -805,7 +805,10 @@ const CreateMonitorPage = () => {
 											isOptionEqualToValue={(option, value) => option.id === value.id}
 										/>
 										{selectedNotifications.length > 0 && (
-											<Stack flex={1} width="100%">
+											<Stack
+												flex={1}
+												width="100%"
+											>
 												{selectedNotifications.map((notification, index) => (
 													<Stack
 														direction="row"
@@ -829,9 +832,7 @@ const CreateMonitorPage = () => {
 														>
 															<Trash2 size={16} />
 														</IconButton>
-														{index < selectedNotifications.length - 1 && (
-															<Divider />
-														)}
+														{index < selectedNotifications.length - 1 && <Divider />}
 													</Stack>
 												))}
 											</Stack>

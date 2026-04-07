@@ -107,10 +107,7 @@ export const sendTestEmailBodyValidation = z.object({
 
 export const updateNotificationsValidation = z
 	.object({
-		monitorIds: z
-			.array(z.string())
-			.min(1, "At least one monitor ID is required")
-			.max(100, "Cannot update more than 100 monitors at once"),
+		monitorIds: z.array(z.string()).min(1, "At least one monitor ID is required").max(100, "Cannot update more than 100 monitors at once"),
 		notificationIds: z.array(z.string()).max(100, "Cannot specify more than 100 notification IDs at once"),
 		action: z.enum(["add", "remove", "set"] as const),
 	})

@@ -34,7 +34,9 @@ const notificationSlice = createSlice({
 				escalationConfig: NotificationEscalationConfig;
 			}>
 		) => {
-			const notification = state.notifications.find((n) => n.id === action.payload.notificationId);
+			const notification = state.notifications.find(
+				(n) => n.id === action.payload.notificationId
+			);
 			if (notification) {
 				notification.escalationConfig = action.payload.escalationConfig;
 			}

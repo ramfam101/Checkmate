@@ -169,7 +169,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 	deleteJob = async (monitor: Monitor) => {
 		this.scheduler.removeJob(monitor.id);
-		
+
 		const geoJobId = `${monitor.id}-geo`;
 		const existingGeoJob = await this.scheduler.getJob(geoJobId);
 		if (existingGeoJob) {

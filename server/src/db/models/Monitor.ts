@@ -294,8 +294,8 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
-        // --- ESCALATION ATTACHED HERE ---
-		escalation: { type: escalationSchema, default: null }, 
+		// --- ESCALATION ATTACHED HERE ---
+		escalation: { type: escalationSchema, default: null },
 		secret: {
 			type: String,
 		},

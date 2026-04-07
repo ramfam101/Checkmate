@@ -4,10 +4,13 @@ import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
 // Reusable schema for the new escalation settings
-const escalationValidation = z.object({
-	delayMinutes: z.number().min(0).max(1440).default(15),
-	notificationIds: z.array(z.string()).default([])
-}).nullable().optional();
+const escalationValidation = z
+	.object({
+		delayMinutes: z.number().min(0).max(1440).default(15),
+		notificationIds: z.array(z.string()).default([]),
+	})
+	.nullable()
+	.optional();
 
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),

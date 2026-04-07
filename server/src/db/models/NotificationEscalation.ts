@@ -63,10 +63,7 @@ const NotificationEscalationSchema = new Schema<NotificationEscalationDocument>(
 NotificationEscalationSchema.index({ incidentId: 1, status: 1 });
 NotificationEscalationSchema.index({ teamId: 1, status: 1 });
 
-const NotificationEscalationModel = model<NotificationEscalationDocument>(
-	"NotificationEscalation",
-	NotificationEscalationSchema
-);
+const NotificationEscalationModel = model<NotificationEscalationDocument>("NotificationEscalation", NotificationEscalationSchema);
 
 export type { NotificationEscalationDocument };
 export { NotificationEscalationModel };

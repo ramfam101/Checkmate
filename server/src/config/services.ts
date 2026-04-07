@@ -292,12 +292,7 @@ export const initializeServices = async ({
 		escalationService
 	);
 
-	const superSimpleQueue = await SuperSimpleQueue.create(
-		logger, 
-		superSimpleQueueHelper, 
-		monitorsRepository, 
-		escalationService
-	);
+	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository, escalationService);
 
 	// Business services
 	const userService = new UserService({

@@ -102,26 +102,15 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision
-	) => {
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(
-			monitor,
-			monitorStatusResponse,
-			decision,
-			clientHost
-		);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) =>
-			this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage)
-		);
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
@@ -129,11 +118,7 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision
-	) => {
+	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
@@ -143,14 +128,22 @@ export class NotificationsService implements INotificationsService {
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {
-			case "email": return await this.emailProvider.sendTestAlert(notification);
-			case "slack": return await this.slackProvider.sendTestAlert(notification);
-			case "discord": return await this.discordProvider.sendTestAlert(notification);
-			case "pager_duty": return await this.pagerDutyProvider.sendTestAlert(notification);
-			case "matrix": return await this.matrixProvider.sendTestAlert(notification);
-			case "webhook": return await this.webhookProvider.sendTestAlert(notification);
-			case "teams": return await this.teamsProvider.sendTestAlert(notification);
-			default: return false;
+			case "email":
+				return await this.emailProvider.sendTestAlert(notification);
+			case "slack":
+				return await this.slackProvider.sendTestAlert(notification);
+			case "discord":
+				return await this.discordProvider.sendTestAlert(notification);
+			case "pager_duty":
+				return await this.pagerDutyProvider.sendTestAlert(notification);
+			case "matrix":
+				return await this.matrixProvider.sendTestAlert(notification);
+			case "webhook":
+				return await this.webhookProvider.sendTestAlert(notification);
+			case "teams":
+				return await this.teamsProvider.sendTestAlert(notification);
+			default:
+				return false;
 		}
 	};
 
@@ -161,17 +154,13 @@ export class NotificationsService implements INotificationsService {
 		return outcomes.filter(Boolean).length === outcomes.length;
 	};
 
-	sendEscalationNotification = async (
-		notification: Notification,
-		monitor: Monitor,
-		incident: Incident
-	): Promise<boolean> => {
+	sendEscalationNotification = async (notification: Notification, monitor: Monitor, incident: Incident): Promise<boolean> => {
 		try {
 			const delayMinutes = monitor.escalation?.delayMinutes ?? 15;
 			const incidentDuration = incident.endTime
 				? new Date(incident.endTime).getTime() - new Date(incident.startTime).getTime()
 				: Date.now() - new Date(incident.startTime).getTime();
-            
+
 			const minutesDown = Math.floor(incidentDuration / 1000 / 60);
 
 			const settings = this.settingsService.getSettings();
@@ -181,21 +170,16 @@ export class NotificationsService implements INotificationsService {
 				status: incident.status ? "down" : "up",
 				responseTime: 0,
 				statusCode: incident.statusCode ?? 500,
-				message: incident.message ?? "Escalation"
+				message: incident.message ?? "Escalation",
 			} as any;
 
 			const dummyDecision = {
 				shouldSendNotification: true,
 				shouldCreateIncident: false,
-				shouldResolveIncident: false
+				shouldResolveIncident: false,
 			} as any;
 
-			const escalationMessage = this.notificationMessageBuilder.buildMessage(
-				monitor,
-				dummyStatusResponse,
-				dummyDecision,
-				clientHost
-			);
+			const escalationMessage = this.notificationMessageBuilder.buildMessage(monitor, dummyStatusResponse, dummyDecision, clientHost);
 
 			if (escalationMessage && (escalationMessage as any).context) {
 				(escalationMessage as any).context.title = `🚨 ESCALATION: ${monitor.name}`;
@@ -205,14 +189,14 @@ export class NotificationsService implements INotificationsService {
 					`URL: ${monitor.url}`,
 					`Status: Escalated`,
 					`Type: ${monitor.type}`,
-					`Unacknowledged Time: ${minutesDown} minutes`
+					`Unacknowledged Time: ${minutesDown} minutes`,
 				];
 			}
 
 			// FIX: Trick the EmailProvider into putting ESCALATION in the subject line
 			(escalationMessage as any).monitor = {
 				...monitor,
-				name: `🚨 ESCALATION: ${monitor.name}`
+				name: `🚨 ESCALATION: ${monitor.name}`,
 			};
 
 			return await this.send(notification, monitor, null, null, escalationMessage);
