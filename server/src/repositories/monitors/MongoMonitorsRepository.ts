@@ -17,7 +17,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined, escalatedNotifications: undefined }));
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -293,7 +293,18 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		const notificationObjectId = new mongoose.Types.ObjectId(notificationId);
+		await MonitorModel.updateMany(
+			{
+				$or: [{ notifications: notificationObjectId }, { "escalatedNotifications.notificationChannels": notificationObjectId }],
+			},
+			{
+				$pull: {
+					notifications: notificationObjectId,
+					"escalatedNotifications.$[].notificationChannels": notificationObjectId,
+				},
+			}
+		);
 	};
 
 	updateNotifications = async (
@@ -351,6 +362,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalatedNotifications = (doc.escalatedNotifications ?? []).map((rule) => ({
+			delayMinutes: rule.delayMinutes,
+			notificationChannels: (rule.notificationChannels ?? []).map((channel) => toStringId(channel)),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +389,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalatedNotifications,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +426,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalatedNotifications = (doc.escalatedNotifications ?? []).map((rule) => ({
+			delayMinutes: rule.delayMinutes,
+			notificationChannels: (rule.notificationChannels ?? []).map((channel) => toStringId(channel)),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +453,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalatedNotifications,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

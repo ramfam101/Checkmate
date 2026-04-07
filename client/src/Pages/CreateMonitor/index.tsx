@@ -37,6 +37,7 @@ import {
 	type MonitorType,
 	type GamesMap,
 	supportsGeoCheck,
+	type EscalatedNotificationRule,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
@@ -202,7 +203,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -220,6 +221,15 @@ const CreateMonitorPage = () => {
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
 		[watchedType, t]
+	);
+
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
 	);
 
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
@@ -705,11 +715,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -765,35 +770,170 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalatedNotifications"
+						control={control}
+						render={({ field, fieldState }) => {
+							const rules: EscalatedNotificationRule[] = field.value ?? [];
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{rules.map((rule, ruleIndex) => {
+										const selectedChannels = notificationOptions.filter((n) =>
+											rule.notificationChannels.includes(n.id)
+										);
+
+										return (
+											<Stack
+												key={`escalation-rule-${ruleIndex}`}
+												spacing={theme.spacing(LAYOUT.SM)}
+											>
+												<Stack
+													direction="row"
+													spacing={theme.spacing(LAYOUT.SM)}
+													alignItems="center"
+												>
+													<TextField
+														type="number"
+														fieldLabel={t(
+															"pages.createMonitor.form.escalations.delayMinutes"
+														)}
+														value={rule.delayMinutes}
+														onChange={(event) => {
+															const nextRules = [...rules];
+															nextRules[ruleIndex] = {
+																...nextRules[ruleIndex],
+																delayMinutes: Number(event.target.value),
+															};
+															field.onChange(nextRules);
+														}}
+														fullWidth
+													/>
+													<IconButton
+														size="small"
+														onClick={() => {
+															const nextRules = rules.filter((_, index) => index !== ruleIndex);
+															field.onChange(nextRules);
+														}}
+														aria-label={t("pages.createMonitor.form.escalations.removeRule")}
+													>
+														<Trash2 size={16} />
+													</IconButton>
+												</Stack>
+
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selectedChannels}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: typeof notificationOptions) => {
+														const nextRules = [...rules];
+														nextRules[ruleIndex] = {
+															...nextRules[ruleIndex],
+															notificationChannels: newValue.map((notification) => notification.id),
+														};
+														field.onChange(nextRules);
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t("pages.createMonitor.form.escalations.channels")}
+												/>
+												{selectedChannels.length > 0 && (
+													<Stack
+														flex={1}
+														width="100%"
+													>
+														{selectedChannels.map((notification, channelIndex) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={`${notification.id}-${channelIndex}`}
+																width="100%"
+															>
+																<Typography flexGrow={1}>{notification.notificationName}</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		const nextRules = [...rules];
+																		nextRules[ruleIndex] = {
+																			...nextRules[ruleIndex],
+																			notificationChannels: nextRules[ruleIndex].notificationChannels.filter(
+																				(id: string) => id !== notification.id
+																			),
+																		};
+																		field.onChange(nextRules);
+																	}}
+																	aria-label={t("pages.createMonitor.form.escalations.removeRule")}
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{channelIndex < selectedChannels.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+												{ruleIndex < rules.length - 1 && <Divider />}
+											</Stack>
+										);
+									})}
+									{fieldState.error?.message && (
+										<Typography color="error">{fieldState.error.message}</Typography>
+									)}
+									<Button
+										variant="outlined"
+										type="button"
+										onClick={() => {
+											const nextRules = [
+												...rules,
+												{ delayMinutes: 5, notificationChannels: [] },
+											];
+											setValue("escalatedNotifications", nextRules, {
+												shouldDirty: true,
+												shouldValidate: true,
+											});
+										}}
+									>
+										{t("pages.createMonitor.form.escalations.addRule")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.ignoreTls.title")}
-					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-					rightContent={
-						<Controller
-							name="ignoreTlsErrors"
-							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
-									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
-								</Stack>
-							)}
-						/>
-					}
-				/>
-			)}
+					<ConfigBox
+						title={t("pages.createMonitor.form.ignoreTls.title")}
+						subtitle={t("pages.createMonitor.form.ignoreTls.description")}
+						rightContent={
+							<Controller
+								name="ignoreTlsErrors"
+								control={control}
+								render={({ field }) => (
+									<Stack
+										direction="row"
+										alignItems="center"
+										spacing={theme.spacing(SPACING.LG)}
+									>
+										<Switch
+											checked={field.value ?? false}
+											onChange={(e) => field.onChange(e.target.checked)}
+										/>
+										<Typography>
+											{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
+										</Typography>
+									</Stack>
+								)}
+							/>
+						}
+					/>
+				)}
 
 			{watchedType === "http" && (
 				<ConfigBox

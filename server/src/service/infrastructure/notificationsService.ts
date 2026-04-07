@@ -14,6 +14,14 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (args: {
+		monitor: Monitor;
+		monitorStatusResponse: MonitorStatusResponse;
+		decision: MonitorActionDecision;
+		notificationIds: string[];
+		escalationDelayMinutes: number;
+		incidentDurationMinutes: number;
+	}) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -65,13 +73,7 @@ export class NotificationsService implements INotificationsService {
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
-	private send = async (
-		notification: Notification,
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
-		notificationMessage: NotificationMessage | undefined
-	): Promise<boolean> => {
+	private send = async (notification: Notification, notificationMessage: NotificationMessage | undefined): Promise<boolean> => {
 		if (!notificationMessage) {
 			this.logger.warn({
 				message: "Notification message not provided",
@@ -109,14 +111,19 @@ export class NotificationsService implements INotificationsService {
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		return await this.sendNotificationsByIds(notificationIds, notificationMessage);
+	};
+
+	private sendNotificationsByIds = async (notificationIds: string[], notificationMessage: NotificationMessage) => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		const tasks = notifications.map((notification) => this.send(notification, notificationMessage));
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
@@ -139,6 +146,50 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotifications = async ({
+		monitor,
+		monitorStatusResponse,
+		decision,
+		notificationIds,
+		escalationDelayMinutes,
+		incidentDurationMinutes,
+	}: {
+		monitor: Monitor;
+		monitorStatusResponse: MonitorStatusResponse;
+		decision: MonitorActionDecision;
+		notificationIds: string[];
+		escalationDelayMinutes: number;
+		incidentDurationMinutes: number;
+	}) => {
+		if (!notificationIds.length) {
+			return true;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const baseMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const escalationMessage: NotificationMessage = {
+			...baseMessage,
+			content: {
+				...baseMessage.content,
+				title: `Escalation: ${baseMessage.content.title}`,
+				summary: `Incident for monitor "${monitor.name}" remains unresolved after ${incidentDurationMinutes} minute(s).`,
+				details: [
+					...(baseMessage.content.details ?? []),
+					`Escalation delay: ${escalationDelayMinutes} minute(s)`,
+					`Current incident duration: ${incidentDurationMinutes} minute(s)`,
+				],
+				timestamp: new Date(),
+			},
+			metadata: {
+				...baseMessage.metadata,
+				notificationReason: "escalation",
+			},
+		};
+
+		return await this.sendNotificationsByIds(notificationIds, escalationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
