@@ -651,7 +651,7 @@ export const SettingsPage = () => {
 										}}
 										fieldLabel={t("pages.settings.form.email.option.port.label")}
 										type="number"
-										inputProps={{ min: 0 }}
+										slotProps={{ htmlInput: { min: 0 } }}
 										placeholder={t("pages.settings.form.email.option.port.placeholder")}
 										error={!!fieldState.error}
 										helperText={fieldState.error?.message}

@@ -36,3 +36,6 @@ export { default as MaintenanceWindowModel } from "@/db/models/MaintenanceWindow
 
 export * from "@/db/models/GeoCheck.js";
 export { default as GeoCheckModel } from "@/db/models/GeoCheck.js";
+
+export * from "@/db/models/MonitorNotificationDispatchState.js";
+export { default as MonitorNotificationDispatchStateModel } from "@/db/models/MonitorNotificationDispatchState.js";

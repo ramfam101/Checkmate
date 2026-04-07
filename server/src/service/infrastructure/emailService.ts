@@ -62,6 +62,27 @@ export class EmailService implements IEmailService {
 		return EmailService.SERVICE_NAME;
 	}
 
+	private getMailErrorDetails = (error: unknown): Record<string, unknown> => {
+		if (!(error instanceof Error)) {
+			return { rawError: error };
+		}
+
+		const smtpError = error as Error & {
+			code?: string;
+			command?: string;
+			response?: string;
+			responseCode?: number;
+		};
+
+		return {
+			message: smtpError.message,
+			code: smtpError.code,
+			command: smtpError.command,
+			responseCode: smtpError.responseCode,
+			response: smtpError.response,
+		};
+	};
+
 	init = () => {
 		this.loadTemplate = (templateName) => {
 			try {
@@ -155,6 +176,16 @@ export class EmailService implements IEmailService {
 				message: "Email transporter verification failed",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
+				details: {
+					...this.getMailErrorDetails(error),
+					host: systemEmailHost,
+					port: Number(systemEmailPort),
+					secure: systemEmailSecure,
+					requireTLS: systemEmailRequireTLS,
+					ignoreTLS: systemEmailIgnoreTLS,
+					rejectUnauthorized: systemEmailRejectUnauthorized,
+					user: systemEmailUser || systemEmailAddress,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
@@ -170,9 +201,17 @@ export class EmailService implements IEmailService {
 			return info?.messageId;
 		} catch (error: unknown) {
 			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
+				message: "Email send failed",
 				service: SERVICE_NAME,
 				method: "sendEmail",
+				details: {
+					...this.getMailErrorDetails(error),
+					to,
+					from: systemEmailAddress,
+					host: systemEmailHost,
+					port: Number(systemEmailPort),
+					secure: systemEmailSecure,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 		}
