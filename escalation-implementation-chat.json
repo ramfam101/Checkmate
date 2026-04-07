@@ -1,0 +1,216 @@
+{
+  "title": "Checkmate Escalated Notifications Implementation",
+  "date": "2026-04-07",
+  "topic": "Implementing escalated email notifications for monitoring downtime",
+  "status": "Completed",
+  "conversation": [
+    {
+      "step": 1,
+      "user_request": "Implement escalated notifications for this Checkmate monitoring app. First, look at Monitor.ts and explain the current monitor schema structure, then look at monitorService.ts and explain how notifications are currently triggered when a monitor goes down",
+      "assistant_actions": [
+        "Reviewed Monitor.ts schema structure",
+        "Analyzed monitorService.ts notification handling",
+        "Identified that notifications are triggered through job queue system"
+      ]
+    },
+    {
+      "step": 2,
+      "user_request": "Locate the check runner and notification sender code in server/src/service/infrastructure",
+      "assistant_actions": [
+        "Found SuperSimpleQueueHelper.ts - main job execution logic",
+        "Located notificationsService.ts - orchestrates all notifications",
+        "Found emailService.ts - handles actual email sending",
+        "Identified notificationMessageBuilder.ts - builds notification content",
+        "Located notificationProviders/email.ts - email provider implementation"
+      ],
+      "key_finding": "Notifications are triggered when monitor status changes to 'down', and existing email infrastructure already exists"
+    },
+    {
+      "step": 3,
+      "user_request": "Add an escalations array to the monitor schema with delay (minutes), type (string), and contacts (email array)",
+      "changes_made": {
+        "file": "Monitor.ts",
+        "additions": [
+          "Added escalationSchema with delay, type, contacts fields",
+          "Added escalations array field to MonitorSchema",
+          "Added TypeScript types for MonitorDocumentBase"
+        ]
+      }
+    },
+    {
+      "step": 4,
+      "user_request": "Wire escalation processing into SuperSimpleQueueHelper - track when monitor first went down and check escalation delays on each check",
+      "changes_made": {
+        "files": [
+          "Monitor.ts - added firstDownAt and escalationsSent fields",
+          "statusService.ts - sets firstDownAt when monitor goes down, clears on recovery",
+          "SuperSimpleQueueHelper.ts - added escalation logic after notifications",
+          "services.ts - injected emailProvider and notificationMessageBuilder"
+        ],
+        "logic": "For each check while monitor is down, compare elapsed minutes to escalation delays and send escalation emails if threshold passed and not already sent"
+      }
+    },
+    {
+      "step": 5,
+      "user_request": "Implement escalations UI in client/src/Pages/CreateMonitor/index.tsx with Add Escalation button and rows for delay/email/remove",
+      "changes_made": {
+        "files": [
+          "Validation/monitor.ts - added escalations to validation schema",
+          "Pages/CreateMonitor/index.tsx - added useFieldArray hook and UI components"
+        ],
+        "features": [
+          "Add Escalation button to append new rows",
+          "Each row has delay input (minutes) and email input with remove button",
+          "Follows existing styling and React Hook Form patterns",
+          "Escalations included in form submission payload"
+        ]
+      }
+    },
+    {
+      "step": 6,
+      "user_request": "Fix invalid JSON syntax in all locale files - trailing commas before pages key around line 1110",
+      "changes_made": {
+        "files": [
+          "client/src/locales/fr.json",
+          "client/src/locales/de.json",
+          "client/src/locales/pt-BR.json",
+          "client/src/locales/ru.json",
+          "client/src/locales/th.json",
+          "client/src/locales/tr.json",
+          "client/src/locales/zh-TW.json",
+          "client/src/locales/ja.json",
+          "client/src/locales/zh-CN.json"
+        ],
+        "fix": "Removed trailing commas before 'pages' keys to fix JSON syntax errors"
+      }
+    },
+    {
+      "step": 7,
+      "user_request": "Fix TransformError in SuperSimpleQueueHelper.ts at line 232 - unexpected catch syntax error",
+      "changes_made": {
+        "files": [
+          "SuperSimpleQueueHelper.ts - fixed missing closing brace",
+          "server/src/types/monitor.ts - added escalations, firstDownAt, escalationsSent properties"
+        ]
+      }
+    },
+    {
+      "step": 8,
+      "user_request": "Escalations field not being saved when editing existing monitor - check form submission and prepopulation",
+      "root_cause": "Backend validation schema was stripping escalations field",
+      "changes_made": {
+        "file": "server/src/validation/monitorValidation.ts",
+        "fix": "Added escalationSchema to createMonitorBodyValidation and editMonitorBodyValidation"
+      }
+    },
+    {
+      "step": 9,
+      "user_request": "Escalations field sent in patch request but not saved to database",
+      "root_cause": "Repository toEntity() methods were not including escalations and escalationsSent in returned objects",
+      "changes_made": {
+        "file": "server/src/repositories/monitors/MongoMonitorsRepository.ts",
+        "additions": [
+          "Added escalations to toEntity()",
+          "Added escalations to toEntityWithChecks()",
+          "Added escalationsSent to both methods",
+          "Added firstDownAt to both methods"
+        ]
+      }
+    },
+    {
+      "step": 10,
+      "user_request": "Escalation emails not firing - add debug logging to escalation logic in SuperSimpleQueueHelper.ts",
+      "changes_made": {
+        "file": "SuperSimpleQueueHelper.ts",
+        "additions": [
+          "Added thorough logger.info statements throughout escalation block",
+          "Log when escalation processing starts",
+          "Log when escalations are skipped (not down, firstDownAt missing)",
+          "Log escalation count and elapsed minutes",
+          "Log when escalation is due vs not due yet",
+          "Log when emails are sent and escalationsSent is persisted"
+        ]
+      }
+    },
+    {
+      "step": 11,
+      "user_request": "Trace end-to-end: verify firstDownAt is set and persists correctly",
+      "root_cause": "MongoMonitorsRepository.toEntity() was not including firstDownAt in returned monitor object, causing escalation logic to skip processing",
+      "fix": "Added firstDownAt mapping to toEntity and toEntityWithChecks methods"
+    },
+    {
+      "step": 12,
+      "user_request": "Modify escalation logic to send emails repeatedly at specified delay while monitor remains down instead of only once",
+      "changes_made": {
+        "file": "SuperSimpleQueueHelper.ts",
+        "logic_change": {
+          "before": "escalationsSent tracked indices as a boolean array - each escalation sent only once",
+          "after": "escalationsSent stores last minute each escalation was sent - allows repeat sends at each configured interval"
+        },
+        "implementation": [
+          "Changed escalationsSent to store elapsed minutes instead of boolean flags",
+          "Check if already sent this minute: skip if escalationsSent[i] === elapsedMinutes",
+          "Check if enough time for repeat: skip if elapsedMinutes - lastSentMinute < escalation.delay",
+          "Send escalation and update escalationsSent[i] = elapsedMinutes before persisting"
+        ]
+      }
+    }
+  ],
+  "final_implementation_summary": {
+    "database_schema_changes": {
+      "Monitor": [
+        "escalations: Array of { delay (number), type (string), contacts (string[]) }",
+        "firstDownAt: Date (tracks when monitor first went down)",
+        "escalationsSent: Array of numbers (tracks last minute each escalation was sent)"
+      ]
+    },
+    "backend_flow": [
+      "1. Monitor check fails, statusService sets firstDownAt = new Date()",
+      "2. SuperSimpleQueueHelper.getMonitorJob() runs each heartbeat",
+      "3. If monitor.status === 'down', escalation logic evaluates all configured escalations",
+      "4. For each escalation with delay <= elapsedMinutes and lastSentMinute < elapsedMinutes - delay, send emails",
+      "5. Store lastSentMinute in escalationsSent[i] to prevent duplicate sends in same minute",
+      "6. On monitor recovery (status = 'up'), clear firstDownAt and reset escalationsSent"
+    ],
+    "frontend_ui": [
+      "CreateMonitor page includes escalations section",
+      "Users can add multiple escalation tiers with delay (minutes) and email addresses",
+      "Each escalation row has remove button",
+      "Escalations automatically submitted with monitor form data"
+    ],
+    "email_sending": [
+      "Uses existing EmailProvider and EmailService infrastructure",
+      "Reuses notificationMessageBuilder for consistent message formatting",
+      "Escalation emails sent using same nodemailer transport as regular notifications",
+      "Errors logged but don't interrupt monitor check flow"
+    ],
+    "recurring_behavior": [
+      "Escalations repeat at configured intervals while monitor remains down",
+      "If escalation delay is 30 minutes, email resends every 30 minutes during downtime",
+      "Once monitor recovers, escalation tracking resets for next incident"
+    ]
+  },
+  "verification_points": [
+    "Monitor goes down -> firstDownAt set in database",
+    "30-minute escalation delay -> initial escalation email sent at ~30 minute mark (plus/minus check interval)",
+    "Monitor still down at 60 minutes -> escalation email sent again",
+    "Monitor still down at 90 minutes -> escalation email sent again",
+    "Monitor recovers -> escalationsSent reset, ready for next incident",
+    "Server logs show escalation processing, skips, and sends"
+  ],
+  "technologies_used": {
+    "backend": [
+      "TypeScript",
+      "Express.js",
+      "MongoDB/Mongoose",
+      "Nodemailer for email",
+      "Winston logger"
+    ],
+    "frontend": [
+      "React",
+      "React Hook Form with useFieldArray",
+      "Zod validation",
+      "Material-UI components"
+    ]
+  }
+}

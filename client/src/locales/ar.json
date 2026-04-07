@@ -1104,5 +1104,26 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
-}
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalations": {
+					"description": "",
+					"title": "",
+					"option": {
+						"delay": {
+							"label": "",
+							"placeholder": ""
+						},
+						"email": {
+							"label": "",
+							"placeholder": ""
+						}
+					},
+					"addEscalation": "",
+					"removeEscalation": ""
+				}
+			}
+		}
+	}}

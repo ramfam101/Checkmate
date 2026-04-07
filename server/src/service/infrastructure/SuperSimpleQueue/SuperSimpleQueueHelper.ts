@@ -10,6 +10,8 @@ import {
 	IStatusService,
 	IncidentService,
 	type IGeoChecksService,
+	INotificationProvider,
+	INotificationMessageBuilder,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
@@ -66,6 +68,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private emailProvider: INotificationProvider;
+	private notificationMessageBuilder: INotificationMessageBuilder;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +87,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		emailProvider: INotificationProvider,
+		notificationMessageBuilder: INotificationMessageBuilder
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +107,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.emailProvider = emailProvider;
+		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
 	get serviceName() {
@@ -156,27 +164,187 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				// Step 6. Handle notifications
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					try {
+						await this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision);
+					} catch (error: unknown) {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
 						});
+					}
+				}
+				
+
+								// Step 6b. Handle escalations: send escalation emails after configured delays while monitor remains down
+				try {
+					const updatedMonitor = statusChangeResult.monitor as any;
+
+					if (updatedMonitor && updatedMonitor.status === "down" && updatedMonitor.firstDownAt) {
+						const escalations = Array.isArray(updatedMonitor.escalations) ? updatedMonitor.escalations : [];
+						const escalationsSent = Array.isArray(updatedMonitor.escalationsSent) ? updatedMonitor.escalationsSent.slice() : [];
+
+						if (escalations.length > 0) {
+							const firstDown = new Date(updatedMonitor.firstDownAt).getTime();
+							const elapsedMinutes = Math.floor((Date.now() - firstDown) / (1000 * 60));
+
+							const settings = this.settingsService.getSettings();
+							const clientHost = settings.clientHost || "Host not defined";
+
+							this.logger.info({
+								message: `Processing escalations for monitor ${updatedMonitor.id}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								details: {
+									status: updatedMonitor.status,
+									firstDownAt: updatedMonitor.firstDownAt,
+									elapsedMinutes,
+									escalationCount: escalations.length,
+									escalationsSent,
+								},
+							});
+
+							const escalationDecision = { ...decision };
+							const message = this.notificationMessageBuilder.buildMessage(updatedMonitor, status, escalationDecision, clientHost);
+
+							for (let i = 0; i < escalations.length; i++) {
+								const escalation = escalations[i];
+								const lastSentMinute = typeof escalationsSent[i] === "number" ? escalationsSent[i] : null;
+
+								if (!escalation || typeof escalation.delay !== "number" || escalation.delay <= 0) {
+									continue;
+								}
+
+								if (elapsedMinutes < escalation.delay) {
+									this.logger.info({
+										message: `Skipping escalation ${i} for monitor ${updatedMonitor.id}: not due yet`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: {
+											delay: escalation.delay,
+											elapsedMinutes,
+										},
+									});
+									continue;
+								}
+
+								if (lastSentMinute === elapsedMinutes) {
+									this.logger.info({
+										message: `Skipping escalation ${i} for monitor ${updatedMonitor.id}: already sent for this interval`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: {
+											delay: escalation.delay,
+											lastSentMinute,
+											elapsedMinutes,
+										},
+									});
+									continue;
+								}
+
+								if (lastSentMinute !== null && elapsedMinutes - lastSentMinute < escalation.delay) {
+									this.logger.info({
+										message: `Skipping escalation ${i} for monitor ${updatedMonitor.id}: waiting for next repeat interval`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: {
+											delay: escalation.delay,
+											lastSentMinute,
+											elapsedMinutes,
+										},
+									});
+									continue;
+								}
+
+								const contacts = Array.isArray(escalation.contacts) ? escalation.contacts : [];
+								if (contacts.length === 0) {
+									continue;
+								}
+
+								this.logger.info({
+									message: `Sending escalation ${i} for monitor ${updatedMonitor.id}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									details: {
+										delay: escalation.delay,
+										contactCount: contacts.length,
+									},
+								});
+
+								const sendResults = await Promise.all(
+									contacts.map(async (address: string) => {
+										try {
+											const notificationObj = {
+												id: `escalation-${updatedMonitor.id}-${i}-${address}`,
+												userId: updatedMonitor.userId || "",
+												teamId: updatedMonitor.teamId || "",
+												type: "email",
+												notificationName: "Escalation",
+												address,
+												createdAt: new Date().toISOString(),
+												updatedAt: new Date().toISOString(),
+											};
+
+											await this.emailProvider.sendMessage(notificationObj as any, message as any);
+											return true;
+										} catch (err: unknown) {
+											this.logger.warn({
+												message: `Escalation email send failed for monitor ${updatedMonitor.id} contact ${address}: ${err instanceof Error ? err.message : String(err)}`,
+												service: SERVICE_NAME,
+												method: "getMonitorJob",
+											});
+											return false;
+										}
+									}),
+								);
+
+								const anySucceeded = sendResults.some(Boolean);
+
+								if (anySucceeded) {
+									escalationsSent[i] = elapsedMinutes;
+									await this.monitorsRepository.updateById(updatedMonitor.id, updatedMonitor.teamId, {
+										escalationsSent,
+									});
+
+									this.logger.info({
+										message: `Marked escalation ${i} as sent for monitor ${updatedMonitor.id}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: {
+											escalationsSent,
+										},
+									});
+								}
+							}
+						}
+					} else if (updatedMonitor && updatedMonitor.status === "down" && !updatedMonitor.firstDownAt) {
+						this.logger.info({
+							message: `Skipping escalations for monitor ${updatedMonitor.id}: firstDownAt missing`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					}
+				} catch (err: unknown) {
+					this.logger.warn({
+						message: `Error processing escalations for monitor ${statusChangeResult.monitor?.id}: ${err instanceof Error ? err.message : String(err)}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: err instanceof Error ? err.stack : undefined,
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+					// Step 7. Handle incidents (best effort, don't wait)
+					this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
