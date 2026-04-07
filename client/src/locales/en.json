@@ -543,6 +543,18 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"title": "Escalation rules",
+					"optionMinutes": {
+						"label": "Escalate after (minutes)",
+						"placeholder": "Enter minutes before escalation"
+					},
+					"optionNotifications": {
+						"label": "Escalation notification channels",
+						"placeholder": "Select escalation channels"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -951,6 +963,20 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"escalationMinutes": {
+					"description": "Delay this notification until the incident has been active for the specified number of minutes.",
+					"optionEscalationMinutes": "Escalation delay (minutes)",
+					"placeholder": "Leave blank for no delay",
+					"title": "Escalation delay"
+				},
+				"telegram": {
+					"title": "Telegram configuration",
+					"description": "Configure your Telegram bot to send notifications.",
+					"optionBotToken": "Bot token",
+					"placeholderBotToken": "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ",
+					"optionChatId": "Chat ID",
+					"placeholderChatId": "-1001234567890"
 				}
 			},
 			"table": {

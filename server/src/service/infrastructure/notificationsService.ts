@@ -11,9 +11,15 @@ export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
 	findById: (id: string, teamId: string) => Promise<Notification>;
 	findNotificationsByTeamId: (teamId: string) => Promise<Notification[]>;
+	findNotificationsByIds: (ids: string[]) => Promise<Notification[]>;
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
-	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		options?: { notificationIds?: string[]; includeEscalationNotifications?: boolean }
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -33,6 +39,7 @@ export class NotificationsService implements INotificationsService {
 	private pagerDutyProvider: INotificationProvider;
 	private matrixProvider: INotificationProvider;
 	private teamsProvider: INotificationProvider;
+	private telegramProvider: INotificationProvider;
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
@@ -47,6 +54,7 @@ export class NotificationsService implements INotificationsService {
 		pagerDutyProvider: INotificationProvider,
 		matrixProvider: INotificationProvider,
 		teamsProvider: INotificationProvider,
+		telegramProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
 		notificationMessageBuilder: INotificationMessageBuilder
@@ -60,6 +68,7 @@ export class NotificationsService implements INotificationsService {
 		this.pagerDutyProvider = pagerDutyProvider;
 		this.matrixProvider = matrixProvider;
 		this.teamsProvider = teamsProvider;
+		this.telegramProvider = telegramProvider;
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
@@ -97,6 +106,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.emailProvider.sendMessage!(notification, notificationMessage);
 			case "teams":
 				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
+			case "telegram":
+				return await this.telegramProvider.sendMessage!(notification, notificationMessage);
 			default:
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
@@ -107,9 +118,18 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		options?: { notificationIds?: string[]; includeEscalationNotifications?: boolean }
+	) => {
+		const notificationIds = options?.notificationIds ?? monitor.notifications ?? [];
+		let notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		if (notifications.length === 0) {
+			return true;
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -132,13 +152,18 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	handleNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		options?: { notificationIds?: string[]; includeEscalationNotifications?: boolean }
+	) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, options);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
@@ -157,6 +182,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.webhookProvider.sendTestAlert(notification);
 			case "teams":
 				return await this.teamsProvider.sendTestAlert(notification);
+			case "telegram":
+				return await this.telegramProvider.sendTestAlert(notification);
 			default:
 				return false;
 		}
@@ -182,6 +209,10 @@ export class NotificationsService implements INotificationsService {
 
 	findById = async (id: string, teamId: string): Promise<Notification> => {
 		return await this.notificationsRepository.findById(id, teamId);
+	};
+
+	findNotificationsByIds = async (ids: string[]): Promise<Notification[]> => {
+		return await this.notificationsRepository.findNotificationsByIds(ids);
 	};
 
 	findNotificationsByTeamId = async (teamId: string): Promise<Notification[]> => {

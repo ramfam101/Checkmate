@@ -5,6 +5,11 @@ const baseSchema = z.object({
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	escalationMinutes: z
+		.number()
+		.int("Must be a whole number")
+		.min(0, "Must be 0 or greater")
+		.optional(),
 });
 
 const emailSchema = baseSchema.extend({
@@ -50,6 +55,12 @@ const teamsSchema = baseSchema.extend({
 	address: z.string().min(1, "Webhook URL is required").url("Please enter a valid URL"),
 });
 
+const telegramSchema = baseSchema.extend({
+	type: z.literal("telegram"),
+	address: z.string().min(1, "Chat ID is required"),
+	accessToken: z.string().min(1, "Bot token is required"),
+});
+
 export const notificationSchema = z.discriminatedUnion("type", [
 	emailSchema,
 	slackSchema,
@@ -58,6 +69,7 @@ export const notificationSchema = z.discriminatedUnion("type", [
 	pagerDutySchema,
 	matrixSchema,
 	teamsSchema,
+	telegramSchema,
 ]);
 
 export type NotificationFormData = z.infer<typeof notificationSchema>;

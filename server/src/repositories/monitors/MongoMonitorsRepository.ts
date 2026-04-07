@@ -293,7 +293,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ $or: [{ notifications: notificationId }, { escalationNotifications: notificationId }] },
+			{ $pull: { notifications: notificationId, escalationNotifications: notificationId } }
+		);
 	};
 
 	updateNotifications = async (
@@ -362,6 +365,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			statusWindow: doc.statusWindow ?? [],
 			statusWindowSize: doc.statusWindowSize,
 			statusWindowThreshold: doc.statusWindowThreshold,
+			escalationMinutes: doc.escalationMinutes ?? 3,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification)),
 			type: doc.type,
 			ignoreTlsErrors: doc.ignoreTlsErrors,
 			useAdvancedMatching: doc.useAdvancedMatching ?? false,
@@ -421,6 +426,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			statusWindow: doc.statusWindow ?? [],
 			statusWindowSize: doc.statusWindowSize,
 			statusWindowThreshold: doc.statusWindowThreshold,
+			escalationMinutes: doc.escalationMinutes ?? 3,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification)),
 			type: doc.type,
 			ignoreTlsErrors: doc.ignoreTlsErrors,
 			useAdvancedMatching: doc.useAdvancedMatching ?? false,

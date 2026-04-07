@@ -1,6 +1,7 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { AppError } from "@/utils/AppError.js";
 import {
 	ICheckService,
@@ -39,6 +40,8 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	isEscalation?: boolean;
+	escalationMinutes?: number;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -66,6 +69,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationNotificationsTracker: Map<string, Set<string>> = new Map();
 
 	constructor(
 		logger: ILogger,
@@ -168,8 +172,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				// Step 7. Handle incidents before escalation checks so incident timing is available
+				await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
@@ -177,6 +181,19 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				await this.sendEscalationNotificationsIfDue(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				if (statusChangeResult.monitor.status !== "down" && statusChangeResult.monitor.status !== "breached") {
+					this.clearEscalationTracker(statusChangeResult.monitor.id);
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -455,4 +472,77 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private getEscalationTracker = (monitorId: string): Set<string> => {
+		const existing = this.escalationNotificationsTracker.get(monitorId);
+		if (existing) {
+			return existing;
+		}
+
+		const tracker = new Set<string>();
+		this.escalationNotificationsTracker.set(monitorId, tracker);
+		return tracker;
+	};
+
+	private clearEscalationTracker = (monitorId: string): void => {
+		this.escalationNotificationsTracker.delete(monitorId);
+	};
+
+	private sendEscalationNotificationsIfDue = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> => {
+		if (!(monitor.status === "down" || monitor.status === "breached")) {
+			return;
+		}
+
+		if (!monitor.id || !monitor.teamId || !monitor.escalationNotifications?.length || !monitor.escalationMinutes || monitor.escalationMinutes <= 0) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || !activeIncident.startTime) {
+			return;
+		}
+
+		const numericStart = Number(activeIncident.startTime);
+		const incidentStartMs = Number.isFinite(numericStart) ? numericStart : Date.parse(activeIncident.startTime);
+		if (Number.isNaN(incidentStartMs)) {
+			return;
+		}
+
+		const elapsedMs = Date.now() - incidentStartMs;
+		if (elapsedMs <= 0) {
+			return;
+		}
+
+		const notifications = await this.notificationsService.findNotificationsByIds(monitor.escalationNotifications);
+		const tracker = this.getEscalationTracker(monitor.id);
+		if (elapsedMs < monitor.escalationMinutes * 60 * 1000) {
+			return;
+		}
+
+		const dueNotificationIds = notifications.map((notification) => notification.id).filter((notificationId) => !tracker.has(notificationId));
+
+		if (dueNotificationIds.length === 0) {
+			return;
+		}
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: monitor.status === "breached" ? "threshold_breach" : "status_change",
+			isEscalation: true,
+			escalationMinutes: monitor.escalationMinutes,
+		};
+
+		const result = await this.notificationsService.handleNotifications(monitor, monitorStatusResponse, escalationDecision, {
+			notificationIds: dueNotificationIds,
+		});
+
+		if (result) {
+			for (const id of dueNotificationIds) {
+				tracker.add(id);
+			}
+		}
+	};
 }

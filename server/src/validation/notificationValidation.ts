@@ -9,6 +9,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("email"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.email("Please enter a valid e-mail address"),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -18,6 +19,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("webhook"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -27,6 +29,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("slack"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -36,6 +39,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("discord"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -45,6 +49,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("pager_duty"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.string().min(1, "PagerDuty integration key is required"),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -54,6 +59,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("matrix"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.union([z.string(), z.literal("")]).optional(),
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
 		roomId: z.string().min(1, "Room ID is required"),
@@ -63,7 +69,16 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("teams"),
+		escalationMinutes: z.number().int().min(0).optional(),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
+	}),
+	// Telegram notification
+	z.object({
+		notificationName: z.string().min(1, "Notification name is required"),
+		type: z.literal("telegram"),
+		escalationMinutes: z.number().int().min(0).optional(),
+		address: z.string().min(1, "Chat ID is required"),
+		accessToken: z.string().min(1, "Bot token is required"),
 	}),
 ]);
 

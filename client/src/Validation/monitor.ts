@@ -13,6 +13,15 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationMinutes: z
+		.preprocess((value) => {
+			if (typeof value === "string") {
+				const trimmed = value.trim();
+				return trimmed === "" ? undefined : Number(trimmed);
+			}
+			return value;
+		}, z.number().int("Must be a whole number").min(0, "Must be 0 or greater").optional()),
+	escalationNotifications: z.array(z.string()).optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

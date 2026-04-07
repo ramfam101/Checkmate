@@ -25,13 +25,14 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		},
 		type: {
 			type: String,
-			enum: ["email", "slack", "discord", "webhook", "pager_duty", "matrix", "teams"] as NotificationChannel[],
+			enum: ["email", "slack", "discord", "webhook", "pager_duty", "matrix", "teams", "telegram"] as NotificationChannel[],
 			required: true,
 		},
 		notificationName: {
 			type: String,
 			required: true,
 		},
+		escalationMinutes: { type: Number },
 		address: { type: String },
 		phone: { type: String },
 		homeserverUrl: { type: String },

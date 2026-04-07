@@ -6,6 +6,7 @@ export const NotificationChannels = [
 	"pager_duty",
 	"matrix",
 	"teams",
+	"telegram",
 ] as const;
 export type NotificationChannel = (typeof NotificationChannels)[number];
 
@@ -15,6 +16,7 @@ export interface Notification {
 	teamId: string;
 	type: NotificationChannel;
 	notificationName: string;
+	escalationMinutes?: number;
 	address?: string;
 	phone?: string;
 	homeserverUrl?: string;
