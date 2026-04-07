@@ -348,7 +348,26 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
+			this.logger.info({
+				message: `Status update for monitor ${monitor.id}: ${prevStatus} → ${newStatus} (statusChanged: ${statusChanged})`,
+				service: SERVICE_NAME,
+				method: "updateMonitorStatus",
+				details: {
+					prevStatus,
+					newStatus,
+					statusChanged,
+					failures,
+					failureRate,
+				},
+			});
+
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+
+			this.logger.debug({
+				message: `Monitor ${updated.id} saved with status: ${updated.status}`,
+				service: SERVICE_NAME,
+				method: "updateMonitorStatus",
+			});
 
 			return {
 				monitor: updated,

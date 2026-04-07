@@ -387,6 +387,15 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalationRules: (doc.escalationRules ?? []).map((rule) => ({
+				delayMinutes: rule.delayMinutes,
+				notificationIds: rule.notificationIds.map((id) => toStringId(id)),
+			})),
+			escalationHistory: (doc.escalationHistory ?? []).map((entry) => ({
+				escalationIndex: entry.escalationIndex,
+				triggeredAt: entry.triggeredAt instanceof Date ? entry.triggeredAt : new Date(entry.triggeredAt),
+				incidentId: toStringId(entry.incidentId),
+			})),
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
@@ -446,6 +455,15 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalationRules: (doc.escalationRules ?? []).map((rule) => ({
+				delayMinutes: rule.delayMinutes,
+				notificationIds: rule.notificationIds.map((id) => toStringId(id)),
+			})),
+			escalationHistory: (doc.escalationHistory ?? []).map((entry) => ({
+				escalationIndex: entry.escalationIndex,
+				triggeredAt: entry.triggeredAt instanceof Date ? entry.triggeredAt : new Date(entry.triggeredAt),
+				incidentId: toStringId(entry.incidentId),
+			})),
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],

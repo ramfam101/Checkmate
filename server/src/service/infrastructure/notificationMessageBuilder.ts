@@ -33,6 +33,9 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
 
+		// Log notification being built to debug status issues
+		console.log(`[NotificationMessageBuilder] Building ${type} message for monitor ${monitor.id} with status: ${monitor.status}`);
+
 		return {
 			type,
 			severity,

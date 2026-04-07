@@ -16,6 +16,7 @@ import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
+import { EscalationRules } from "@/Components/monitors/EscalationRules";
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -765,35 +766,53 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("escalation.title", { defaultValue: "Escalation Rules" })}
+				subtitle={t("escalation.description", { defaultValue: "Define notification escalation rules for when monitors stay down" })}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => (
+							<EscalationRules
+								escalationRules={field.value ?? []}
+								availableNotifications={notifications ?? []}
+								onChange={(rules) => field.onChange(rules)}
+							/>
+						)}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.ignoreTls.title")}
-					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-					rightContent={
-						<Controller
-							name="ignoreTlsErrors"
-							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
-									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
-								</Stack>
-							)}
-						/>
-					}
-				/>
-			)}
+					<ConfigBox
+						title={t("pages.createMonitor.form.ignoreTls.title")}
+						subtitle={t("pages.createMonitor.form.ignoreTls.description")}
+						rightContent={
+							<Controller
+								name="ignoreTlsErrors"
+								control={control}
+								render={({ field }) => (
+									<Stack
+										direction="row"
+										alignItems="center"
+										spacing={theme.spacing(SPACING.LG)}
+									>
+										<Switch
+											checked={field.value ?? false}
+											onChange={(e) => field.onChange(e.target.checked)}
+										/>
+										<Typography>
+											{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
+										</Typography>
+									</Stack>
+								)}
+							/>
+						}
+					/>
+				)}
 
 			{watchedType === "http" && (
 				<ConfigBox
