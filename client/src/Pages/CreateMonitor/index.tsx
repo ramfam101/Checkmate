@@ -15,6 +15,7 @@ import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
+
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -199,14 +200,10 @@ const CreateMonitorPage = () => {
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema as any),
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
-
-	useEffect(() => {
-		form.reset(defaults);
-	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
 
@@ -229,9 +226,25 @@ const CreateMonitorPage = () => {
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
+	// Escalation rules local state
+	const [escalationTime, setEscalationTime] = useState<number>(1);
+	const [escalations, setEscalations] = useState<{ time: number; email: string }[]>([]);
+
 	const handleDeleteClick = () => {
 		setIsDeleteDialogOpen(true);
 	};
+
+	useEffect(() => {
+    form.reset(defaults);
+    if (existingMonitor?.escalations && existingMonitor.escalations.length > 0) {
+        setEscalations(existingMonitor.escalations);
+        setEscalationTime(existingMonitor.escalations[0].time);
+    }
+}, [defaults, form]);
+
+	useEffect(() => {
+    form.setValue("escalations", escalations);
+	}, [escalations, form]);
 
 	const handleDeleteConfirm = async () => {
 		if (!monitorId) return;
@@ -762,6 +775,93 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalations"
+							control={control}
+							render={({ field }) => {
+								const currentEscalations = field.value ?? [];
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+
+								const selectedIds: string[] = currentEscalations.map((e) => e.email);
+								const selectedNotifications = notificationOptions.filter((n) =>
+									selectedIds.includes(n.id)
+								);
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<TextField
+											type="number"
+											fieldLabel="Escalate after (minutes)"
+											value={escalationTime === 0 ? "" : escalationTime}
+											onChange={(e) => {
+												const time = e.target.value === "" ? 0 : Number(e.target.value);
+												setEscalationTime(time);
+												// Update time on all existing escalation entries
+												const updatedEscalations = currentEscalations.map((e) => ({ ...e, time }));
+												field.onChange(updatedEscalations);
+											}}
+											inputProps={{ min: 1 }}
+										/>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											fieldLabel="Escalation notification channels"
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												const newEscalations = newValue.map((n) => ({
+													time: escalationTime,
+													email: n.id,
+												}));
+												field.onChange(newEscalations);
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack flex={1} width="100%">
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																const newEscalations = currentEscalations.filter(
+																	(e) => e.email !== notification.id
+																);
+																field.onChange(newEscalations);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

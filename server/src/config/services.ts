@@ -1,5 +1,6 @@
 import MongoDB from "../db/MongoDB.js";
 import { IDb } from "@/db/IDb.js";
+import { EscalationService } from "@/service/infrastructure/escalationService.js";
 import {
 	// Service classes
 	NetworkService,
@@ -203,6 +204,8 @@ export const initializeServices = async ({
 	]);
 	const emailService = new EmailService(settingsService, fs, path, compile, mjml2html, nodemailer, logger);
 
+	const escalationService = new EscalationService(emailService, logger);
+
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
 	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
@@ -262,7 +265,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationService
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
