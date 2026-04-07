@@ -777,8 +777,22 @@ const CreateMonitorPage = () => {
 								fieldLabel={t("pages.createMonitor.form.escalatingNotifications.timeOption")}
 								placeholder="Insert minutes until escalation"
 								value={escalationMinutes}
-								onChange={(e) => setEscalationMinutes(e.target.value)}
+								onChange={(e) => {
+									const value = e.target.value;
+									if (value === "") {
+										setEscalationMinutes("");
+									} else {
+										const numValue = Number(value);
+										// Only allow whole, positive numbers
+										if (Number.isInteger(numValue) && numValue > 0) {
+											setEscalationMinutes(value);
+										}
+									}
+								}}
 								fullWidth
+								inputProps={{ min: 1, step: 1 }}
+								error={escalationMinutes !== "" && !Number.isInteger(Number(escalationMinutes)) ? true : escalationMinutes !== "" && Number(escalationMinutes) < 1 ? true : false}
+								helperText={escalationMinutes !== "" && !Number.isInteger(Number(escalationMinutes)) ? "Please input a whole, positive number" : escalationMinutes !== "" && Number(escalationMinutes) < 1 ? "Please input a whole, positive number" : ""}
 							/>
 							{(() => {
 								const notificationOptions = (notifications ?? []).map((n) => ({
