@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, getValues } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -756,6 +756,108 @@ const CreateMonitorPage = () => {
 													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatedNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+				rightContent={
+					<Controller
+						name="escalatedNotifications"
+						control={control}
+						render={({ field }) => {
+							const escalated = field.value ?? [];
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)} width="100%">
+									<Controller
+										name="escalationDurationMinutes"
+										control={control}
+										render={({ field: durationField }) => (
+											<TextField
+												{...durationField}
+												type="number"
+												fieldLabel={t("pages.createMonitor.form.escalatedNotifications.escalateAfter.label")}
+												inputProps={{ min: 1, max: 10080 }}
+												fullWidth
+											/>
+										)}
+									/>
+									
+									<Stack
+										direction={{ xs: "column", md: "row" }}
+										spacing={theme.spacing(LAYOUT.SM)}
+										alignItems="flex-end"
+									>
+										<Stack flexGrow={1} spacing={theme.spacing(SPACING.SM)}>
+											<Autocomplete
+												options={notificationOptions}
+												getOptionLabel={(option) => option.name}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												value={null}
+												onChange={(_, newValue) => {
+													if (newValue && !escalated.find(e => e.notificationId === newValue.id)) {
+														const durationMinutes = getValues("escalationDurationMinutes") || 3;
+														field.onChange([...escalated, {
+															notificationId: newValue.id,
+															durationMinutes: durationMinutes,
+														}]);
+													}
+												}}
+												slotProps={{
+													paper: {
+														sx: { maxHeight: 224 }
+													}
+												}}
+											/>
+										</Stack>
+									</Stack>
+
+									{escalated.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{escalated.map((escNotif, index) => {
+												const notif = notificationOptions.find(n => n.id === escNotif.notificationId);
+												return (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={index}
+														width="100%"
+														sx={{
+															borderBottom: index < escalated.length - 1 ? `1px solid ${theme.palette.primary.main}` : 'none',
+															paddingBottom: index < escalated.length - 1 ? theme.spacing(LAYOUT.SM) : 0,
+															marginBottom: index < escalated.length - 1 ? theme.spacing(LAYOUT.SM) : 0,
+														}}
+													>
+														<Typography flexGrow={1}>
+															{notif?.notificationName || escNotif.notificationId}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(escalated.filter((_, i) => i !== index));
+															}}
+															aria-label="Remove escalation"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+													</Stack>
+												);
+											})}
 										</Stack>
 									)}
 								</Stack>

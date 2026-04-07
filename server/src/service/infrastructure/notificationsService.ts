@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IMonitorsRepository, INotificationsRepository, IIncidentsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalatedNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -26,6 +27,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -40,6 +42,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -53,6 +56,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -196,5 +200,99 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	handleEscalatedNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<boolean> => {
+		// Check if monitor has escalated notifications configured
+		if (!monitor.escalatedNotifications || monitor.escalatedNotifications.length === 0) {
+			return false;
+		}
+
+		// Find active incident for this monitor
+		try {
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+			if (!activeIncident) {
+				// No active incident, no escalation needed
+				return false;
+			}
+
+			// Calculate incident duration in minutes
+			const startTime = parseInt(activeIncident.startTime);
+			const now = Date.now();
+			const durationMinutes = (now - startTime) / (1000 * 60);
+
+			// Find escalated notifications that should be sent based on duration
+			const notificationsToSend = monitor.escalatedNotifications.filter(
+				(escNotif) => durationMinutes >= escNotif.durationMinutes
+			);
+
+			if (notificationsToSend.length === 0) {
+				// No escalation thresholds reached yet
+				return false;
+			}
+
+			// Fetch the notification objects
+			const notificationIds = notificationsToSend.map((escNotif) => escNotif.notificationId);
+			const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+			// Build escalation message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+
+			// Create a modified decision to indicate this is an escalation
+			const escalationDecision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: "escalation",
+			};
+
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(
+				monitor,
+				monitorStatusResponse,
+				escalationDecision,
+				clientHost
+			);
+
+			// Add duration info to the message
+			notificationMessage.content.details = notificationMessage.content.details || [];
+			notificationMessage.content.details.push(`Incident Duration: ~${Math.floor(durationMinutes)} minutes`);
+
+			// Send escalated notifications
+			const tasks = notifications.map((notification) =>
+				this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage)
+			);
+
+			const outcomes = await Promise.all(tasks);
+			const succeeded = outcomes.filter(Boolean).length;
+
+			if (succeeded === 0) {
+				this.logger.warn({
+					message: "Escalated notification send failed for all notifications",
+					service: SERVICE_NAME,
+					method: "handleEscalatedNotifications",
+					details: { monitorId: monitor.id, escalatedCount: notifications.length },
+				});
+				return false;
+			}
+
+			this.logger.info({
+				message: `Escalated notifications sent: ${succeeded}/${notifications.length}`,
+				service: SERVICE_NAME,
+				method: "handleEscalatedNotifications",
+				details: { monitorId: monitor.id, durationMinutes: Math.floor(durationMinutes) },
+			});
+
+			return true;
+		} catch (error) {
+			this.logger.error({
+				message: "Error handling escalated notifications",
+				service: SERVICE_NAME,
+				method: "handleEscalatedNotifications",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 }
