@@ -50,9 +50,10 @@ const startApp = async () => {
 		openApiSpec,
 	});
 
-	const server = app.listen(env.PORT, () => {
-		logger.info({ message: `Server started on port:${env.PORT}` });
-	});
+	const port = Number(env.PORT);
+	const server = app.listen(port, "127.0.0.1", () => {
+	logger.info({ message: `Server started on port:${port}` });
+});
 
 	initShutdownListener(server, services);
 };

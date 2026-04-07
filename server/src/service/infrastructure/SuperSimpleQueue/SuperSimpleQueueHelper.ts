@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -153,11 +153,45 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
+				this.logger.debug({
+					message: `Status check result`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+					details: {
+						monitorId: statusChangeResult.monitor.id,
+						monitorName: statusChangeResult.monitor.name,
+						currentStatus: statusChangeResult.monitor.status,
+						previousStatus: statusChangeResult.prevStatus,
+						statusChanged: statusChangeResult.statusChanged,
+						monitorHasNotifications: (statusChangeResult.monitor.notifications?.length || 0) > 0,
+						notificationCount: statusChangeResult.monitor.notifications?.length || 0,
+					},
+				});
+
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				this.logger.debug({
+					message: `Monitor action decision`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+					details: {
+						monitorId: statusChangeResult.monitor.id,
+						shouldSendNotification: decision.shouldSendNotification,
+						shouldCreateIncident: decision.shouldCreateIncident,
+						shouldResolveIncident: decision.shouldResolveIncident,
+						notificationReason: decision.notificationReason,
+					},
+				});
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
+				const shouldHandleNotifications =
+					decision.shouldSendNotification ||
+					(statusChangeResult.monitor.status === "down" &&
+						statusChangeResult.monitor.escDelayMinutes &&
+						statusChangeResult.monitor.escNotifId?.length);
+
+				if (shouldHandleNotifications) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -165,6 +199,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
 						});
+					});
+				} else {
+					this.logger.debug({
+						message: `Skipping notifications - shouldSendNotification is false and no escalation configured`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						details: { monitorId: statusChangeResult.monitor.id },
 					});
 				}
 

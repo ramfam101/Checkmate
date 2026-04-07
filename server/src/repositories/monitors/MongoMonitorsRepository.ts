@@ -374,6 +374,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escDelayMinutes: doc.escDelayMinutes ?? undefined,
+			escNotifId: (doc.escNotifId ?? []).map((id: unknown) => toStringId(id)),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
