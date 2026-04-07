@@ -97,19 +97,20 @@ export class EscalationService implements IEscalationService {
 					continue;
 				}
 
-				// Check if escalation time has passed
-				if (incidentDurationMinutes >= rule.escalateAfterMinutes) {
-					// Check if we already sent this escalation
-					const alreadySent = await this.hasEscalationBeenSent(incident.id, rule.id);
-					if (alreadySent) {
-						continue;
+				// Determine elapsed escalation windows
+				const elapsedSteps = Math.floor(incidentDurationMinutes / rule.escalateAfterMinutes);
+				if (elapsedSteps < 1) {
+					continue;
+				}
+
+				for (let step = 1; step <= elapsedSteps; step += 1) {
+					const alreadySent = await this.hasEscalationBeenSent(incident.id, rule.id, step);
+					if (!alreadySent) {
+						// Send escalation notifications for the next pending interval
+						await this.sendEscalationNotifications(monitor, incident, rule);
+						await this.markEscalationAsSent(incident.id, rule.id, step);
+						break;
 					}
-
-					// Send escalation notifications
-					await this.sendEscalationNotifications(monitor, incident, rule);
-
-					// Mark escalation as sent
-					await this.markEscalationAsSent(incident.id, rule.id);
 				}
 			}
 		} catch (error: unknown) {
@@ -162,6 +163,10 @@ export class EscalationService implements IEscalationService {
 				notificationReason: "status_change" as const,
 			};
 
+			const incidentStartTime = new Date(incident.startTime).getTime();
+			const incidentAgeMinutes = Math.max(1, Math.floor((Date.now() - incidentStartTime) / (1000 * 60)));
+			const incidentDurationLabel = incidentAgeMinutes === 1 ? "about a minute" : `${incidentAgeMinutes} minutes`;
+
 			// Build escalation-specific message
 			const escalationMessage = {
 				type: "monitor_down" as const,
@@ -175,7 +180,7 @@ export class EscalationService implements IEscalationService {
 				},
 				content: {
 					title: `ESCALATION: ${monitor.name} is still down`,
-					summary: `Monitor "${monitor.name}" has been down for ${rule.escalateAfterMinutes} minutes`,
+					summary: `Monitor "${monitor.name}" has been down for ${incidentDurationLabel}`,
 					details: [
 						`Original incident started at: ${new Date(incident.startTime).toISOString()}`,
 						`Status Code: ${incident.statusCode || "N/A"}`,
@@ -227,16 +232,16 @@ export class EscalationService implements IEscalationService {
 		}
 	};
 
-	private hasEscalationBeenSent = async (incidentId: string, ruleId: string): Promise<boolean> => {
-		const key = `${incidentId}-${ruleId}`;
+	private hasEscalationBeenSent = async (incidentId: string, ruleId: string, step: number): Promise<boolean> => {
+		const key = `${incidentId}-${ruleId}-${step}`;
 		return this.sentEscalations.has(key);
 	};
 
-	private markEscalationAsSent = async (incidentId: string, ruleId: string): Promise<void> => {
-		const key = `${incidentId}-${ruleId}`;
+	private markEscalationAsSent = async (incidentId: string, ruleId: string, step: number): Promise<void> => {
+		const key = `${incidentId}-${ruleId}-${step}`;
 		this.sentEscalations.add(key);
 		this.logger.debug({
-			message: `Marked escalation as sent for incident ${incidentId}, rule ${ruleId}`,
+			message: `Marked escalation as sent for incident ${incidentId}, rule ${ruleId}, step ${step}`,
 			service: SERVICE_NAME,
 			method: "markEscalationAsSent",
 		});
