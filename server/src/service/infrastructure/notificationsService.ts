@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (monitor: Monitor, incidentId: string) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,6 +108,46 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
+	private sendEscalation = async (
+		notification: Notification,
+		monitor: Monitor,
+		escalationMessage: NotificationMessage | undefined
+	): Promise<boolean> => {
+		if (!escalationMessage) {
+			this.logger.warn({
+				message: "Escalation message not provided",
+				service: SERVICE_NAME,
+				method: "sendEscalation",
+			});
+			return false;
+		}
+
+		// Route to provider based on notification type (same as regular send)
+		switch (notification.type) {
+			case "webhook":
+				return await this.webhookProvider.sendMessage!(notification, escalationMessage);
+			case "slack":
+				return await this.slackProvider.sendMessage!(notification, escalationMessage);
+			case "matrix":
+				return await this.matrixProvider.sendMessage!(notification, escalationMessage);
+			case "pager_duty":
+				return await this.pagerDutyProvider.sendMessage!(notification, escalationMessage);
+			case "discord":
+				return await this.discordProvider.sendMessage!(notification, escalationMessage);
+			case "email":
+				return await this.emailProvider.sendMessage!(notification, escalationMessage);
+			case "teams":
+				return await this.teamsProvider.sendMessage!(notification, escalationMessage);
+			default:
+				this.logger.warn({
+					message: `Unknown notification type: ${notification.type}`,
+					service: SERVICE_NAME,
+					method: "sendEscalation",
+				});
+				return false;
+		}
+	};
+
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
@@ -139,6 +180,47 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotifications = async (monitor: Monitor, incidentId: string) => {
+		// Check if escalation is configured
+		if (!monitor.escalationNotification || monitor.escalationNotification.length === 0) {
+			return false;
+		}
+
+		const escalationNotificationIds = monitor.escalationNotification;
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escalationNotificationIds);
+
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: "No escalation notifications found",
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+				details: { escalationNotificationIds },
+			});
+			return false;
+		}
+
+		// Build escalation notification message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incidentId, clientHost);
+
+		const tasks = notifications.map((notification) => this.sendEscalation(notification, monitor, escalationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+		}
+
+		return succeeded === notifications.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

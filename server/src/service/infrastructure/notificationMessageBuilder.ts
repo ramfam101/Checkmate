@@ -15,6 +15,11 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		incidentId: string,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +275,52 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		incidentId: string,
+		clientHost: string
+	): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Escalation is still about monitor being down
+		const severity: NotificationSeverity = "critical";
+		const content = this.buildEscalationContent(monitor, incidentId, clientHost);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, incidentId: string, clientHost: string): NotificationContent {
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for the configured escalation period and requires immediate attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Incident ID: ${incidentId}`,
+			`Escalation Delay: ${monitor.escalation} minutes`,
+		];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 }
