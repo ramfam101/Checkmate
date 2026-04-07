@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -158,7 +158,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					const notificationPromise = this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision);
+					notificationPromise.catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
@@ -167,7 +168,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						});
 					});
 				}
-
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
@@ -268,7 +268,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					service: SERVICE_NAME,
 					method: "getCleanupOrphanedJob",
 				});
-			} catch (error: unknown) {
+			}
+			catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
@@ -354,7 +355,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	async isInMaintenanceWindow(monitorId: string, teamId: string) {
+	isInMaintenanceWindow = async (monitorId: string, teamId: string) => {
 		const maintenanceWindows = await this.maintenanceWindowsRepository.findByMonitorId(monitorId, teamId);
 		// Check for active maintenance window:
 		const maintenanceWindowIsActive = maintenanceWindows.reduce((acc: boolean, window: MaintenanceWindow) => {
@@ -418,7 +419,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	evaluateMonitorAction = (statusChangeResult: StatusChangeResult): MonitorActionDecision => {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -429,6 +430,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			incidentReason: null,
 			notificationReason: null,
 		};
+
+		const shouldEscalate =
+			!statusChanged &&
+			monitor.status === "down" &&
+			(monitor.escalationNotifications ?? []).length > 0 &&
+			(monitor.escalationDelayMinutes ?? 0) > 0 &&
+			typeof monitor.downSince === "number" &&
+			Date.now() - monitor.downSince >= (monitor.escalationDelayMinutes ?? 0) * 60000 &&
+			(!monitor.escalationNotifiedAt || monitor.escalationNotifiedAt < monitor.downSince);
+
+		if (shouldEscalate) {
+			decision.shouldSendNotification = true;
+			decision.notificationReason = "escalation";
+			return decision;
+		}
 
 		if (!statusChanged) {
 			return decision;

@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation rules",
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"option": {
+						"delay": {
+							"label": "Escalate after (minutes)",
+							"placeholder": "Enter minutes"
+						},
+						"notifications": {
+							"label": "Escalation notification channels",
+							"placeholder": "Type to search"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

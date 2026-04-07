@@ -264,6 +264,16 @@ export class StatusService implements IStatusService {
 				statusChanged = true;
 			}
 
+			if (statusChanged) {
+				if (newStatus === "down") {
+					monitor.downSince = new Date().getTime();
+					monitor.escalationNotifiedAt = undefined;
+				} else {
+					monitor.downSince = undefined;
+					monitor.escalationNotifiedAt = undefined;
+				}
+			}
+
 			// Evaluate hardware threshold breaches (only for hardware monitors)
 			let thresholdBreaches: { cpu: boolean; memory: boolean; disk: boolean; temp: boolean } | undefined;
 			if (monitor.type === "hardware" && statusResponse.payload) {
