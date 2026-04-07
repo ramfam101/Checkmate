@@ -67,6 +67,16 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationRules: z
+		.array(
+			z.object({
+				id: z.string(),
+				escalateAfterMinutes: z.number().min(1),
+				notificationIds: z.array(z.string()),
+				isEnabled: z.boolean(),
+			})
+		)
+		.optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +99,16 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationRules: z
+		.array(
+			z.object({
+				id: z.string(),
+				escalateAfterMinutes: z.number().min(1),
+				notificationIds: z.array(z.string()),
+				isEnabled: z.boolean(),
+			})
+		)
+		.optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
