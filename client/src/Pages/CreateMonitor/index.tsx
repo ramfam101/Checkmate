@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -203,6 +203,15 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+
+	const {
+		fields: escalationFields,
+		append: appendEscalation,
+		remove: removeEscalation,
+	} = useFieldArray({
+		control,
+		name: "notificationEscalations",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +771,84 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const channelId = watch(`notificationEscalations.${index}.channelId`);
+							const selectedChannel = notificationOptions.find((n) => n.id === channelId) ?? null;
+							return (
+								<Stack
+									key={field.id}
+									direction={{ xs: "column", sm: "row" }}
+									spacing={theme.spacing(LAYOUT.SM)}
+									alignItems={{ sm: "flex-start" }}
+								>
+									<Controller
+										name={`notificationEscalations.${index}.delayMinutes`}
+										control={control}
+										render={({ field: f, fieldState }) => (
+											<TextField
+												{...f}
+												type="number"
+												inputProps={{ min: 0 }}
+												sx={{ maxWidth: { sm: 160 }, width: "100%" }}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.delayMinutes.label"
+												)}
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message}
+											/>
+										)}
+									/>
+									<Controller
+										name={`notificationEscalations.${index}.channelId`}
+										control={control}
+										render={({ field: f }) => (
+											<Autocomplete
+												options={notificationOptions}
+												value={selectedChannel}
+												getOptionLabel={(option) => option.name}
+												onChange={(_: unknown, newValue: (typeof notificationOptions)[0] | null) => {
+													f.onChange(newValue?.id ?? "");
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												sx={{ flex: 1, minWidth: 0 }}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.channel.label"
+												)}
+											/>
+										)}
+									/>
+									<IconButton
+										size="small"
+										onClick={() => removeEscalation(index)}
+										aria-label={t("pages.createMonitor.form.escalations.removeRule")}
+										sx={{ mt: { sm: 3 } }}
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+							);
+						})}
+						<Button
+							type="button"
+							variant="outlined"
+							startIcon={<Plus size={18} />}
+							onClick={() => appendEscalation({ delayMinutes: 5, channelId: "" })}
+						>
+							{t("pages.createMonitor.form.escalations.addRule")}
+						</Button>
+					</Stack>
 				}
 			/>
 

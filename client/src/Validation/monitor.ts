@@ -4,6 +4,13 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
+const notificationEscalationsSchema = z.array(
+	z.object({
+		delayMinutes: z.coerce.number().int().min(0).max(10080),
+		channelId: z.string().min(1),
+	})
+);
+
 // Common base schema for all monitor types
 const baseSchema = z.object({
 	name: z
@@ -27,6 +34,7 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	notificationEscalations: notificationEscalationsSchema.optional(),
 });
 
 // HTTP monitor schema

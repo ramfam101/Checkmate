@@ -15,6 +15,8 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendEscalationNotificationToChannel: (notificationId: string, teamId: string, message: NotificationMessage) => Promise<boolean>;
+
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -65,23 +67,7 @@ export class NotificationsService implements INotificationsService {
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
-	private send = async (
-		notification: Notification,
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
-		notificationMessage: NotificationMessage | undefined
-	): Promise<boolean> => {
-		if (!notificationMessage) {
-			this.logger.warn({
-				message: "Notification message not provided",
-				service: SERVICE_NAME,
-				method: "send",
-			});
-			return false;
-		}
-
-		// Route to provider based on notification type
+	private routeNotificationToProvider = async (notification: Notification, notificationMessage: NotificationMessage): Promise<boolean> => {
 		switch (notification.type) {
 			case "webhook":
 				return await this.webhookProvider.sendMessage!(notification, notificationMessage);
@@ -101,10 +87,29 @@ export class NotificationsService implements INotificationsService {
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
 					service: SERVICE_NAME,
-					method: "send",
+					method: "routeNotificationToProvider",
 				});
 				return false;
 		}
+	};
+
+	private send = async (
+		notification: Notification,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage: NotificationMessage | undefined
+	): Promise<boolean> => {
+		if (!notificationMessage) {
+			this.logger.warn({
+				message: "Notification message not provided",
+				service: SERVICE_NAME,
+				method: "send",
+			});
+			return false;
+		}
+
+		return await this.routeNotificationToProvider(notification, notificationMessage);
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
@@ -139,6 +144,21 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotificationToChannel = async (notificationId: string, teamId: string, message: NotificationMessage): Promise<boolean> => {
+		try {
+			const notification = await this.notificationsRepository.findById(notificationId, teamId);
+			return await this.routeNotificationToProvider(notification, message);
+		} catch (error: unknown) {
+			this.logger.warn({
+				message: error instanceof Error ? error.message : "Escalation notification channel lookup failed",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotificationToChannel",
+				details: { notificationId, teamId },
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

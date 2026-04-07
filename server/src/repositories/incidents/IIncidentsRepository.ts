@@ -22,6 +22,11 @@ export interface IIncidentsRepository {
 
 	// update
 	updateById(incidentId: string, teamId: string, updateData: Partial<Incident>): Promise<Incident>;
+	pushEscalationDelivery(
+		incidentId: string,
+		teamId: string,
+		entry: { channelId: string; delayMinutes: number; sentAt: string }
+	): Promise<void>;
 	// delete
 	deleteByMonitorId(monitorId: string, teamId: string): Promise<number>;
 	deleteByMonitorIdsNotIn(monitorIds: string[]): Promise<number>;
