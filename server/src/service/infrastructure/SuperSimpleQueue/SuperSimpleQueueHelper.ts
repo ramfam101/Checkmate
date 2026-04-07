@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
@@ -66,6 +68,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private notificationMessageBuilder: INotificationMessageBuilder;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +86,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		notificationMessageBuilder: INotificationMessageBuilder
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +105,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
 	get serviceName() {
@@ -169,9 +174,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				await this.processEscalations(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error processing escalations for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -416,6 +430,71 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private processEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> => {
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+		const rules = monitor.notificationEscalations;
+		if (!rules?.length) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const startMs = new Date(activeIncident.startTime).getTime();
+		const elapsed = Date.now() - startMs;
+		const deliveries = activeIncident.escalationDeliveries ?? [];
+
+		const decisionForMessage: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: monitor.status === "breached" ? "threshold_breach" : "status_down",
+			notificationReason: monitor.status === "breached" ? "threshold_breach" : "status_change",
+		};
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		for (const rule of rules) {
+			if (!rule.channelId || rule.delayMinutes === undefined || rule.delayMinutes < 0) {
+				continue;
+			}
+			const delayMs = rule.delayMinutes * 60 * 1000;
+			if (elapsed < delayMs) {
+				continue;
+			}
+			const alreadySent = deliveries.some((d) => d.channelId === rule.channelId && d.delayMinutes === rule.delayMinutes);
+			if (alreadySent) {
+				continue;
+			}
+
+			const message = this.notificationMessageBuilder.buildEscalationMessage(
+				monitor,
+				monitorStatusResponse,
+				decisionForMessage,
+				clientHost,
+				elapsed,
+				activeIncident.id,
+				rule.delayMinutes
+			);
+
+			const ok = await this.notificationsService.sendEscalationNotificationToChannel(rule.channelId, monitor.teamId, message);
+			if (ok) {
+				const sentAt = new Date().toISOString();
+				await this.incidentsRepository.pushEscalationDelivery(activeIncident.id, monitor.teamId, {
+					channelId: rule.channelId,
+					delayMinutes: rule.delayMinutes,
+					sentAt,
+				});
+				deliveries.push({ channelId: rule.channelId, delayMinutes: rule.delayMinutes, sentAt });
+			}
+		}
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {

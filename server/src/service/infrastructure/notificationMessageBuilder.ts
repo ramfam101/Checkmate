@@ -15,6 +15,15 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string,
+		elapsedMs: number,
+		incidentId: string,
+		delayMinutes: number
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -22,6 +31,36 @@ const SERVICE_NAME = "NotificationMessageBuilder";
 
 export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	static SERVICE_NAME = SERVICE_NAME;
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string,
+		elapsedMs: number,
+		incidentId: string,
+		delayMinutes: number
+	): NotificationMessage {
+		const base = this.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const elapsedMinutes = Math.max(0, Math.floor(elapsedMs / 60000));
+		return {
+			...base,
+			content: {
+				...base.content,
+				title: `Escalated: ${base.content.title}`,
+				summary: `${base.content.summary} This incident has been open for ${elapsedMinutes} minute(s) (escalation threshold: ${delayMinutes} minute(s)).`,
+				details: [
+					...(base.content.details ?? []),
+					`Incident ID: ${incidentId}`,
+					`Escalation: notify after ${delayMinutes} minute(s) without resolution.`,
+				],
+			},
+			metadata: {
+				...base.metadata,
+				escalation: { delayMinutes },
+			},
+		};
+	}
 
 	buildMessage(
 		monitor: Monitor,

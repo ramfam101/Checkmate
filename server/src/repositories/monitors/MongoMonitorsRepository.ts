@@ -294,6 +294,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
 		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ "notificationEscalations.channelId": notificationId },
+			{ $pull: { notificationEscalations: { channelId: notificationId } } }
+		);
 	};
 
 	updateNotifications = async (
@@ -374,6 +378,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			notificationEscalations: doc.notificationEscalations?.length
+				? doc.notificationEscalations.map((e) => ({
+						delayMinutes: e.delayMinutes,
+						channelId: typeof e.channelId === "string" ? e.channelId : String(e.channelId),
+					}))
+				: undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +443,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			notificationEscalations: doc.notificationEscalations?.length
+				? doc.notificationEscalations.map((e) => ({
+						delayMinutes: e.delayMinutes,
+						channelId: typeof e.channelId === "string" ? e.channelId : String(e.channelId),
+					}))
+				: undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

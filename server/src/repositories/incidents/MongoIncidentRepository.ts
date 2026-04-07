@@ -60,6 +60,11 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationDeliveries: doc.escalationDeliveries?.map((e) => ({
+				channelId: e.channelId,
+				delayMinutes: e.delayMinutes,
+				sentAt: e.sentAt,
+			})),
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -131,6 +136,17 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			.skip(page * rowsPerPage)
 			.limit(rowsPerPage);
 		return this.mapDocuments(incidents);
+	};
+
+	pushEscalationDelivery = async (
+		incidentId: string,
+		teamId: string,
+		entry: { channelId: string; delayMinutes: number; sentAt: string }
+	): Promise<void> => {
+		await IncidentModel.updateOne(
+			{ _id: new mongoose.Types.ObjectId(incidentId), teamId: new mongoose.Types.ObjectId(teamId) },
+			{ $push: { escalationDeliveries: entry } }
+		);
 	};
 
 	updateById = async (incidentId: string, teamId: string, patch: Partial<Incident>) => {
