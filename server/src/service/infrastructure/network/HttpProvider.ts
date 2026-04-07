@@ -11,19 +11,17 @@ import CacheableLookup from "cacheable-lookup";
 export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 	readonly type = "http";
 
-	constructor(
-		private got: Got,
-		private advancedMatcher: IAdvancedMatcher
-	) {
-		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
-		this.got = got.extend({
-			dnsCache: cacheable,
-			timeout: {
-				request: 30000,
-			},
-			retry: { limit: 1 },
-		});
-	}
+constructor(
+	private got: Got,
+	private advancedMatcher: IAdvancedMatcher
+) {
+	this.got = got.extend({
+		timeout: {
+			request: 30000,
+		},
+		retry: { limit: 1 },
+	});
+}
 
 	supports(type: MonitorType) {
 		return type === "http";

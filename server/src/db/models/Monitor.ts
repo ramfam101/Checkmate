@@ -284,6 +284,16 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escDelayMinutes: {
+			type: Number,
+		},
+		escNotifId: [
+			{ 
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		
 		secret: {
 			type: String,
 		},

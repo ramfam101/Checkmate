@@ -16,11 +16,19 @@ export class EmailProvider implements INotificationProvider {
 
 	async sendTestAlert(notification: Partial<Notification>): Promise<boolean> {
 		const subject = "Test notification";
+		
+		this.logger.debug({
+			message: "Building test email",
+			service: SERVICE_NAME,
+			method: "sendTestAlert",
+			details: { address: notification.address },
+		});
+		
 		const html = await buildTestEmail(this.emailService);
 
 		if (!notification.address) {
-			this.logger.warn({
-				message: "Missing address",
+			this.logger.error({
+				message: "Cannot send test alert - missing email address",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
@@ -28,7 +36,7 @@ export class EmailProvider implements INotificationProvider {
 		}
 
 		if (!html) {
-			this.logger.warn({
+			this.logger.error({
 				message: "Failed to build test email content",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
@@ -36,44 +44,88 @@ export class EmailProvider implements INotificationProvider {
 			return false;
 		}
 
+		this.logger.info({
+			message: "Attempting to send test email",
+			service: SERVICE_NAME,
+			method: "sendTestAlert",
+			details: { to: notification.address },
+		});
+
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
-			this.logger.warn({
-				message: "Email test alert failed",
+			this.logger.error({
+				message: "Email test alert failed - check email service logs for details",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				details: { to: notification.address },
 			});
 			return false;
 		}
+		
+		this.logger.info({
+			message: "Test email sent successfully",
+			service: SERVICE_NAME,
+			method: "sendTestAlert",
+			details: { to: notification.address, messageId },
+		});
 		return true;
 	}
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
 		if (!notification.address) {
+			this.logger.error({
+				message: "Cannot send email - notification has no address",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+				details: { notificationId: notification.id },
+			});
 			return false;
 		}
 
 		const subject = this.buildSubject(message);
+		this.logger.debug({
+			message: "Building email from notification message",
+			service: SERVICE_NAME,
+			method: "sendMessage",
+			details: { to: notification.address, monitorName: message.monitor.name },
+		});
+		
 		const html = await this.buildEmailFromMessage(message);
 
 		if (!html) {
-			this.logger.warn({
-				message: "Failed to build email content",
+			this.logger.error({
+				message: "Failed to build email content from message",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { to: notification.address },
 			});
 			return false;
 		}
 
+		this.logger.info({
+			message: "Attempting to send notification email",
+			service: SERVICE_NAME,
+			method: "sendMessage",
+			details: { to: notification.address, subject, monitorName: message.monitor.name },
+		});
+
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
-			this.logger.warn({
-				message: "Email notification failed",
+			this.logger.error({
+				message: "Email notification failed - check email service logs for details",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { to: notification.address, subject },
 			});
 			return false;
 		}
+		
+		this.logger.info({
+			message: "Notification email sent successfully",
+			service: SERVICE_NAME,
+			method: "sendMessage",
+			details: { to: notification.address, messageId },
+		});
 		return true;
 	}
 
@@ -87,6 +139,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
+			case "escalation":
+				return `Escalation: Monitor ${message.monitor.name} is still down`;
 			default:
 				return `Alert: ${message.monitor.name}`;
 		}

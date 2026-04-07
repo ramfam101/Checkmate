@@ -40,6 +40,7 @@ import {
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import { optional } from "joi";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -764,6 +765,82 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			<ConfigBox
+			title ="Escalation Rules"
+			subtitle ="If the monitor stays down for the specified time, notify additional channels."
+			rightContent={
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+					name = "escDelayMinutes"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+						{...field}
+						value = {field.value ?? ""}
+						onChange={(e) => {
+							const val = e.target.value;
+							field.onChange(val === "" ? undefined : Number(val));
+						}}
+						type="number"
+						fieldLabel="Escalation after (minutes)"
+						fullWidth
+						error={!!fieldState.error}
+						helperText={fieldState.error?.message ?? ""}
+						/>
+					)}
+					/>
+					<Controller
+					name = "escNotifId"
+					control={control}
+					render={({ field }) => {
+						const notificationOptions = (notifications ?? []).map((n) => ({
+							...n,
+							name: n.notificationName,
+						}));
+						const selectedIds = Array.isArray(field.value) ? field.value : [];
+						const selectedNotifications = notificationOptions.filter((n) =>
+							selectedIds.includes(n.id)
+					);
+						return (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							<Autocomplete
+							multiple
+							options={notificationOptions}
+							value={selectedNotifications}
+							getOptionLabel={(option) => option.name}
+							onChange={(_, newValue) => {
+								field.onChange(newValue.map((n: { id: string }) => n.id));
+							}}
+							isOptionEqualToValue={(option, value) =>
+								option.id === value.id
+							}
+							/>
+							{selectedNotifications.length > 0 && (
+								<Stack flex={1} width="100%">
+									{selectedNotifications.map((notification, index) => (
+										<Stack direction="row" alignItems="center" key={notification.id} width="100%">
+											<Typography flexGrow={1}>{notification.notificationName}</Typography>
+											<IconButton
+											size="small"
+											onClick={() => {field.onChange( selectedIds.filter((id: string) => id !== notification.id)
+											);}}
+											aria-label="Remove notification"
+											>
+											<Trash2 size={16} />
+											</IconButton>
+											{index < selectedNotifications.length - 1 && <Divider />}
+										</Stack>
+									))}
+								</Stack>
+							)}
+							</Stack>
+						);
+					}}
+					/>
+					</Stack>
+				}
+				/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
