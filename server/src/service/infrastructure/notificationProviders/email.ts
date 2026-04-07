@@ -8,6 +8,7 @@ import { IEmailService } from "@/service/infrastructure/emailService.js";
 export class EmailProvider implements INotificationProvider {
 	private emailService: IEmailService;
 	private logger: ILogger;
+	private escalationTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 	constructor(emailService: IEmailService, logger: ILogger) {
 		this.emailService = emailService;
@@ -66,6 +67,7 @@ export class EmailProvider implements INotificationProvider {
 		}
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
+
 		if (!messageId) {
 			this.logger.warn({
 				message: "Email notification failed",
@@ -74,7 +76,82 @@ export class EmailProvider implements INotificationProvider {
 			});
 			return false;
 		}
+
+		const isMonitorDown = message.type === "monitor_down";
+		const isRecovery = message.type === "monitor_up" || message.type === "threshold_resolved";
+
+		if (isRecovery) {
+			this.clearEscalationTimer(notification.id, message.monitor.id);
+			return true;
+		}
+
+		if (
+			isMonitorDown &&
+			notification.escalation?.enabled &&
+			Array.isArray(notification.escalation.levels) &&
+			notification.escalation.levels.length > 0
+		) {
+			this.clearEscalationTimer(notification.id, message.monitor.id);
+			const [level] = notification.escalation.levels;
+			if (level.address) {
+				this.scheduleEscalation(notification, message, level);
+			}
+		}
+
 		return true;
+	}
+
+	private getEscalationKey(notificationId: string, monitorId: string): string {
+		return `${notificationId}:${monitorId}`;
+	}
+
+	private clearEscalationTimer(notificationId: string, monitorId: string): void {
+		const key = this.getEscalationKey(notificationId, monitorId);
+		const timer = this.escalationTimers.get(key);
+		if (timer) {
+			clearTimeout(timer);
+			this.escalationTimers.delete(key);
+		}
+	}
+
+	private scheduleEscalation(
+		notification: Notification,
+		message: NotificationMessage,
+		level: NonNullable<Notification["escalation"]>["levels"][0]
+	): void {
+		const delayMs = (level.delayMinutes ?? 0) * 60_000;
+		const key = this.getEscalationKey(notification.id, message.monitor.id);
+
+		const timer = setTimeout(async () => {
+			this.escalationTimers.delete(key);
+
+			const escalationSubject = this.buildEscalationSubject(message, 1);
+			const escalationHtml = await this.buildEmailFromMessage(message, 1);
+
+			if (!escalationHtml) {
+				this.logger.warn({
+					message: "Failed to build escalation email content",
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+				});
+				return;
+			}
+
+			const escalationMessageId = await this.emailService.sendEmail(level.address, escalationSubject, escalationHtml);
+			if (!escalationMessageId) {
+				this.logger.warn({
+					message: "Escalation email failed",
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+				});
+			}
+		}, delayMs);
+
+		this.escalationTimers.set(key, timer);
+	}
+
+	private buildEscalationSubject(message: NotificationMessage, level: number): string {
+		return `Escalation Level ${level}: ${this.buildSubject(message)}`;
 	}
 
 	private buildSubject(message: NotificationMessage): string {
@@ -92,7 +169,7 @@ export class EmailProvider implements INotificationProvider {
 		}
 	}
 
-	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
+	private async buildEmailFromMessage(message: NotificationMessage, escalationLevel?: number): Promise<string | undefined> {
 		const context = {
 			title: message.content.title,
 			summary: message.content.summary,
@@ -104,6 +181,7 @@ export class EmailProvider implements INotificationProvider {
 			thresholds: message.content.thresholds,
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
+			escalationLevel: escalationLevel,
 		};
 
 		this.logger.info({

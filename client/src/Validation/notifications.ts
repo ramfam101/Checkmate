@@ -5,6 +5,23 @@ const baseSchema = z.object({
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	escalation: z
+		.object({
+			enabled: z.boolean().optional(),
+			levels: z
+				.array(
+					z.object({
+						delayMinutes: z.number().min(0, "Delay must be >= 0"),
+						address: z
+							.string()
+							.min(1, "Escalation address is required")
+							.email("Please enter a valid email address"),
+					})
+				)
+				.max(1, "Only one escalation level is allowed")
+				.optional(),
+		})
+		.optional(),
 });
 
 const emailSchema = baseSchema.extend({

@@ -1,5 +1,7 @@
 import { BasePage, ConfigBox } from "@/Components/design-elements";
 import { TextField, Select, Button } from "@/Components/inputs";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
@@ -119,6 +121,92 @@ const NotificationsCreatePage = () => {
 					/>
 				}
 			/>
+
+			{/* Escalation configuration */}
+			<ConfigBox
+				title={t("pages.notifications.form.escalation.title") ?? "Escalation"}
+				subtitle={
+					t("pages.notifications.form.escalation.description") ??
+					"Send escalation emails to additional addresses after delays."
+				}
+				rightContent={
+					<Stack spacing={2}>
+						<Controller
+							name="escalation.enabled"
+							control={control}
+							defaultValue={defaults.escalation?.enabled ?? false}
+							render={({ field }) => (
+								<FormControlLabel
+									control={
+										<Switch
+											checked={field.value}
+											onChange={(e) => field.onChange(e.target.checked)}
+										/>
+									}
+									label={
+										t("pages.notifications.form.escalation.enable") ?? "Enable escalation"
+									}
+								/>
+							)}
+						/>
+						{watch("escalation.enabled") && (
+							<Stack spacing={1}>
+								{[0].map((i) => (
+									<Stack
+										key={i}
+										direction="row"
+										spacing={2}
+										alignItems="center"
+									>
+										<Controller
+											name={`escalation.levels.${i}.address` as const}
+											control={control}
+											defaultValue={defaults.escalation?.levels?.[i]?.address ?? ""}
+											render={({ field, fieldState }) => (
+												<TextField
+													{...field}
+													type="text"
+													fieldLabel="Escalation address"
+													placeholder={t(
+														"pages.notifications.form.escalation.placeholderEmail"
+													)}
+													fullWidth
+													error={!!fieldState.error}
+													helperText={fieldState.error?.message ?? ""}
+												/>
+											)}
+										/>
+										<Controller
+											name={`escalation.levels.${i}.delayMinutes` as const}
+											control={control}
+											defaultValue={defaults.escalation?.levels?.[i]?.delayMinutes ?? 15}
+											render={({ field, fieldState }) => (
+												<TextField
+													{...field}
+													type="number"
+													fieldLabel="Escalation delay (min)"
+													placeholder="15"
+													inputProps={{ min: 0, step: 1 }}
+													value={field.value ?? ""}
+													onChange={(event) =>
+														field.onChange(
+															event.target.value === "" ? "" : Number(event.target.value)
+														)
+													}
+													error={!!fieldState.error}
+													helperText={fieldState.error?.message ?? ""}
+													style={{ width: 160 }}
+												/>
+											)}
+										/>
+									</Stack>
+								))}
+							</Stack>
+						)}
+					</Stack>
+				}
+			/>
+
 			<ConfigBox
 				title={t("pages.notifications.form.type.title")}
 				subtitle={t("pages.notifications.form.type.description")}

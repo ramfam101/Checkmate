@@ -20,6 +20,10 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalation?: {
+		enabled?: boolean;
+		levels?: { delayMinutes: number; address: string }[];
+	};
 	createdAt: string;
 	updatedAt: string;
 }

@@ -4,6 +4,21 @@ import { z } from "zod";
 // Notification Validations
 //****************************************
 
+const escalationSchema = z
+	.object({
+		enabled: z.boolean().optional(),
+		levels: z
+			.array(
+				z.object({
+					delayMinutes: z.number().min(0, "Delay must be a non-negative number"),
+					address: z.string().min(1, "Escalation address is required").email("Please enter a valid e-mail address"),
+				})
+			)
+			.max(1, "Only one escalation level is allowed")
+			.optional(),
+	})
+	.optional();
+
 export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	// Email notification
 	z.object({
@@ -13,6 +28,20 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalation: z
+			.object({
+				enabled: z.boolean().optional(),
+				levels: z
+					.array(
+						z.object({
+							delayMinutes: z.number().min(0, "Delay must be a non-negative number"),
+							address: z.string().min(1, "Escalation address is required").email("Please enter a valid e-mail address"),
+						})
+					)
+					.max(1, "Only one escalation level is allowed")
+					.optional(),
+			})
+			.optional(),
 	}),
 	// Webhook notification
 	z.object({
@@ -22,6 +51,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalation: escalationSchema,
 	}),
 	// Slack notification
 	z.object({
@@ -31,6 +61,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalation: escalationSchema,
 	}),
 	// Discord notification
 	z.object({
@@ -40,6 +71,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalation: escalationSchema,
 	}),
 	// PagerDuty notification
 	z.object({
@@ -49,6 +81,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalation: escalationSchema,
 	}),
 	// Matrix notification
 	z.object({
@@ -58,12 +91,14 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
 		roomId: z.string().min(1, "Room ID is required"),
 		accessToken: z.string().min(1, "Access Token is required"),
+		escalation: escalationSchema,
 	}),
 	// Teams notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("teams"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
+		escalation: escalationSchema,
 	}),
 ]);
 

@@ -53,6 +53,9 @@
 					<p><b>URL:</b> {{ monitorUrl }}</p>
 					<p><b>Type:</b> {{ monitorType }}</p>
 					<p><b>Status:</b> {{ monitorStatus }}</p>
+					{{#if escalationLevel}}
+					<p><b>Escalation level:</b> {{ escalationLevel }}</p>
+					{{/if}}
 					{{#if thresholds}}
 					<p><b>Threshold Breaches:</b></p>
 					<ul>

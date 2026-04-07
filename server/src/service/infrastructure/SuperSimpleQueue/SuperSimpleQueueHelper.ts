@@ -434,8 +434,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			return decision;
 		}
 
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
+		if (monitor.status === "down" && (prevStatus === "up" || prevStatus === "breached")) {
+			// Monitor went down from a normal state
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";

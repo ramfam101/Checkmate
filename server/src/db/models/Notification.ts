@@ -32,6 +32,18 @@ const NotificationSchema = new Schema<NotificationDocument>(
 			type: String,
 			required: true,
 		},
+		escalation: {
+			type: {
+				enabled: { type: Boolean, default: false },
+				levels: [
+					{
+						delayMinutes: { type: Number, min: 0 },
+						address: { type: String },
+					},
+				],
+			},
+			default: undefined,
+		},
 		address: { type: String },
 		phone: { type: String },
 		homeserverUrl: { type: String },
