@@ -23,7 +23,7 @@ const startApp = async () => {
 	const __filename = fileURLToPath(import.meta.url);
 	const __dirname = path.dirname(__filename);
 	const openApiSpec = JSON.parse(fs.readFileSync(path.join(__dirname, "../openapi.json"), "utf8"));
-	const frontendPath = path.join(__dirname, "..", "public");
+	const frontendPath = path.join(__dirname, "..", "..", "client", "dist");
 
 	// Create services
 	const settingsRepository = new MongoSettingsRepository();
