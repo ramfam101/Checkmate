@@ -167,15 +167,19 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
-		const updatedMonitor = await MonitorModel.findOneAndUpdate(
-			{ _id: monitorId, teamId },
-			{
-				$set: {
-					...patch,
-				},
-			},
-			{ new: true, runValidators: true }
-		);
+		const setFields: Record<string, unknown> = {};
+		const unsetFields: Record<string, 1> = {};
+		for (const [key, value] of Object.entries(patch)) {
+			if (value === undefined || value === null) {
+				unsetFields[key] = 1;
+			} else {
+				setFields[key] = value;
+			}
+		}
+		const update: Record<string, unknown> = {};
+		if (Object.keys(setFields).length > 0) update.$set = setFields;
+		if (Object.keys(unsetFields).length > 0) update.$unset = unsetFields;
+		const updatedMonitor = await MonitorModel.findOneAndUpdate({ _id: monitorId, teamId }, update, { new: true, runValidators: true });
 		if (!updatedMonitor) {
 			throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
 		}
@@ -351,6 +355,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationChannelIds = (doc.escalationChannels ?? []).map((id) => toStringId(id));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +379,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationDelay: doc.escalationDelay ?? 0,
+			escalationChannels: escalationChannelIds,
+			escalationSentAt: doc.escalationSentAt ?? undefined,
+			downSince: doc.downSince ?? undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +419,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationChannelIds = (doc.escalationChannels ?? []).map((id: unknown) => toStringId(id));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +443,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationDelay: doc.escalationDelay ?? 0,
+			escalationChannels: escalationChannelIds,
+			escalationSentAt: doc.escalationSentAt ?? undefined,
+			downSince: doc.downSince ?? undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

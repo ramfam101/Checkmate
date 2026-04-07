@@ -238,7 +238,15 @@ export class StatusService implements IStatusService {
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
+				const willEnterDown = newStatus === "down" && prevStatus !== "down";
 				monitor.status = newStatus;
+				if (willEnterDown) {
+					monitor.downSince = Date.now();
+					monitor.escalationSentAt = undefined;
+				} else if (newStatus !== "down") {
+					monitor.downSince = undefined;
+					monitor.escalationSentAt = undefined;
+				}
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -346,7 +354,16 @@ export class StatusService implements IStatusService {
 			}
 
 			// Apply the final status
+			const willEnterDown = newStatus === "down" && prevStatus !== "down";
 			monitor.status = newStatus;
+
+			if (willEnterDown) {
+				monitor.downSince = Date.now();
+				monitor.escalationSentAt = undefined;
+			} else if (newStatus !== "down") {
+				monitor.downSince = undefined;
+				monitor.escalationSentAt = undefined;
+			}
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 

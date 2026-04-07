@@ -1,5 +1,5 @@
 const SERVICE_NAME = "JobQueueHelper";
-import type { Monitor } from "@/types/monitor.js";
+import type { Monitor, MonitorStatusResponse } from "@/types/index.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -38,13 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
-	thresholdBreaches?: {
-		cpu?: boolean;
-		memory?: boolean;
-		disk?: boolean;
-		temp?: boolean;
-	};
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 }
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
@@ -168,6 +162,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				// Step 6b. Handle escalation notifications for sustained downtime
+				this.handleEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalation notification for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
@@ -188,6 +192,48 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async handleEscalation(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) {
+		this.logger.debug({
+			message: `[Escalation] status=${monitor.status} delay=${monitor.escalationDelay} channels=${monitor.escalationChannels?.length ?? 0} sentAt=${monitor.escalationSentAt} downSince=${monitor.downSince}`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+
+		if (monitor.status !== "down") {
+			return;
+		}
+
+		if (!monitor.escalationDelay || monitor.escalationDelay <= 0) {
+			return;
+		}
+
+		if (!Array.isArray(monitor.escalationChannels) || monitor.escalationChannels.length === 0) {
+			return;
+		}
+
+		if (monitor.escalationSentAt) {
+			return;
+		}
+
+		const downSince = monitor.downSince ?? Date.now();
+		const elapsedMinutes = (Date.now() - downSince) / 60000;
+		this.logger.debug({
+			message: `[Escalation] elapsedMinutes=${elapsedMinutes.toFixed(2)} needed=${monitor.escalationDelay}`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+		if (elapsedMinutes < monitor.escalationDelay) {
+			return;
+		}
+
+		const success = await this.notificationsService.sendEscalationNotifications(monitor, monitorStatusResponse, monitor.escalationChannels);
+		if (success) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				escalationSentAt: Date.now(),
+			});
+		}
+	}
 
 	getCleanupOrphanedJob = () => {
 		return async () => {
