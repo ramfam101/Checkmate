@@ -40,6 +40,8 @@ import {
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import { de } from "zod/v4/locales";
+import { parse } from "zod";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -764,6 +766,116 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			<ConfigBox
+	            title="Escalation Rules"
+	            subtitle="If the monitor stays down for the specified time, notify additional channels"
+	            rightContent={
+		           <Controller
+			           name="escalationNotifications"
+			           control={control}
+			           render={({ field: notifField }) => {
+				           return (
+					           <Controller
+						           name="escalationDelayMinutes"
+						           control={control}
+						           render={({ field: delayField, fieldState }) => {
+							           const notificationOptions = (notifications ?? []).map((n) => ({
+								           ...n,
+								           name: n.notificationName,
+							           }));
+
+							           const selectedNotifications = notificationOptions.filter((n) =>
+								           (notifField.value ?? []).includes(n.id)
+							           );
+
+							           return (
+								           <Stack spacing={theme.spacing(LAYOUT.MD)}>
+									           {/* Delay input (simple like notifications field style) */}
+									           <TextField
+										           type="number"
+										           fieldLabel="Escalate after (minutes)"
+										           value={delayField.value ?? ""}
+										           onChange={(e) =>
+											           delayField.onChange(
+												           parseInt(e.target.value) || 0
+											          )
+										           }
+										           fullWidth
+									           />
+
+									           {/* SAME autocomplete pattern as notifications */}
+									           <Autocomplete
+										           multiple
+										           options={notificationOptions}
+										           value={selectedNotifications}
+										           getOptionLabel={(option) => option.name}
+										           onChange={(_: unknown, newValue) => {
+											           notifField.onChange(newValue.map((n) => n.id));
+										           }}
+										           isOptionEqualToValue={(option, value) =>
+											           option.id === value.id
+										           }
+												   renderInput={(params) => 
+													   <TextField
+													   	   {...params}
+														   fieldLabel="Escalation notification channels"
+														/>
+												   }
+									           />
+
+									           {/* SAME removable list UI as notifications */}
+									           {selectedNotifications.length > 0 && (
+										           <Stack flex={1} width="100%">
+											           {selectedNotifications.map((notification, index) => (
+												           <Stack
+													           direction="row"
+													           alignItems="center"
+													           key={notification.id}
+													           width="100%"
+												           >
+													           <Typography flexGrow={1}>
+														           {notification.notificationName}
+													           </Typography>
+
+													           <IconButton
+														           size="small"
+														           onClick={() => {
+															           notifField.onChange(
+																           (notifField.value ?? []).filter(
+																	           (id: string) => id !== notification.id
+																           )
+															           );
+														          }}
+														          aria-label="Remove notification"
+													         >
+														          <Trash2 size={16} />
+													         </IconButton>
+
+													         {index < selectedNotifications.length - 1 && (
+														         <Divider />
+													         )}
+												         </Stack>
+											         ))}
+										         </Stack>
+											 )}
+
+									         {/* error */}
+									         {fieldState.error && (
+										         <Typography color="error">
+											         {fieldState.error.message}
+										         </Typography>
+									         )}
+								         </Stack>
+							         );
+						         }}
+					         />
+				         );
+			         }}
+		         />
+	          }
+          />
+
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

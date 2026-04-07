@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import { clear } from "node:console";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -107,8 +108,63 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
+	private escalationTimers = new Map<string, NodeJS.Timeout>();
+
+	private startEscalationLoop = (monitor: Monitor) => {
+		const id = monitor.id;
+
+		if (this.escalationTimers.has(id)) return;
+
+		const intervalMs =
+			(monitor.escalationDelayMinutes ?? 1) * 60 * 1000;
+		
+		const timer = setInterval(async () => {
+			const latest = await this.monitorsRepository.findById(
+				id,
+				monitor.teamId
+			);
+
+		    if (!latest || latest.status !== "down") {
+			    clearInterval(timer);
+			    this.escalationTimers.delete(id);
+			    return;
+		    }
+
+		    const notificationIds = 
+			    latest.escalationNotifications ?? [];
+
+			const notifications =
+				await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+			const message = this.notificationMessageBuilder.buildMessage(
+				latest,
+				{} as any,
+				{
+					shouldSendNotification: true,
+					isEscalationCandidate: true,
+				} as any,
+				this.settingsService.getSettings().clientHost || ""
+			);
+
+			for (const notification of notifications) {
+				await this.send(
+					notification,
+					latest,
+					{} as any,
+					{} as any,
+					message
+				);
+			}
+		}, intervalMs);
+
+		this.escalationTimers.set(id, timer);
+	};
+
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = 
+			decision.isEscalationCandidate
+				? monitor.escalationNotifications ?? []
+				: monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -135,6 +191,10 @@ export class NotificationsService implements INotificationsService {
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
+		}
+
+		if(decision.isEscalationCandidate) {
+			this.startEscalationLoop(monitor);
 		}
 
 		// Send notifications based on decision

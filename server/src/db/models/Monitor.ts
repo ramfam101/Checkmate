@@ -25,6 +25,9 @@ type MonitorDocumentBase = Omit<
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+
+	escalationDelayMinutes: number;
+	escalationNotifications: Types.ObjectId[];
 };
 
 interface MonitorDocument extends MonitorDocumentBase {
@@ -282,6 +285,17 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			{
 				type: Schema.Types.ObjectId,
 				ref: "Notification",
+			},
+		],
+		escalationDelayMinutes: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+				default: [],
 			},
 		],
 		secret: {

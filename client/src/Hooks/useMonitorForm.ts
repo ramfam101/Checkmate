@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { monitorSchema, type MonitorFormData } from "@/Validation/monitor";
 import type { Monitor, MonitorType } from "@/Types/Monitor";
+import { es } from "zod/v4/locales";
 
 interface UseMonitorFormOptions {
 	data?: Monitor | null;
@@ -12,6 +13,8 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalationDelayMinutes: data?.escalationDelayMinutes ?? 0,
+	escalationNotifications: data?.escalationNotifications || [],
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
