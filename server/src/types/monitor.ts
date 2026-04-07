@@ -15,6 +15,12 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 export const MonitorMatchMethods = ["equal", "include", "regex"] as const;
 export type MonitorMatchMethod = (typeof MonitorMatchMethods)[number] | "";
 
+/** Notify this channel after the incident has been open for delayMinutes (strictly increasing per monitor). */
+export interface MonitorEscalationStep {
+	delayMinutes: number;
+	notificationId: string;
+}
+
 export interface Monitor {
 	id: string;
 	userId: string;
@@ -37,6 +43,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationSteps?: MonitorEscalationStep[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

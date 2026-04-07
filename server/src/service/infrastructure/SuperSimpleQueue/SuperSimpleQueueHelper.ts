@@ -168,15 +168,33 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				// Step 7. Handle incidents (await so an active incident exists before escalation in the same tick)
+				try {
+					await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+				} catch (error: unknown) {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
-				});
+				}
+
+				// Step 8. Escalation notifications while the incident remains open
+				const mon = statusChangeResult.monitor;
+				if ((mon.status === "down" || mon.status === "breached") && mon.escalationSteps?.length) {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(mon.id, mon.teamId);
+					if (activeIncident) {
+						this.notificationsService.handleEscalationNotifications(mon, status, activeIncident).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending escalation notifications for job ${mon.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

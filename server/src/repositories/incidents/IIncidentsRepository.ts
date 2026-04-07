@@ -22,6 +22,8 @@ export interface IIncidentsRepository {
 
 	// update
 	updateById(incidentId: string, teamId: string, updateData: Partial<Incident>): Promise<Incident>;
+	/** Atomically record that an escalation step fired; returns false if already fired or incident not active. */
+	claimEscalationStepIfNotFired(incidentId: string, teamId: string, stepIndex: number): Promise<boolean>;
 	// delete
 	deleteByMonitorId(monitorId: string, teamId: string): Promise<number>;
 	deleteByMonitorIdsNotIn(monitorIds: string[]): Promise<number>;

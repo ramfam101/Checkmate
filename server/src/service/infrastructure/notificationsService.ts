@@ -1,11 +1,20 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Incident, Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IIncidentsRepository, IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import { getDueEscalationStepIndices } from "@/service/infrastructure/escalationNotificationUtils.js";
+
+const NOOP_MONITOR_DECISION: MonitorActionDecision = {
+	shouldCreateIncident: false,
+	shouldResolveIncident: false,
+	shouldSendNotification: false,
+	incidentReason: null,
+	notificationReason: null,
+};
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,6 +23,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, incident: Incident) => Promise<void>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -26,6 +36,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -40,6 +51,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -53,6 +65,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -139,6 +152,61 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident
+	): Promise<void> => {
+		const steps = monitor.escalationSteps;
+		if (!steps?.length || !incident.status) {
+			return;
+		}
+
+		const startMs = new Date(incident.startTime).getTime();
+		const nowMs = Date.now();
+		const fired = incident.firedEscalationStepIndices ?? [];
+		const dueIndices = getDueEscalationStepIndices(steps, startMs, nowMs, fired);
+		if (!dueIndices.length) {
+			return;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const minutesDown = Math.max(0, Math.floor((nowMs - startMs) / 60_000));
+
+		for (const stepIndex of dueIndices) {
+			const claimed = await this.incidentsRepository.claimEscalationStepIfNotFired(incident.id, monitor.teamId, stepIndex);
+			if (!claimed) {
+				continue;
+			}
+
+			const step = steps[stepIndex];
+			if (!step?.notificationId) {
+				continue;
+			}
+
+			const notifications = await this.notificationsRepository.findNotificationsByIds([step.notificationId]);
+			const notification = notifications[0];
+			if (!notification || notification.teamId !== monitor.teamId) {
+				this.logger.warn({
+					message: `Escalation step ${stepIndex}: notification ${step.notificationId} missing or wrong team`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotifications",
+				});
+				continue;
+			}
+
+			const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(
+				monitor,
+				monitorStatusResponse,
+				clientHost,
+				{ minutesDown, configuredDelayMinutes: step.delayMinutes }
+			);
+
+			await this.send(notification, monitor, monitorStatusResponse, NOOP_MONITOR_DECISION, notificationMessage);
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

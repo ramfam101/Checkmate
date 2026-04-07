@@ -3,6 +3,35 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const monitorEscalationStepBody = z.object({
+	delayMinutes: z.number().int().min(1).max(10080),
+	notificationId: z.string().min(1),
+});
+
+const monitorEscalationStepsBody = z
+	.array(monitorEscalationStepBody)
+	.max(10)
+	.optional()
+	.superRefine((steps, ctx) => {
+		if (!steps?.length) {
+			return;
+		}
+		for (let i = 1; i < steps.length; i++) {
+			const prev = steps[i - 1];
+			const cur = steps[i];
+			if (!prev || !cur) {
+				continue;
+			}
+			if (cur.delayMinutes <= prev.delayMinutes) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: "Escalation delays must be strictly increasing",
+					path: [i, "delayMinutes"],
+				});
+			}
+		}
+	});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -78,6 +107,7 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationSteps: monitorEscalationStepsBody,
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +137,7 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationSteps: monitorEscalationStepsBody,
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -144,6 +175,29 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationSteps: z
+		.array(monitorEscalationStepBody)
+		.max(10)
+		.default([])
+		.superRefine((steps, ctx) => {
+			if (!steps.length) {
+				return;
+			}
+			for (let i = 1; i < steps.length; i++) {
+				const prev = steps[i - 1];
+				const cur = steps[i];
+				if (!prev || !cur) {
+					continue;
+				}
+				if (cur.delayMinutes <= prev.delayMinutes) {
+					ctx.addIssue({
+						code: z.ZodIssueCode.custom,
+						message: "Escalation delays must be strictly increasing",
+						path: [i, "delayMinutes"],
+					});
+				}
+			}
+		}),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

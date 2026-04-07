@@ -1,6 +1,6 @@
 import { MonitorModel } from "@/db/models/index.js";
 import type { MonitorDocument, CheckSnapshotDocument } from "@/db/models/index.js";
-import type { Monitor, MonitorsSummary, CheckSnapshot } from "@/types/index.js";
+import type { Monitor, MonitorEscalationStep, MonitorsSummary, CheckSnapshot } from "@/types/index.js";
 import mongoose, { type FilterQuery, type PipelineStage } from "mongoose";
 import type { IMonitorsRepository, TeamQueryConfig, SummaryConfig } from "./IMonitorsRepository.js";
 import { MongoBulkWriteError } from "mongodb";
@@ -294,6 +294,16 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
 		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		let notificationObjectId: mongoose.Types.ObjectId;
+		try {
+			notificationObjectId = new mongoose.Types.ObjectId(notificationId);
+		} catch {
+			return;
+		}
+		await MonitorModel.updateMany(
+			{ "escalationSteps.notificationId": notificationObjectId },
+			{ $pull: { escalationSteps: { notificationId: notificationObjectId } } }
+		);
 	};
 
 	updateNotifications = async (
@@ -352,6 +362,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
 
+		const escalationSteps: MonitorEscalationStep[] = (doc.escalationSteps ?? []).map((step) => ({
+			delayMinutes: step.delayMinutes,
+			notificationId: toStringId(step.notificationId),
+		}));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -374,6 +389,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationSteps,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -411,6 +427,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
+		const escalationSteps: MonitorEscalationStep[] = (doc.escalationSteps ?? []).map((step) => ({
+			delayMinutes: step.delayMinutes,
+			notificationId: toStringId(step.notificationId),
+		}));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -433,6 +454,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationSteps,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

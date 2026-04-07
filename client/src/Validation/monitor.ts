@@ -4,6 +4,32 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
+/** One UI row; empty notificationId means no escalation (stripped before save). */
+const escalationStepSchema = z
+	.object({
+		delayMinutes: z.union([
+			z.literal(""),
+			z
+				.number({ message: "Minutes after incident start is required" })
+				.int()
+				.min(1, "Use at least 1 minute")
+				.max(10080, "Delay cannot exceed one week"),
+		]),
+		notificationId: z.string(),
+	})
+	.superRefine((data, ctx) => {
+		if (!data.notificationId.trim()) {
+			return;
+		}
+		if (data.delayMinutes === "") {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "Enter escalate after (minutes)",
+				path: ["delayMinutes"],
+			});
+		}
+	});
+
 // Common base schema for all monitor types
 const baseSchema = z.object({
 	name: z
@@ -27,6 +53,10 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationSteps: z
+		.array(escalationStepSchema)
+		.length(1)
+		.default([{ delayMinutes: "", notificationId: "" }]),
 });
 
 // HTTP monitor schema

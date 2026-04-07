@@ -54,6 +54,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			startTime: this.toDateString(doc.startTime),
 			endTime: doc.endTime ? this.toDateString(doc.endTime) : null,
 			status: doc.status,
+			firedEscalationStepIndices: doc.firedEscalationStepIndices ?? [],
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
 			resolutionType: doc.resolutionType ?? null,
@@ -147,6 +148,20 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			throw new AppError({ message: `Failed to update incident with id ${incidentId}`, status: 500 });
 		}
 		return this.toEntity(updatedIncident);
+	};
+
+	claimEscalationStepIfNotFired = async (incidentId: string, teamId: string, stepIndex: number): Promise<boolean> => {
+		const updated = await IncidentModel.findOneAndUpdate(
+			{
+				_id: new mongoose.Types.ObjectId(incidentId),
+				teamId: new mongoose.Types.ObjectId(teamId),
+				status: true,
+				firedEscalationStepIndices: { $nin: [stepIndex] },
+			},
+			{ $push: { firedEscalationStepIndices: stepIndex } },
+			{ new: true }
+		);
+		return updated !== null;
 	};
 
 	countByTeamId = async (

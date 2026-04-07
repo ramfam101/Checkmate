@@ -12,6 +12,14 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalationSteps: data?.escalationSteps?.[0]
+		? [
+				{
+					delayMinutes: data.escalationSteps[0].delayMinutes,
+					notificationId: data.escalationSteps[0].notificationId,
+				},
+			]
+		: [{ delayMinutes: "", notificationId: "" }] as MonitorFormData["escalationSteps"],
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
