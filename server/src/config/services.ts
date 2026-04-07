@@ -20,6 +20,7 @@ import {
 	InviteService,
 	MaintenanceWindowService,
 	IncidentService,
+	EscalationService,
 	// Notification providers
 	WebhookProvider,
 	SlackProvider,
@@ -46,6 +47,7 @@ import {
 	IIncidentService,
 	INotificationMessageBuilder,
 	ISettingsService,
+	IEscalationService,
 	EnvConfig,
 } from "@/service/index.js";
 
@@ -95,6 +97,7 @@ import {
 	MongoIncidentRepository,
 	MongoTeamsRepository,
 	MongoMaintenanceWindowsRepository,
+	MongoNotificationEscalationRepository,
 	IMonitorsRepository,
 	IChecksRepository,
 	IGeoChecksRepository,
@@ -108,6 +111,7 @@ import {
 	IIncidentsRepository,
 	ITeamsRepository,
 	IMaintenanceWindowsRepository,
+	INotificationEscalationRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 
@@ -127,6 +131,7 @@ export type InitializedServices = {
 	maintenanceWindowService: IMaintenanceWindowService;
 	monitorService: IMonitorService;
 	incidentService: IIncidentService;
+	escalationService: IEscalationService;
 	logger: ILogger;
 	notificationsService: INotificationsService;
 	statusPageService: IStatusPageService;
@@ -146,6 +151,7 @@ export type InitializedServices = {
 	incidentsRepository: IIncidentsRepository;
 	teamsRepository: ITeamsRepository;
 	maintenanceWindowsRepository: IMaintenanceWindowsRepository;
+	notificationEscalationRepository: INotificationEscalationRepository;
 };
 
 export const initializeServices = async ({
@@ -178,6 +184,7 @@ export const initializeServices = async ({
 	const incidentsRepository = new MongoIncidentRepository();
 	const teamsRepository = new MongoTeamsRepository();
 	const maintenanceWindowsRepository = new MongoMaintenanceWindowsRepository();
+	const notificationEscalationRepository = new MongoNotificationEscalationRepository(logger);
 
 	// Network providers
 	const pingProvider = new PingProvider(ping);
@@ -205,7 +212,23 @@ export const initializeServices = async ({
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
+	const escalationService = new EscalationService(
+		notificationEscalationRepository,
+		notificationsRepository,
+		undefined as any, // Will be set after notificationsService is created
+		incidentsRepository,
+		monitorsRepository,
+		logger
+	);
+
+	const incidentService = new IncidentService(
+		logger,
+		incidentsRepository,
+		monitorsRepository,
+		usersRepository,
+		notificationMessageBuilder,
+		escalationService
+	);
 
 	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
@@ -246,6 +269,9 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	// Set the notificationsService in escalationService
+	(escalationService as any).notificationsService = notificationsService;
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -262,10 +288,16 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationService
 	);
 
-	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+	const superSimpleQueue = await SuperSimpleQueue.create(
+		logger, 
+		superSimpleQueueHelper, 
+		monitorsRepository, 
+		escalationService
+	);
 
 	// Business services
 	const userService = new UserService({
@@ -324,6 +356,7 @@ export const initializeServices = async ({
 		maintenanceWindowService,
 		monitorService,
 		incidentService,
+		escalationService,
 		logger,
 		notificationsService,
 		statusPageService,
@@ -343,6 +376,7 @@ export const initializeServices = async ({
 		incidentsRepository,
 		teamsRepository,
 		maintenanceWindowsRepository,
+		notificationEscalationRepository,
 	};
 
 	return services;

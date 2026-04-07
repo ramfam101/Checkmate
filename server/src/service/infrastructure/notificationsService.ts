@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { Incident } from "@/types/incident.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,9 +15,9 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotification: (notification: Notification, monitor: Monitor, incident: Incident) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -68,8 +69,8 @@ export class NotificationsService implements INotificationsService {
 	private send = async (
 		notification: Notification,
 		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
+		monitorStatusResponse: MonitorStatusResponse | null,
+		decision: MonitorActionDecision | null,
 		notificationMessage: NotificationMessage | undefined
 	): Promise<boolean> => {
 		if (!notificationMessage) {
@@ -81,7 +82,6 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Route to provider based on notification type
 		switch (notification.type) {
 			case "webhook":
 				return await this.webhookProvider.sendMessage!(notification, notificationMessage);
@@ -98,67 +98,59 @@ export class NotificationsService implements INotificationsService {
 			case "teams":
 				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
 			default:
-				this.logger.warn({
-					message: `Unknown notification type: ${notification.type}`,
-					service: SERVICE_NAME,
-					method: "send",
-				});
 				return false;
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
-		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			clientHost
+		);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage)
+		);
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
 		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			this.logger.warn({
-				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
-				service: SERVICE_NAME,
-				method: "sendNotifications",
-			});
-		}
-		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	handleNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
-		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {
-			case "email":
-				return await this.emailProvider.sendTestAlert(notification);
-			case "slack":
-				return await this.slackProvider.sendTestAlert(notification);
-			case "discord":
-				return await this.discordProvider.sendTestAlert(notification);
-			case "pager_duty":
-				return await this.pagerDutyProvider.sendTestAlert(notification);
-			case "matrix":
-				return await this.matrixProvider.sendTestAlert(notification);
-			case "webhook":
-				return await this.webhookProvider.sendTestAlert(notification);
-			case "teams":
-				return await this.teamsProvider.sendTestAlert(notification);
-			default:
-				return false;
+			case "email": return await this.emailProvider.sendTestAlert(notification);
+			case "slack": return await this.slackProvider.sendTestAlert(notification);
+			case "discord": return await this.discordProvider.sendTestAlert(notification);
+			case "pager_duty": return await this.pagerDutyProvider.sendTestAlert(notification);
+			case "matrix": return await this.matrixProvider.sendTestAlert(notification);
+			case "webhook": return await this.webhookProvider.sendTestAlert(notification);
+			case "teams": return await this.teamsProvider.sendTestAlert(notification);
+			default: return false;
 		}
 	};
 
@@ -166,12 +158,73 @@ export class NotificationsService implements INotificationsService {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
 		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
+		return outcomes.filter(Boolean).length === outcomes.length;
+	};
+
+	sendEscalationNotification = async (
+		notification: Notification,
+		monitor: Monitor,
+		incident: Incident
+	): Promise<boolean> => {
+		try {
+			const delayMinutes = monitor.escalation?.delayMinutes ?? 15;
+			const incidentDuration = incident.endTime
+				? new Date(incident.endTime).getTime() - new Date(incident.startTime).getTime()
+				: Date.now() - new Date(incident.startTime).getTime();
+            
+			const minutesDown = Math.floor(incidentDuration / 1000 / 60);
+
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+
+			const dummyStatusResponse = {
+				status: incident.status ? "down" : "up",
+				responseTime: 0,
+				statusCode: incident.statusCode ?? 500,
+				message: incident.message ?? "Escalation"
+			} as any;
+
+			const dummyDecision = {
+				shouldSendNotification: true,
+				shouldCreateIncident: false,
+				shouldResolveIncident: false
+			} as any;
+
+			const escalationMessage = this.notificationMessageBuilder.buildMessage(
+				monitor,
+				dummyStatusResponse,
+				dummyDecision,
+				clientHost
+			);
+
+			if (escalationMessage && (escalationMessage as any).context) {
+				(escalationMessage as any).context.title = `🚨 ESCALATION: ${monitor.name}`;
+				(escalationMessage as any).context.summary = `This incident has been unacknowledged for ${minutesDown} minutes.`;
+				(escalationMessage as any).context.headerColor = "orange";
+				(escalationMessage as any).context.details = [
+					`URL: ${monitor.url}`,
+					`Status: Escalated`,
+					`Type: ${monitor.type}`,
+					`Unacknowledged Time: ${minutesDown} minutes`
+				];
+			}
+
+			// FIX: Trick the EmailProvider into putting ESCALATION in the subject line
+			(escalationMessage as any).monitor = {
+				...monitor,
+				name: `🚨 ESCALATION: ${monitor.name}`
+			};
+
+			return await this.send(notification, monitor, null, null, escalationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				message: error instanceof Error ? error.message : "Unknown error",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 			return false;
 		}
-		return true;
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

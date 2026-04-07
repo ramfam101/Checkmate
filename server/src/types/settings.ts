@@ -27,6 +27,11 @@ export interface Settings {
 	systemEmailIgnoreTLS: boolean;
 	systemEmailRequireTLS: boolean;
 	systemEmailRejectUnauthorized: boolean;
+	
+	// --- New Escalation Email Settings ---
+	escalationEmailEnabled?: boolean;
+	escalationEmailAddress?: string;
+	
 	showURL: boolean;
 	singleton: boolean;
 	version: number;

@@ -1,11 +1,14 @@
 import { z } from "zod";
 
-//****************************************
-// Notification Validations
-//****************************************
+const escalationConfigValidation = z
+	.object({
+		enabled: z.boolean().default(false),
+		delayMinutes: z.number().min(1, "Delay must be at least 1 minute").max(1440, "Delay cannot exceed 24 hours").default(15),
+		escalationChannelId: z.string().optional().nullable(),
+	})
+	.optional();
 
 export const createNotificationBodyValidation = z.discriminatedUnion("type", [
-	// Email notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("email"),
@@ -13,8 +16,8 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationConfig: escalationConfigValidation,
 	}),
-	// Webhook notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("webhook"),
@@ -22,8 +25,8 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationConfig: escalationConfigValidation,
 	}),
-	// Slack notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("slack"),
@@ -31,8 +34,8 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationConfig: escalationConfigValidation,
 	}),
-	// Discord notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("discord"),
@@ -40,8 +43,8 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationConfig: escalationConfigValidation,
 	}),
-	// PagerDuty notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("pager_duty"),
@@ -49,8 +52,8 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationConfig: escalationConfigValidation,
 	}),
-	// Matrix notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("matrix"),
@@ -58,12 +61,13 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
 		roomId: z.string().min(1, "Room ID is required"),
 		accessToken: z.string().min(1, "Access Token is required"),
+		escalationConfig: escalationConfigValidation,
 	}),
-	// Teams notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("teams"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
+		escalationConfig: escalationConfigValidation,
 	}),
 ]);
 
@@ -72,9 +76,11 @@ export const testNotificationBodyValidation = createNotificationBodyValidation;
 export const deleteNotificationParamValidation = z.object({
 	id: z.string().min(1, "Notification ID is required"),
 });
+
 export const getNotificationByIdParamValidation = z.object({
 	id: z.string().min(1, "Notification ID is required"),
 });
+
 export const editNotificationParamValidation = z.object({
 	id: z.string().min(1, "Notification ID is required"),
 });
@@ -101,7 +107,10 @@ export const sendTestEmailBodyValidation = z.object({
 
 export const updateNotificationsValidation = z
 	.object({
-		monitorIds: z.array(z.string()).min(1, "At least one monitor ID is required").max(100, "Cannot update more than 100 monitors at once"),
+		monitorIds: z
+			.array(z.string())
+			.min(1, "At least one monitor ID is required")
+			.max(100, "Cannot update more than 100 monitors at once"),
 		notificationIds: z.array(z.string()).max(100, "Cannot specify more than 100 notification IDs at once"),
 		action: z.enum(["add", "remove", "set"] as const),
 	})

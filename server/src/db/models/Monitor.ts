@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, CheckSnapshot, MonitorEscalation } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -25,9 +25,10 @@ type MonitorDocumentBase = Omit<
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+	escalation?: MonitorEscalation;
 };
 
-interface MonitorDocument extends MonitorDocumentBase {
+export interface MonitorDocument extends MonitorDocumentBase {
 	_id: Types.ObjectId;
 	userId: Types.ObjectId;
 	teamId: Types.ObjectId;
@@ -198,6 +199,15 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+// --- ESCALATION SCHEMA ---
+const escalationSchema = new Schema<MonitorEscalation>(
+	{
+		delayMinutes: { type: Number, default: 15, min: 0, max: 1440 },
+		notificationIds: [{ type: Schema.Types.ObjectId, ref: "Notification" }],
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +294,8 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+        // --- ESCALATION ATTACHED HERE ---
+		escalation: { type: escalationSchema, default: null }, 
 		secret: {
 			type: String,
 		},
@@ -365,6 +377,6 @@ MonitorSchema.index({ teamId: 1, type: 1 });
 
 const MonitorModel = model<MonitorDocument>("Monitor", MonitorSchema);
 
-export type { MonitorDocument, CheckSnapshotDocument };
+export type { CheckSnapshotDocument };
 export { MonitorModel };
 export default MonitorModel;
