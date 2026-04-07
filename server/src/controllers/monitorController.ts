@@ -19,7 +19,6 @@ import sslChecker from "ssl-checker";
 import { fetchMonitorCertificate, requireTeamId, requireUserId } from "@/controllers/controllerUtils.js";
 import { AppError } from "@/utils/AppError.js";
 import { IMonitorService, INotificationsService } from "@/service/index.js";
-import { GeoContinent } from "@/types/geoCheck.js";
 
 const SERVICE_NAME = "monitorController";
 
@@ -58,6 +57,32 @@ class MonitorController implements IMonitorController {
 	get serviceName() {
 		return MonitorController.SERVICE_NAME;
 	}
+
+	private validateTeamNotificationAccess = async ({
+		teamId,
+		notificationIds = [],
+		escalationChannelIds = [],
+	}: {
+		teamId: string;
+		notificationIds?: string[];
+		escalationChannelIds?: string[];
+	}) => {
+		const requestedIds = [...new Set([...(notificationIds ?? []), ...(escalationChannelIds ?? [])])];
+		if (requestedIds.length === 0) {
+			return;
+		}
+
+		const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+		const validIds = new Set(teamNotifications.map((notification) => notification.id));
+		const invalidIds = requestedIds.filter((id) => !validIds.has(id));
+
+		if (invalidIds.length > 0) {
+			throw new AppError({
+				message: `The following notification IDs are invalid or do not belong to your team: ${invalidIds.join(", ")}`,
+				status: 403,
+			});
+		}
+	};
 
 	getMonitorCertificate = async (req: Request, res: Response, next: NextFunction) => {
 		try {
@@ -205,6 +230,11 @@ class MonitorController implements IMonitorController {
 
 			const userId = requireUserId(req.user?.id);
 			const teamId = requireTeamId(req.user?.teamId);
+			await this.validateTeamNotificationAccess({
+				teamId,
+				notificationIds: validatedBody.notifications,
+				escalationChannelIds: (validatedBody.escalations ?? []).map((escalation: { channelId: string }) => escalation.channelId),
+			});
 
 			const monitor = await this.monitorService.createMonitor(teamId, userId, validatedBody);
 
@@ -275,6 +305,11 @@ class MonitorController implements IMonitorController {
 			const validatedBody = editMonitorBodyValidation.parse(req.body);
 			const monitorId = validatedParams.monitorId;
 			const teamId = requireTeamId(req.user?.teamId);
+			await this.validateTeamNotificationAccess({
+				teamId,
+				notificationIds: validatedBody.notifications,
+				escalationChannelIds: (validatedBody.escalations ?? []).map((escalation: { channelId: string }) => escalation.channelId),
+			});
 
 			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: validatedBody });
 

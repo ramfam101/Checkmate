@@ -765,6 +765,106 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalationRules = field.value ?? [];
+							const escalationDelayMinutes = escalationRules[0]?.delayMinutes ?? 0;
+							const notificationOptions = (notifications ?? []).map((notification) => ({
+								...notification,
+								name: notification.notificationName,
+							}));
+							const selectedChannelIds = [
+								...new Set(escalationRules.map((rule) => rule.channelId).filter(Boolean)),
+							];
+							const selectedChannels = notificationOptions.filter((notification) =>
+								selectedChannelIds.includes(notification.id)
+							);
+
+							const updateEscalations = (channelIds: string[], delayMinutes: number) => {
+								field.onChange(
+									channelIds.map((channelId) => ({ delayMinutes, channelId }))
+								);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										type="number"
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.option.delayMinutes.label"
+										)}
+										value={escalationDelayMinutes}
+										onChange={(event) => {
+											const parsedValue = Number(event.target.value);
+											const nextDelay = Number.isFinite(parsedValue)
+												? Math.max(0, parsedValue)
+												: 0;
+											updateEscalations(selectedChannelIds, nextDelay);
+										}}
+									/>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedChannels}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											updateEscalations(
+												newValue.map((notification) => notification.id),
+												escalationDelayMinutes
+											);
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.option.channelId.label"
+										)}
+									/>
+									{selectedChannels.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedChannels.map((notification, index) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={notification.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{notification.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															updateEscalations(
+																selectedChannelIds.filter((id) => id !== notification.id),
+																escalationDelayMinutes
+															);
+														}}
+														aria-label={t(
+															"pages.createMonitor.form.escalations.option.remove.label"
+														)}
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{index < selectedChannels.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

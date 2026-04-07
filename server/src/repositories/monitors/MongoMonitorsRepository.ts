@@ -293,7 +293,17 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{
+				$or: [{ notifications: notificationId }, { "escalations.channelId": new mongoose.Types.ObjectId(notificationId) }],
+			},
+			{
+				$pull: {
+					notifications: notificationId,
+					escalations: { channelId: new mongoose.Types.ObjectId(notificationId) },
+				},
+			}
+		);
 	};
 
 	updateNotifications = async (
@@ -351,6 +361,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalations = (doc.escalations ?? []).map((escalation) => ({
+			delayMinutes: escalation.delayMinutes,
+			channelId: toStringId(escalation.channelId),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +388,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +425,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalations = (doc.escalations ?? []).map((escalation) => ({
+			delayMinutes: escalation.delayMinutes,
+			channelId: toStringId(escalation.channelId),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +452,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

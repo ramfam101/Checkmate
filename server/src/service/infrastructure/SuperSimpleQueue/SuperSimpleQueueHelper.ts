@@ -2,6 +2,7 @@ const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import {
 	ICheckService,
 	INetworkService,
@@ -11,7 +12,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type Incident, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -168,15 +169,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
+				// Step 7. Handle incidents and escalations
+				const incident = await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+				await this.handleEscalations(statusChangeResult.monitor, status, incident);
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -454,5 +449,52 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async handleEscalations(monitor: Monitor, status: MonitorStatusResponse, incidentFromDecision: Incident | null) {
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const escalationRules = (monitor.escalations ?? [])
+			.filter((rule) => Boolean(rule.channelId) && Number.isFinite(rule.delayMinutes) && rule.delayMinutes >= 0)
+			.sort((a, b) => a.delayMinutes - b.delayMinutes);
+
+		if (escalationRules.length === 0) {
+			return;
+		}
+
+		const activeIncident = incidentFromDecision ?? (await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId));
+		if (!activeIncident || !activeIncident.status) {
+			return;
+		}
+
+		const startTimeMs = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(startTimeMs)) {
+			return;
+		}
+
+		const elapsedMinutes = (Date.now() - startTimeMs) / (60 * 1000);
+		const sentChannels = new Set(activeIncident.escalationChannelsSent ?? []);
+		const dueChannelIds = [
+			...new Set(
+				escalationRules.filter((rule) => elapsedMinutes >= rule.delayMinutes && !sentChannels.has(rule.channelId)).map((rule) => rule.channelId)
+			),
+		];
+
+		if (dueChannelIds.length === 0) {
+			return;
+		}
+
+		const reason: "status_change" | "threshold_breach" = activeIncident.statusCode === 9999 ? "threshold_breach" : "status_change";
+		const sentNow = await this.notificationsService.sendEscalationNotifications(monitor, status, dueChannelIds, reason);
+
+		if (sentNow.length === 0) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalationChannelsSent: [...new Set([...(activeIncident.escalationChannelsSent ?? []), ...sentNow])],
+		});
 	}
 }
