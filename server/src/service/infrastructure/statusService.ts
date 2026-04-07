@@ -348,6 +348,20 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
+			// Handle downSince and escalation tracking
+			if (statusChanged) {
+				// When monitor goes down for the first time, set downSince
+				if (newStatus === "down" && prevStatus !== "down") {
+					monitor.downSince = new Date().toISOString();
+					monitor.escalationSentAt = undefined;
+				}
+				// When monitor recovers, reset downSince and escalation tracking
+				else if (newStatus === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+					monitor.downSince = undefined;
+					monitor.escalationSentAt = undefined;
+				}
+			}
+
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
 			return {

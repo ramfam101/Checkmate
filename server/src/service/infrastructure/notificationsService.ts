@@ -108,7 +108,17 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		// previous logic
+		// const notificationIds = monitor.notifications ?? [];
+
+		let notificationIds = monitor.notifications ?? [];
+		const isEscalation = decision.notificationReason === "escalation" && monitor.escalationNotifications?.length;
+
+		// The extra escalation logic
+		if (isEscalation) {
+			notificationIds = monitor.escalationNotifications!;
+		}
+	
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -128,6 +138,14 @@ export class NotificationsService implements INotificationsService {
 				method: "sendNotifications",
 			});
 		}
+
+		// If escalation was sent successfully, update escalationSentAt
+		if (isEscalation && succeeded === notifications.length) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				escalationSentAt: new Date().toISOString(),
+			});
+		}
+
 		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
 	};
