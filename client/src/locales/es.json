@@ -1104,5 +1104,26 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
-}
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalations": {
+					"description": "Configurar reglas de escalada para enviar notificaciones adicionales después de que un monitor haya estado fuera de línea durante períodos especificados",
+					"title": "Notificaciones de escalada",
+					"option": {
+						"delay": {
+							"label": "Retraso (minutos)",
+							"placeholder": "ej. 30"
+						},
+						"email": {
+							"label": "Dirección de correo electrónico",
+							"placeholder": "alert@example.com"
+						}
+					},
+					"addEscalation": "Agregar escalada",
+					"removeEscalation": "Eliminar"
+				}
+			}
+		}
+	}}

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields, append, remove } = useFieldArray({
+		control,
+		name: "escalations",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +766,74 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalations"
+				subtitle="Configure escalation rules to send additional notifications after a monitor has been down for a specified time."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{fields.map((field, index) => (
+							<Stack
+								key={field.id}
+								direction="row"
+								spacing={theme.spacing(LAYOUT.SM)}
+								alignItems="flex-start"
+							>
+								<Controller
+									name={`escalations.${index}.delay`}
+									control={control}
+									render={({ field: delayField, fieldState }) => (
+										<TextField
+											{...delayField}
+											value={delayField.value ?? ""}
+											onChange={(e) => delayField.onChange(Number(e.target.value) || 0)}
+											type="number"
+											fieldLabel="Delay (minutes)"
+											placeholder="e.g. 30"
+											fullWidth
+											size="small"
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+								<Controller
+									name={`escalations.${index}.contacts.0`}
+									control={control}
+									render={({ field: emailField, fieldState }) => (
+										<TextField
+											{...emailField}
+											value={emailField.value ?? ""}
+											type="email"
+											fieldLabel="Email Address"
+											placeholder="e.g. admin@example.com"
+											fullWidth
+											size="small"
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+								<IconButton
+									size="small"
+									onClick={() => remove(index)}
+									aria-label="Remove escalation"
+									sx={{ mt: 3 }}
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						))}
+						<Button
+							variant="outlined"
+							onClick={() => append({ delay: 30, type: "email", contacts: [""] })}
+							fullWidth
+						>
+							Add Escalation
+						</Button>
+					</Stack>
 				}
 			/>
 

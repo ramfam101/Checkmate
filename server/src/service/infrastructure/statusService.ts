@@ -348,6 +348,16 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
+			// Track firstDownAt when monitor goes down, and clear on recovery
+			if (statusChanged && newStatus === "down") {
+				if (!monitor.firstDownAt) {
+					monitor.firstDownAt = new Date();
+				}
+			} else if (statusChanged && newStatus === "up") {
+				monitor.firstDownAt = null;
+				monitor.escalationsSent = [];
+			}
+
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
 			return {

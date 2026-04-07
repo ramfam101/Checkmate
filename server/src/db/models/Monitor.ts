@@ -24,6 +24,9 @@ type MonitorDocumentBase = Omit<
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
+	escalations?: { delay: number; type: string; contacts: string[] }[];
+	firstDownAt?: Date | null;
+	escalationsSent?: number[];
 	matchMethod?: MonitorMatchMethod;
 };
 
@@ -169,6 +172,15 @@ const snapshotAuditsSchema = new Schema<CheckAudits>(
 		fcp: { type: snapshotLighthouseAuditSchema },
 		lcp: { type: snapshotLighthouseAuditSchema },
 		tbt: { type: snapshotLighthouseAuditSchema },
+	},
+	{ _id: false }
+);
+
+const escalationSchema = new Schema(
+	{
+		delay: { type: Number, required: true },
+		type: { type: String, required: true },
+		contacts: { type: [String], default: [] },
 	},
 	{ _id: false }
 );
@@ -321,6 +333,19 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		selectedDisks: {
 			type: [String],
+			default: [],
+		},
+		firstDownAt: {
+			type: Date,
+			default: null,
+		},
+		escalationsSent: {
+			type: [Number],
+			default: [],
+		},
+		// Escalation rules: array of { delay (minutes), type, contacts }
+		escalations: {
+			type: [escalationSchema],
 			default: [],
 		},
 		gameId: {
