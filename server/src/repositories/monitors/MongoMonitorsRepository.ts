@@ -169,11 +169,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
-			{
-				$set: {
-					...patch,
-				},
-			},
+			{ $set: { ...patch } },
 			{ new: true, runValidators: true }
 		);
 		if (!updatedMonitor) {
@@ -351,6 +347,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -391,6 +388,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationNotifications: escalationNotificationIds,
+			escalationLastNotifyTime: doc.escalationLastNotifyTime ? toDateString(doc.escalationLastNotifyTime) : null,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -410,6 +410,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -450,6 +451,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationNotifications: escalationNotificationIds,
+			escalationLastNotifyTime: doc.escalationLastNotifyTime ? toDateString(doc.escalationLastNotifyTime) : null,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

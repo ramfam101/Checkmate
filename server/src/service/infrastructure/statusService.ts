@@ -240,9 +240,11 @@ export class StatusService implements IStatusService {
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
 				monitor.status = newStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+				// Check if status actually changed even with insufficient window
+				const statusActuallyChanged = prevStatus !== newStatus;
 				return {
 					monitor: updated,
-					statusChanged: false,
+					statusChanged: statusActuallyChanged,
 					prevStatus,
 					code,
 					timestamp: Date.now(),
@@ -348,7 +350,13 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
-			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+			// CRITICAL: Only update the monitor if status actually changed.
+			// If we update when nothing changed, Mongoose's timestamps middleware will
+			// reset updatedAt to NOW, breaking escalation timing logic.
+			let updated = monitor;
+			if (statusChanged) {
+				updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+			}
 
 			return {
 				monitor: updated,
