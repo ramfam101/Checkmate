@@ -37,8 +37,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldEscalate: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,7 +178,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
-			} catch (error: unknown) {
+			// Step 8. Handle escalations (best effort, don't wait)
+			if (decision.shouldEscalate) {
+				this.incidentService.handleEscalation(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+			}			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
@@ -426,11 +437,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldEscalate: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
 		if (!statusChanged) {
+			// Check for escalations even if status didn't change (monitor still down)
+			if ((monitor.status === "down" || monitor.status === "breached") && monitor.escalations && monitor.escalations.length > 0) {
+				decision.shouldEscalate = true;
+			}
 			return decision;
 		}
 

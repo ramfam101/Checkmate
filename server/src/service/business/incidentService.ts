@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -16,6 +17,11 @@ export interface IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null>;
+	handleEscalation(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void>;
 	resolveIncident(incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string): Promise<Incident>;
 	getIncidentsByTeam(
 		teamId: string,
@@ -39,19 +45,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -106,6 +115,148 @@ export class IncidentService implements IIncidentService {
 		}
 
 		return null;
+	};
+
+	handleEscalation = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> => {
+		const ESCALATION_BUFFER_MS = 60 * 1000; // 1 minute buffer to avoid timing issues
+
+		// Check if monitor has escalations configured
+		if (!monitor.escalations || monitor.escalations.length === 0) {
+			return;
+		}
+
+		// Get the active incident
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			this.logger.debug({
+				message: `No active incident found for monitor ${monitor.id}, skipping escalation check`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+			});
+			return;
+		}
+
+		// Double-check that incident is still active
+		if (!activeIncident.status) {
+			this.logger.debug({
+				message: `Incident ${activeIncident.id} is not active (status: ${activeIncident.status}), skipping escalation`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+			});
+			return;
+		}
+
+		this.logger.debug({
+			message: `Loaded incident ${activeIncident.id} for escalation check: escalationsSent=${JSON.stringify(activeIncident.escalationsSent)}`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+
+		const now = Date.now();
+		const incidentStartTime = typeof activeIncident.startTime === "string" 
+			? parseInt(activeIncident.startTime, 10) 
+			: (activeIncident.startTime as any)?.getTime?.() ?? parseInt(String(activeIncident.startTime), 10);
+		
+		// Check each escalation rule
+		for (const escalation of monitor.escalations) {
+			const escalationDelayMs = escalation.delayMinutes * 60 * 1000;
+			const escalationTime = incidentStartTime + escalationDelayMs;
+
+			// Skip if escalation time hasn't passed yet (with buffer)
+			if (now < (escalationTime + ESCALATION_BUFFER_MS)) {
+				this.logger.debug({
+					message: `Escalation not ready yet: delay=${escalation.delayMinutes}min, timeUntilEscalation=${Math.ceil((escalationTime - now) / 1000)}s`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				continue;
+			}
+
+			// Check if this escalation has already been sent
+			const escalationKey = `${escalation.delayMinutes}-${escalation.channelId}`;
+
+			this.logger.debug({
+				message: `Checking escalation: key=${escalationKey}, alreadySent=${activeIncident.escalationsSent.includes(escalationKey)}, sentList=${JSON.stringify(activeIncident.escalationsSent)}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+			});
+
+			if (!activeIncident.escalationsSent.includes(escalationKey)) {
+				// Mark escalation as sent BEFORE sending the notification
+				activeIncident.escalationsSent.push(escalationKey);
+				
+				this.logger.debug({
+					message: `Marking escalation as sent: key=${escalationKey}, sentList=${JSON.stringify(activeIncident.escalationsSent)}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				
+				try {
+					const updatedIncident = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+					this.logger.debug({
+						message: `Database updated successfully: incident=${updatedIncident.id}, escalationsSent=${JSON.stringify(updatedIncident.escalationsSent)}`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+					});
+				} catch (updateError) {
+					// Log the error and remove from array if update failed
+					this.logger.error({
+						message: `Failed to update incident with escalation sent: ${updateError instanceof Error ? updateError.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+					});
+					activeIncident.escalationsSent.pop();
+					continue;
+				}
+
+				// Send the escalation notification
+				const escalationDecision: MonitorActionDecision = {
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: true,
+					shouldEscalate: false,
+					incidentReason: decision.incidentReason,
+					notificationReason: "escalation",
+				};
+
+				// Filter to only send to the escalation channel/notification
+				const originalNotifications = monitor.notifications;
+				monitor.notifications = [escalation.channelId];
+
+				try {
+					await this.notificationsService.sendNotifications(monitor, monitorStatusResponse, escalationDecision);
+					this.logger.info({
+						message: `Escalation sent for incident ${activeIncident.id} to channel ${escalation.channelId} (delay: ${escalation.delayMinutes}min)`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+					});
+				} catch (notificationError) {
+					// Log the error and remove from sent list if sending failed
+					this.logger.error({
+						message: `Failed to send escalation notification: ${notificationError instanceof Error ? notificationError.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+					});
+					activeIncident.escalationsSent.pop();
+					try {
+						await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+					} catch (rollbackError) {
+						this.logger.error({
+							message: `Failed to rollback escalation sent status: ${rollbackError instanceof Error ? rollbackError.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "handleEscalation",
+						});
+					}
+				} finally {
+					// Restore original notifications
+					monitor.notifications = originalNotifications;
+				}
+			}
+		}
 	};
 
 	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {

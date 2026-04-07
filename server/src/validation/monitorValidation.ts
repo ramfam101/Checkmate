@@ -3,6 +3,11 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const escalationRuleSchema = z.object({
+	delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+	channelId: z.string().min(1, "Notification channel is required"),
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -68,6 +73,7 @@ export const createMonitorBodyValidation = z.object({
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
+	escalations: z.array(escalationRuleSchema).optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
 	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
@@ -90,6 +96,7 @@ export const editMonitorBodyValidation = z.object({
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
+	escalations: z.array(escalationRuleSchema).optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
@@ -158,6 +165,7 @@ const importedMonitorSchema = z.object({
 	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
 	group: z.union([z.string().max(50).trim(), z.null()]).default(null),
 	geoCheckEnabled: z.boolean().default(false),
+	escalations: z.array(escalationRuleSchema).default([]),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
 	geoCheckInterval: z.number().min(300000).default(300000),
 	createdAt: z.string().optional(),
