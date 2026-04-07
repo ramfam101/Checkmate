@@ -94,9 +94,7 @@ export class NotificationsService implements INotificationsService {
 			)
 		);
 
-		const missingStateNotificationIds = escalationNotificationIds.filter(
-			(_, index) => !dispatchStates[index]?.lastSentAt
-		);
+		const missingStateNotificationIds = escalationNotificationIds.filter((_, index) => !dispatchStates[index]?.lastSentAt);
 
 		if (missingStateNotificationIds.length === 0) {
 			return;
@@ -125,7 +123,11 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		const dispatchState = await this.monitorNotificationDispatchStateRepository.findByMonitorAndNotification(monitor.teamId, monitor.id, notification.id);
+		const dispatchState = await this.monitorNotificationDispatchStateRepository.findByMonitorAndNotification(
+			monitor.teamId,
+			monitor.id,
+			notification.id
+		);
 		if (!dispatchState?.lastSentAt) {
 			await this.monitorNotificationDispatchStateRepository.upsertLastSentAt(monitor.userId, monitor.teamId, monitor.id, notification.id, new Date());
 			return false;
@@ -201,7 +203,7 @@ export class NotificationsService implements INotificationsService {
 						...baseNotificationMessage.metadata,
 						isEscalation: true,
 					},
-			  }
+				}
 			: baseNotificationMessage;
 
 		const sendFlags = isEscalation
@@ -219,7 +221,13 @@ export class NotificationsService implements INotificationsService {
 		const tasks = notificationsToSend.map(async (notification) => {
 			const sent = await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
 			if (sent) {
-				await this.monitorNotificationDispatchStateRepository.upsertLastSentAt(notification.userId, monitor.teamId, monitor.id, notification.id, new Date());
+				await this.monitorNotificationDispatchStateRepository.upsertLastSentAt(
+					notification.userId,
+					monitor.teamId,
+					monitor.id,
+					notification.id,
+					new Date()
+				);
 			}
 			return sent;
 		});
@@ -265,17 +273,11 @@ export class NotificationsService implements INotificationsService {
 		if (primaryNotificationIds.length > 0) {
 			const primaryDispatchStates = await Promise.all(
 				primaryNotificationIds.map((notificationId) =>
-					this.monitorNotificationDispatchStateRepository.findByMonitorAndNotification(
-						monitor.teamId,
-						monitor.id,
-						notificationId
-					)
+					this.monitorNotificationDispatchStateRepository.findByMonitorAndNotification(monitor.teamId, monitor.id, notificationId)
 				)
 			);
 
-			const unsentPrimaryNotificationIds = primaryNotificationIds.filter(
-				(_, index) => !primaryDispatchStates[index]?.lastSentAt
-			);
+			const unsentPrimaryNotificationIds = primaryNotificationIds.filter((_, index) => !primaryDispatchStates[index]?.lastSentAt);
 
 			if (unsentPrimaryNotificationIds.length > 0) {
 				const result = await this.sendNotifications(monitor, monitorStatusResponse, decision, unsentPrimaryNotificationIds, false);
@@ -285,13 +287,7 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Ongoing downtime: evaluate escalation channels only.
-		return await this.sendNotifications(
-			monitor,
-			monitorStatusResponse,
-			decision,
-			this.getEscalationNotificationIds(monitor),
-			true
-		);
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, this.getEscalationNotificationIds(monitor), true);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

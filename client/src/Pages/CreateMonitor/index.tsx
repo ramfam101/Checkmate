@@ -782,8 +782,12 @@ const CreateMonitorPage = () => {
 										field.onChange(rawValue === "" ? undefined : Number(rawValue));
 									}}
 									type="number"
-									fieldLabel={t("pages.createMonitor.form.escalation.option.minutes.label")}
-									placeholder={t("pages.createMonitor.form.escalation.option.minutes.placeholder")}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.minutes.label"
+									)}
+									placeholder={t(
+										"pages.createMonitor.form.escalation.option.minutes.placeholder"
+									)}
 									fullWidth
 									slotProps={{ htmlInput: { min: 0, step: 1 } }}
 									error={!!fieldState.error}
@@ -815,11 +819,15 @@ const CreateMonitorPage = () => {
 												field.onChange(newValue.map((notification) => notification.id));
 											}}
 											isOptionEqualToValue={(option, value) => option.id === value.id}
-											fieldLabel={t("pages.createMonitor.form.escalation.option.channels.label")}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channels.label"
+											)}
 											renderInput={(params) => (
 												<TextField
 													{...params}
-													placeholder={t("pages.createMonitor.form.escalation.option.channels.placeholder")}
+													placeholder={t(
+														"pages.createMonitor.form.escalation.option.channels.placeholder"
+													)}
 													fullWidth
 												/>
 											)}
@@ -837,12 +845,16 @@ const CreateMonitorPage = () => {
 														key={channel.id}
 														width="100%"
 													>
-														<Typography flexGrow={1}>{channel.notificationName}</Typography>
+														<Typography flexGrow={1}>
+															{channel.notificationName}
+														</Typography>
 														<IconButton
 															size="small"
 															onClick={() => {
 																field.onChange(
-																	(field.value ?? []).filter((id: string) => id !== channel.id)
+																	(field.value ?? []).filter(
+																		(id: string) => id !== channel.id
+																	)
 																);
 															}}
 															aria-label="Remove escalation channel"
@@ -865,32 +877,32 @@ const CreateMonitorPage = () => {
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
-					<ConfigBox
-						title={t("pages.createMonitor.form.ignoreTls.title")}
-						subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-						rightContent={
-							<Controller
-								name="ignoreTlsErrors"
-								control={control}
-								render={({ field }) => (
-									<Stack
-										direction="row"
-										alignItems="center"
-										spacing={theme.spacing(SPACING.LG)}
-									>
-										<Switch
-											checked={field.value ?? false}
-											onChange={(e) => field.onChange(e.target.checked)}
-										/>
-										<Typography>
-											{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-										</Typography>
-									</Stack>
-								)}
-							/>
-						}
-					/>
-				)}
+				<ConfigBox
+					title={t("pages.createMonitor.form.ignoreTls.title")}
+					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
+					rightContent={
+						<Controller
+							name="ignoreTlsErrors"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+					}
+				/>
+			)}
 
 			{watchedType === "http" && (
 				<ConfigBox
