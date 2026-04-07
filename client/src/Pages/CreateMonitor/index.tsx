@@ -765,6 +765,65 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="escalationNotificationId"
+						control={control}
+						render={({ field }) => {
+						const notificationOptions = (notifications ?? []).map((n) => ({
+							...n,
+							name: n.notificationName,
+						}));
+						const selectedChannel = notificationOptions.find((n) => n.id === field.value) ?? null;
+
+						return (
+							<Autocomplete
+							options={notificationOptions}
+							value={selectedChannel}
+							getOptionLabel={(option) => option.name}
+							onChange={(_: unknown, newValue) => {
+								field.onChange(newValue?.id ?? "");
+							}}
+							isOptionEqualToValue={(option, value) => option.id === value.id}
+							renderInput={(params) => (
+								<TextField
+								{...params}
+								fieldLabel={t("pages.createMonitor.form.escalation.channel.label")}
+								/>
+							)}
+							/>
+						);
+						}}
+					/>
+
+					<Controller
+						name="escalationDelayMinutes"
+						control={control}
+						render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							value={field.value === 0 ? "" : field.value}
+							onChange={(e) => {
+								const val = e.target.value;
+								field.onChange(val === "" ? 0 : Number(val));
+							}}
+							type="number"
+							fieldLabel={t("pages.createMonitor.form.escalation.delay.label")}
+							fullWidth
+							inputProps={{ min: 0, step: 1 }}
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
+						/>
+						)}
+					/>
+					</Stack>
+				}
+				/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

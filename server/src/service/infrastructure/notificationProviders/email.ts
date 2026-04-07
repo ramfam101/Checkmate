@@ -79,6 +79,8 @@ export class EmailProvider implements INotificationProvider {
 
 	private buildSubject(message: NotificationMessage): string {
 		switch (message.type) {
+			case "monitor_escalation":
+				return `Monitor "${message.monitor.name}" escalation`;
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
@@ -104,6 +106,8 @@ export class EmailProvider implements INotificationProvider {
 			thresholds: message.content.thresholds,
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
+			escalationMessageIntro: message.content.escalationMessageIntro,
+			downtimeDuration: message.content.downtimeDuration,
 		};
 
 		this.logger.info({

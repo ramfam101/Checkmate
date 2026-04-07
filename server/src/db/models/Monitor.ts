@@ -13,6 +13,7 @@ import type {
 	GotTimings,
 	ILighthouseAudit,
 } from "@/types/check.js";
+import { string } from "zod";
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
@@ -354,6 +355,23 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],
+		},
+		escalationNotificationId:{
+			type: String,
+			default: "",
+		},
+		escalationDelayMinutes:{
+			type: Number,
+			default: 0,
+			min: 0,
+		},
+		downSince:{
+			type: Number,
+			default: null,
+		},
+		escalationSent:{
+			type: Boolean,
+			default: false,
 		},
 	},
 	{

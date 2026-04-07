@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.shouldSendEscalation) {
+			return "monitor_escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -79,6 +83,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
+			case "monitor_escalation":
 			case "monitor_down":
 				return "critical";
 			case "threshold_breach":
@@ -95,6 +100,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
+			case "monitor_escalation":
+				return this.buildMonitorEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
@@ -141,6 +148,34 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			summary,
 			details,
 			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Monitor Escalation: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" is still down and requires attention.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		const downtimeMinutes = monitor.downSince
+			? Math.max(1, Math.floor((Date.now() - monitor.downSince) / 60000))
+			: 0;
+		const downtimeDuration = downtimeMinutes > 0 ? `Monitor has been down for ${downtimeMinutes} minute${downtimeMinutes === 1 ? "" : "s"}.` : "Monitor down duration is unavailable.";
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+			downtimeDuration,
+			escalationMessageIntro: `Hello! This is an escalation message regarding monitor "${monitor.name}".`,
 		};
 	}
 

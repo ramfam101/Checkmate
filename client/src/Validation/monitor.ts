@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
+import { es } from "zod/v4/locales";
 
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
@@ -27,6 +28,8 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationNotificationId: z.string().default("").optional(),
+	escalationDelayMinutes: z.number().min(0).default(0).optional(),
 });
 
 // HTTP monitor schema

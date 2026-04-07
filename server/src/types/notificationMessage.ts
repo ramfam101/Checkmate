@@ -3,7 +3,7 @@
  * Part of notification system unification effort
  */
 
-export type NotificationType = "monitor_down" | "monitor_up" | "threshold_breach" | "threshold_resolved" | "test";
+export type NotificationType = "monitor_down" | "monitor_up" | "monitor_escalation" | "threshold_breach" | "threshold_resolved" | "test";
 
 export type NotificationSeverity = "critical" | "warning" | "info" | "success";
 
@@ -38,6 +38,8 @@ export interface NotificationContent {
 	thresholds?: ThresholdBreach[];
 	incident?: IncidentInfo;
 	timestamp: Date;
+	downtimeDuration?: string;
+	escalationMessageIntro?: string;
 }
 
 export interface NotificationMessage {

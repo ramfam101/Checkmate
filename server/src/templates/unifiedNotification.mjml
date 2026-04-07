@@ -47,7 +47,14 @@
 		<mj-section>
 			<mj-column width="100%">
 				<mj-text>
+					{{#if escalationMessageIntro}}
+					<p>{{ escalationMessageIntro }}</p>
+					{{else}}
 					<p>Hello!</p>
+					{{/if}}
+					{{#if downtimeDuration}}
+					<p>{{ downtimeDuration }}</p>
+					{{/if}}
 					<p>{{ summary }}</p>
 					<p><b>Monitor name:</b> {{ monitorName }}</p>
 					<p><b>URL:</b> {{ monitorUrl }}</p>

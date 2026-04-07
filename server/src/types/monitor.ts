@@ -37,6 +37,10 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationNotificationId: string;
+	escalationDelayMinutes: number;
+	downSince: number | null;
+	escalationSent: boolean;
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
