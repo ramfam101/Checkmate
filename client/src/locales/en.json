@@ -602,6 +602,25 @@
 						}
 					}
 				},
+				"escalation": {
+					"title": "Escalation Notifications",
+					"description": "Configure escalation emails when a monitor remains down longer than the specified delay",
+					"info": "Send escalation emails when a monitor remains down longer than the configured delay",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation notifications"
+						},
+						"delay": {
+							"label": "Escalation delay (minutes)",
+							"hint": "Number of minutes before escalation email is sent (1-10080 minutes / 7 days max)"
+						},
+						"recipients": {
+							"label": "Add escalation recipient email",
+							"placeholder": "Enter email address",
+							"add": "Add Recipient"
+						}
+					}
+				},
 				"url": {
 					"title": "Monitor IP/URL on Status Page",
 					"description": "Display the IP address or URL of monitor on the public Status page. If it's disabled, only the monitor name will be shown to protect sensitive information.",

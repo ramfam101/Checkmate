@@ -30,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -412,6 +413,24 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
 					method: "getCleanupRetentionJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				console.log("[ESCALATION JOB] Escalation job triggered at", new Date().toISOString());
+				await this.notificationsService.processEscalations();
+				console.log("[ESCALATION JOB] Escalation job completed at", new Date().toISOString());
+			} catch (error: unknown) {
+				console.error("[ESCALATION JOB] Error in escalation job:", error);
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 			}

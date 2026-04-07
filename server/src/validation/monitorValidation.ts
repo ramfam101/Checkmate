@@ -78,6 +78,9 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationDelay: z.number().min(1).max(10080).optional(),
+	escalationRecipients: z.array(z.string().email("Invalid email address")).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +110,9 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationDelay: z.number().min(1).max(10080).optional(),
+	escalationRecipients: z.array(z.string().email("Invalid email address")).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -160,6 +166,9 @@ const importedMonitorSchema = z.object({
 	geoCheckEnabled: z.boolean().default(false),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
 	geoCheckInterval: z.number().min(300000).default(300000),
+	escalationEnabled: z.boolean().default(false),
+	escalationDelay: z.number().min(1).max(10080).default(60),
+	escalationRecipients: z.array(z.string().email("Invalid email address")).default([]),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
 });

@@ -14,6 +14,8 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
+import Chip from "@mui/material/Chip";
+import Alert from "@mui/material/Alert";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
@@ -252,6 +254,15 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		console.log("CreateMonitor onSubmit payload", {
+			monitorId,
+			isEditMode,
+			escalationEnabled: data.escalationEnabled,
+			escalationDelay: data.escalationDelay,
+			escalationRecipients: data.escalationRecipients,
+			fullPayload: data,
+		});
+
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -1043,6 +1054,124 @@ const CreateMonitorPage = () => {
 					}
 				/>
 			)}
+
+			{/* Escalation Settings */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalation.option.enabled.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						{watch("escalationEnabled") && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Alert severity="info">
+									{t("pages.createMonitor.form.escalation.info")}
+								</Alert>
+								<Controller
+									name="escalationDelay"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											type="number"
+											value={field.value ?? 60}
+											fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+											fullWidth
+											error={!!fieldState.error}
+											helperText={
+												fieldState.error?.message ??
+												t("pages.createMonitor.form.escalation.option.delay.hint")
+											}
+											inputProps={{ min: 1, max: 10080 }} onChange={(e) => field.onChange(Number(e.target.value))}
+										/>
+									)}
+								/>
+								<Controller
+									name="escalationRecipients"
+									control={control}
+									render={({ field }) => {
+										const [recipientInput, setRecipientInput] = useState("");
+
+										const addRecipient = () => {
+											if (recipientInput.trim() && recipientInput.includes("@")) {
+												const updatedRecipients = [
+													...(field.value ?? []),
+													recipientInput.trim(),
+												];
+												field.onChange(updatedRecipients);
+												setRecipientInput("");
+											}
+										};
+
+										const removeRecipient = (email: string) => {
+											const updatedRecipients = (field.value ?? []).filter(
+												(e: string) => e !== email
+											);
+											field.onChange(updatedRecipients);
+										};
+
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.SM)}>
+												<TextField
+													value={recipientInput}
+													onChange={(e) => setRecipientInput(e.target.value)}
+													fieldLabel={t("pages.createMonitor.form.escalation.option.recipients.label")}
+													placeholder={t("pages.createMonitor.form.escalation.option.recipients.placeholder")}
+													fullWidth
+													onKeyPress={(e) => {
+														if (e.key === "Enter") {
+															addRecipient();
+														}
+													}}
+												/>
+												<Button
+													variant="outlined"
+													size="small"
+													onClick={addRecipient}
+													disabled={!recipientInput.trim() || !recipientInput.includes("@")}
+												>
+													{t("pages.createMonitor.form.escalation.option.recipients.add")}
+												</Button>
+												{(field.value ?? []).length > 0 && (
+													<Stack direction="row" spacing={1} flexWrap="wrap">
+														{(field.value ?? []).map((email: string) => (
+															<Chip
+																key={email}
+																label={email}
+																onDelete={() => removeRecipient(email)}
+																color="primary"
+																variant="outlined"
+															/>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</Stack>
+						)}
+					</Stack>
+				}
+			/>
 
 			<Stack
 				direction="row"

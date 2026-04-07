@@ -179,6 +179,15 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!updatedMonitor) {
 			throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
 		}
+
+		console.log("MongoMonitorsRepository.updateById result", {
+			monitorId,
+			escalationEnabled: updatedMonitor.escalationEnabled,
+			escalationDelay: updatedMonitor.escalationDelay,
+			escalationRecipients: updatedMonitor.escalationRecipients,
+			lastEscalationTime: updatedMonitor.lastEscalationTime,
+		});
+
 		return this.toEntity(updatedMonitor);
 	};
 
@@ -391,6 +400,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationEnabled: doc.escalationEnabled ?? false,
+			escalationDelay: doc.escalationDelay ?? 60,
+			escalationRecipients: doc.escalationRecipients ?? [],
+			lastEscalationTime: doc.lastEscalationTime ?? undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -450,6 +463,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationEnabled: doc.escalationEnabled ?? false,
+			escalationDelay: doc.escalationDelay ?? 60,
+			escalationRecipients: doc.escalationRecipients ?? [],
+			lastEscalationTime: doc.lastEscalationTime ?? undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -492,6 +509,20 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	findAllMonitorIds = async (): Promise<string[]> => {
 		const monitors = await MonitorModel.find({}, { _id: 1 }).lean();
 		return monitors.map((doc) => doc._id.toString());
+	};
+
+	findMonitorsWithEscalationEnabled = async (): Promise<Monitor[]> => {
+		console.log("[ESCALATION REPO] Searching for monitors with escalation enabled");
+		const monitors = await MonitorModel.find({
+			escalationEnabled: true,
+		});
+		console.log(`[ESCALATION REPO] Found ${monitors.length} monitors with escalation enabled in database`);
+		if (monitors.length > 0) {
+			monitors.forEach((monitor, index) => {
+				console.log(`[ESCALATION REPO] Monitor ${index + 1}: ${monitor.name} (${monitor._id}) - status: ${monitor.status}, escalationDelay: ${monitor.escalationDelay}, recipients: ${monitor.escalationRecipients?.join(', ') || 'none'}`);
+			});
+		}
+		return this.mapDocuments(monitors);
 	};
 }
 

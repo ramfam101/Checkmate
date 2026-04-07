@@ -437,8 +437,24 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
+		console.log("monitorService.editMonitor input", {
+			teamId,
+			monitorId,
+			escalationEnabled: body.escalationEnabled,
+			escalationDelay: body.escalationDelay,
+			escalationRecipients: body.escalationRecipients,
+		});
+
 		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
 		await this.jobQueue.updateJob(editedMonitor);
+
+		console.log("monitorService.editMonitor result", {
+			monitorId,
+			escalationEnabled: editedMonitor.escalationEnabled,
+			escalationDelay: editedMonitor.escalationDelay,
+			escalationRecipients: editedMonitor.escalationRecipients,
+		});
+
 		return editedMonitor;
 	};
 

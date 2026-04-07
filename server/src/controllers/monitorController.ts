@@ -276,6 +276,15 @@ class MonitorController implements IMonitorController {
 			const monitorId = validatedParams.monitorId;
 			const teamId = requireTeamId(req.user?.teamId);
 
+			console.log("monitorController.editMonitor payload", {
+				monitorId,
+				teamId,
+				escalationEnabled: validatedBody.escalationEnabled,
+				escalationDelay: validatedBody.escalationDelay,
+				escalationRecipients: validatedBody.escalationRecipients,
+				validatedBody,
+			});
+
 			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: validatedBody });
 
 			return res.status(200).json({

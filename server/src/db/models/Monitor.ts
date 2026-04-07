@@ -18,13 +18,17 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt" | "escalationEnabled" | "escalationDelay" | "escalationRecipients" | "lastEscalationTime"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+	escalationEnabled: boolean;
+	escalationDelay: number;
+	escalationRecipients: string[];
+	lastEscalationTime: Date | null;
 };
 
 interface MonitorDocument extends MonitorDocumentBase {
@@ -354,6 +358,25 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],
+		},
+		// Escalation configuration
+		escalationEnabled: {
+			type: Boolean,
+			default: false,
+		},
+		escalationDelay: {
+			type: Number, // in minutes
+			default: 60,
+			min: 1,
+			max: 10080, // 7 days max
+		},
+		escalationRecipients: {
+			type: [String], // Array of email addresses
+			default: [],
+		},
+		lastEscalationTime: {
+			type: Date,
+			default: null,
 		},
 	},
 	{

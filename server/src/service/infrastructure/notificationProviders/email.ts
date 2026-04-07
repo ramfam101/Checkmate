@@ -49,6 +49,9 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
+		console.log(`[EmailProvider] sendMessage called with notification:`, notification);
+		console.log(`[EmailProvider] sendMessage called with message:`, JSON.stringify(message, null, 2));
+
 		if (!notification.address) {
 			return false;
 		}
@@ -78,6 +81,14 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		console.log(`[EmailProvider] buildSubject called with message type: ${message.type}`);
+		console.log(`[EmailProvider] message.monitor:`, message.monitor);
+
+		if (!message.monitor) {
+			console.error(`[EmailProvider] message.monitor is undefined!`);
+			return `Alert: Monitor status changed`;
+		}
+
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
@@ -93,6 +104,14 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
+		console.log(`[EmailProvider] buildEmailFromMessage called`);
+		console.log(`[EmailProvider] message.monitor:`, message.monitor);
+
+		if (!message.monitor) {
+			console.error(`[EmailProvider] buildEmailFromMessage: message.monitor is undefined!`);
+			return undefined;
+		}
+
 		const context = {
 			title: message.content.title,
 			summary: message.content.summary,
