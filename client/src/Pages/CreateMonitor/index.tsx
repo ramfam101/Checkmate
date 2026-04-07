@@ -10,6 +10,7 @@ import RadioGroup from "@mui/material/RadioGroup";
 import FormControl from "@mui/material/FormControl";
 import { Trans, useTranslation } from "react-i18next";
 import MenuItem from "@mui/material/MenuItem";
+import { Box } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
@@ -17,6 +18,7 @@ import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
+
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
 import {
@@ -233,11 +235,7 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(true);
 	};
 
-	const handleDeleteConfirm = async () => {
-		if (!monitorId) return;
-		await deleteFn(`/monitors/${monitorId}`);
-		setIsDeleteDialogOpen(false);
-		// Navigate based on page type
+	const navigateToMonitorList = () => {
 		if (pageType === "pagespeed") {
 			navigate("/pagespeed");
 		} else if (pageType === "hardware") {
@@ -247,8 +245,19 @@ const CreateMonitorPage = () => {
 		}
 	};
 
+	const handleDeleteConfirm = async () => {
+		if (!monitorId) return;
+		await deleteFn(`/monitors/${monitorId}`);
+		setIsDeleteDialogOpen(false);
+		navigateToMonitorList();
+	};
+
 	const handleDeleteCancel = () => {
 		setIsDeleteDialogOpen(false);
+	};
+
+	const handleCancel = () => {
+		navigateToMonitorList();
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
@@ -260,13 +269,7 @@ const CreateMonitorPage = () => {
 		}
 
 		if (result?.success) {
-			if (pageType === "pagespeed") {
-				navigate("/pagespeed");
-			} else if (pageType === "hardware") {
-				navigate("/infrastructure");
-			} else {
-				navigate("/uptime");
-			}
+			navigateToMonitorList();
 		}
 	};
 
@@ -765,6 +768,95 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title", {
+					defaultValue: "Escalation Rules",
+				})}
+				subtitle={t("pages.createMonitor.form.escalation.description", {
+					defaultValue:
+						"Configure when and where escalation alerts should be sent.",
+				})}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalateAfterMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? "" : Number(val));
+									}}
+									type="number"
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.escalateAfterMinutes.label",
+										{ defaultValue: "Escalate after (minutes)" }
+									)}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.channels.label",
+											{ defaultValue: "Escalation notification channels" }
+										)}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+									<Stack spacing={theme.spacing(LAYOUT.XS)}>
+										{selectedNotifications.map((n) => (
+											<Box 
+												key={n.id} 
+												display="flex" 
+												justifyContent="space-between" 
+												alignItems="center"
+												p={1} // Add some padding to match the top style
+											>
+												<Typography variant="body2">{n.name}</Typography>
+												<IconButton 
+													size="small" 
+													onClick={() => {
+														field.onChange(field.value.filter((id: string) => id !== n.id));
+													}}
+												>
+													<Trash2 size={24} /> 
+												</IconButton>
+											</Box>
+										))}
+									</Stack>
+									</>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1047,7 +1139,17 @@ const CreateMonitorPage = () => {
 			<Stack
 				direction="row"
 				justifyContent="flex-end"
+				spacing={theme.spacing(LAYOUT.SM)}
 			>
+				<Button
+					type="button"
+					variant="outlined"
+					color="primary"
+					onClick={handleCancel}
+					disabled={isSubmitting}
+				>
+					{t("common.buttons.cancel", { defaultValue: "Cancel" })}
+				</Button>
 				<Button
 					loading={isSubmitting}
 					type="submit"

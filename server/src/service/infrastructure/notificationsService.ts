@@ -20,6 +20,7 @@ export interface INotificationsService {
 }
 
 const SERVICE_NAME = "NotificationsService";
+const MINUTE_IN_MS = 60 * 1000;
 
 export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -109,12 +110,29 @@ export class NotificationsService implements INotificationsService {
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
+		const { succeeded, total } = await this.sendNotificationsByIds(notificationIds, monitor, monitorStatusResponse, decision);
+
+		// Return true if all notifications succeeded
+		return total > 0 && succeeded === total;
+	};
+
+	private sendNotificationsByIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation: boolean = false
+	): Promise<{ succeeded: number; total: number }> => {
+		if (!notificationIds.length) {
+			return { succeeded: 0, total: 0 };
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost, isEscalation);
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -128,17 +146,110 @@ export class NotificationsService implements INotificationsService {
 				method: "sendNotifications",
 			});
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+
+		return { succeeded, total: notifications.length };
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+	private getCurrentIncidentStartedAt = (monitor: Monitor): string | null => {
+		if (monitor.currentIncidentStartedAt) {
+			return monitor.currentIncidentStartedAt;
+		}
+
+		const recentChecks = monitor.recentChecks ?? [];
+		if (!recentChecks.length) {
+			return null;
+		}
+
+		let incidentStart: string | null = null;
+		for (let i = recentChecks.length - 1; i >= 0; i -= 1) {
+			const check = recentChecks[i];
+			if (!check) {
+				continue;
+			}
+			if (!check.status) {
+				incidentStart = check.createdAt;
+				continue;
+			}
+			break;
+		}
+
+		return incidentStart;
+	};
+
+	private shouldSendEscalation = (monitor: Monitor, incidentStartedAt: string): boolean => {
+		const escalateAfterMinutes = monitor.escalateAfterMinutes ?? 0;
+		if (escalateAfterMinutes <= 0) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const downSinceMs = new Date(incidentStartedAt).getTime();
+		if (!Number.isFinite(downSinceMs)) {
+			return false;
+		}
+
+		const downDurationMs = Date.now() - downSinceMs;
+		const escalationThresholdMs = escalateAfterMinutes * MINUTE_IN_MS;
+		if (downDurationMs < escalationThresholdMs) {
+			return false;
+		}
+
+		return monitor.lastEscalatedIncidentStartedAt !== incidentStartedAt;
+	};
+
+	private handleEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<boolean> => {
+		if (monitor.status !== "down") {
+			if (monitor.currentIncidentStartedAt || monitor.lastEscalatedIncidentStartedAt) {
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					currentIncidentStartedAt: null,
+					lastEscalatedIncidentStartedAt: null,
+				});
+			}
+			return false;
+		}
+
+		let incidentStartedAt = this.getCurrentIncidentStartedAt(monitor);
+		if (!incidentStartedAt) {
+			incidentStartedAt = new Date().toISOString();
+		}
+
+		if (monitor.currentIncidentStartedAt !== incidentStartedAt) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				currentIncidentStartedAt: incidentStartedAt,
+			});
+		}
+
+		if (!this.shouldSendEscalation(monitor, incidentStartedAt)) {
+			return false;
+		}
+
+		const escalationNotificationIds = monitor.escalationNotifications ?? [];
+		const { succeeded, total } = await this.sendNotificationsByIds(escalationNotificationIds, monitor, monitorStatusResponse, decision, true);
+		if (total === 0 || succeeded === 0) {
+			return false;
+		}
+
+		await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+			currentIncidentStartedAt: incidentStartedAt,
+			lastEscalatedIncidentStartedAt: incidentStartedAt,
+		});
+
+		return true;
+	};
+
+	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		let sentStandardNotifications = false;
+		if (decision.shouldSendNotification) {
+			// Send regular notifications based on status-change/threshold decision
+			sentStandardNotifications = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		}
+
+		const sentEscalationNotifications = await this.handleEscalationNotifications(monitor, monitorStatusResponse, decision);
+
+		return sentStandardNotifications || sentEscalationNotifications;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
