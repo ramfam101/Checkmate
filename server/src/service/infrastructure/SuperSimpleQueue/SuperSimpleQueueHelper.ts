@@ -39,12 +39,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
-	thresholdBreaches?: {
-		cpu?: boolean;
-		memory?: boolean;
-		disk?: boolean;
-		temp?: boolean;
-	};
+	isEscalation?: boolean;
 }
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
@@ -66,6 +61,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTimers: Map<string, NodeJS.Timeout>;
 
 	constructor(
 		logger: ILogger,
@@ -101,6 +97,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationTimers = new Map<string, NodeJS.Timeout>();
 	}
 
 	get serviceName() {
@@ -166,6 +163,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// If the monitor recovered or entered maintenance, cancel any active escalation timer
+				if (statusChangeResult.monitor.status === "up" || statusChangeResult.monitor.status === "maintenance") {
+					this.clearEscalationTimer(monitorId);
+				}
+
+				// Step 6b. Start recurring escalation notifications if configured
+				if (
+					decision.shouldCreateIncident &&
+					statusChangeResult.monitor.escalationDelay &&
+					statusChangeResult.monitor.escalatedNotifications &&
+					statusChangeResult.monitor.escalatedNotifications.length > 0
+				) {
+					this.startEscalationTimer(statusChangeResult.monitor, status, decision);
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -417,6 +429,57 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private startEscalationTimer(monitor: Monitor, statusResponse: any, decision: MonitorActionDecision) {
+		if (!monitor.escalationDelay || !monitor.escalatedNotifications?.length) {
+			return;
+		}
+
+		const monitorId = monitor.id;
+		if (this.escalationTimers.has(monitorId)) {
+			return;
+		}
+
+		const schedule = async () => {
+			try {
+				const currentMonitor = await this.monitorsRepository.findById(monitorId, monitor.teamId);
+				if (currentMonitor.status === "down" || currentMonitor.status === "breached") {
+					this.logger.info({
+						message: `Sending escalation notification for monitor ${monitorId}`,
+						service: SERVICE_NAME,
+						method: "startEscalationTimer",
+					});
+					await this.notificationsService.sendEscalatedNotifications(currentMonitor, statusResponse, { ...decision, isEscalation: true });
+					this.escalationTimers.set(monitorId, setTimeout(schedule, currentMonitor.escalationDelay * 60 * 1000));
+				} else {
+					this.logger.info({
+						message: `Cancelling escalation timer for monitor ${monitorId} because status is ${currentMonitor.status}`,
+						service: SERVICE_NAME,
+						method: "startEscalationTimer",
+					});
+					this.clearEscalationTimer(monitorId);
+				}
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error running escalation timer for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "startEscalationTimer",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				this.clearEscalationTimer(monitorId);
+			}
+		};
+
+		this.escalationTimers.set(monitorId, setTimeout(schedule, monitor.escalationDelay * 60 * 1000));
+	}
+
+	private clearEscalationTimer(monitorId: string) {
+		const timer = this.escalationTimers.get(monitorId);
+		if (timer) {
+			clearTimeout(timer);
+			this.escalationTimers.delete(monitorId);
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

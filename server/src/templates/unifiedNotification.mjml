@@ -48,6 +48,9 @@
 			<mj-column width="100%">
 				<mj-text>
 					<p>Hello!</p>
+					{{#if isEscalation}}
+					<p style="color: #d32f2f; font-weight: bold">⚠️ This is an escalation notification</p>
+					{{/if}}
 					<p>{{ summary }}</p>
 					<p><b>Monitor name:</b> {{ monitorName }}</p>
 					<p><b>URL:</b> {{ monitorUrl }}</p>
