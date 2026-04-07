@@ -8,7 +8,13 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const monitorModel = new MonitorModel({
+            ...monitor,
+            teamId,
+            userId,
+            escalationDelay: monitor.escalationDelay ?? null,
+            escalationNotifications: (monitor.escalationNotifications ?? []).map((id) => new mongoose.Types.ObjectId(id)),
+        });
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -167,20 +173,29 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
-		const updatedMonitor = await MonitorModel.findOneAndUpdate(
-			{ _id: monitorId, teamId },
-			{
-				$set: {
-					...patch,
-				},
-			},
-			{ new: true, runValidators: true }
-		);
-		if (!updatedMonitor) {
-			throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
-		}
-		return this.toEntity(updatedMonitor);
-	};
+        const { escalationNotifications, ...rest } = patch;
+
+        const updatedMonitor = await MonitorModel.findOneAndUpdate(
+            { _id: monitorId, teamId },
+            {
+                $set: {
+                    ...rest,
+                    ...(patch.escalationDelay !== undefined ? { escalationDelay: patch.escalationDelay } : {}),
+                    ...(escalationNotifications !== undefined
+                        ? {
+                                escalationNotifications: escalationNotifications.map((id) => new mongoose.Types.ObjectId(id)),
+                          }
+                        : {}),
+                },
+            },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedMonitor) {
+            throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
+        }
+        return this.toEntity(updatedMonitor);
+    };
 
 	togglePauseById = async (monitorId: string, teamId: string) => {
 		const monitor = await MonitorModel.findOneAndUpdate(
@@ -293,7 +308,15 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ $or: [{ notifications: notificationId }, { escalationNotifications: notificationId }] },
+			{
+				$pull: {
+					notifications: notificationId,
+					escalationNotifications: notificationId,
+				},
+			}
+		);
 	};
 
 	updateNotifications = async (
@@ -391,6 +414,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelay: doc.escalationDelay ?? null,
+    		escalationNotifications: (doc.escalationNotifications ?? []).map((n: unknown) => toStringId(n)),
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -450,6 +475,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelay: doc.escalationDelay ?? null,
+    		escalationNotifications: (doc.escalationNotifications ?? []).map((n: unknown) => toStringId(n)),
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

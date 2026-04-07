@@ -388,6 +388,7 @@
 					"generateToken": "Generate token",
 					"details": "Details",
 					"incidents": "Incidents",
+					"escalation": "Escalation",
 					"inviteMember": "Invite member",
 					"openSite": "Open site",
 					"pause": "Pause",
@@ -542,6 +543,19 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+				},
+				"escalation": {
+					"title": "Escalation",
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"option": {
+						"delay": {
+							"label": "Escalate after (minutes)",
+							"placeholder": "e.g. 30 minutes"
+						},
+						"notifications": {
+							"label": "Escalation notification channels"
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",
