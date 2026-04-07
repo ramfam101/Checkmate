@@ -20,7 +20,7 @@ export const useSettingsForm = ({ data = null }: UseSettingsFormOptions = {}) =>
 			systemEmailAddress: data?.systemEmailAddress || "",
 			systemEmailConnectionHost: data?.systemEmailConnectionHost || "localhost",
 			systemEmailTLSServername: data?.systemEmailTLSServername || "",
-			systemEmailPort: data?.systemEmailPort,
+			systemEmailPort: data?.systemEmailPort ?? 587,
 			globalThresholds: {
 				cpu:
 					data?.globalThresholds?.cpu && data.globalThresholds.cpu >= 1

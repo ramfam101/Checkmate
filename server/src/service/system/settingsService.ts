@@ -24,6 +24,8 @@ export interface ISettingsService {
 
 export class SettingsService implements ISettingsService {
 	static SERVICE_NAME = SERVICE_NAME;
+	private static readonly DEFAULT_SYSTEM_EMAIL_HOST = "smtp.gmail.com";
+	private static readonly DEFAULT_SYSTEM_EMAIL_PORT = 587;
 	private settings: EnvConfig;
 	private settingsRepository: ISettingsRepository;
 
@@ -64,12 +66,23 @@ export class SettingsService implements ISettingsService {
 
 		let settings = await this.settingsRepository.findSingleton();
 		if (settings === null) {
-			await this.settingsRepository.create({});
+			await this.settingsRepository.create({
+				systemEmailHost: SettingsService.DEFAULT_SYSTEM_EMAIL_HOST,
+				systemEmailPort: SettingsService.DEFAULT_SYSTEM_EMAIL_PORT,
+			});
 			settings = await this.settingsRepository.findSingleton();
 		}
 
 		if (!settings) {
 			throw new AppError({ message: "Settings not found", status: 500 });
+		}
+
+		// Backfill older settings documents that were created before SMTP defaults existed.
+		if (!settings.systemEmailHost || !settings.systemEmailPort) {
+			settings = await this.settingsRepository.update({
+				systemEmailHost: settings.systemEmailHost || SettingsService.DEFAULT_SYSTEM_EMAIL_HOST,
+				systemEmailPort: settings.systemEmailPort || SettingsService.DEFAULT_SYSTEM_EMAIL_PORT,
+			});
 		}
 
 		return settings;

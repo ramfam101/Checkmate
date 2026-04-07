@@ -149,14 +149,43 @@ class NotificationController implements INotificationController {
 			}
 
 			const result = await this.notificationsService.testAllNotifications(notifications);
+			const failedResults = result.results.filter((item) => !item.success);
+			const reasonSummary = failedResults
+				.map((item) => `${item.name}: ${item.reason ?? "Delivery failed"}`)
+				.join(" | ");
 
-			if (!result) {
-				throw new AppError({ message: "Failed to send all notifications", status: 500 });
+			if (result.totalResolved === 0) {
+				return res.status(400).json({
+					success: false,
+					msg: "No valid notifications linked to this monitor",
+					data: result,
+				});
+			}
+
+			if (result.succeeded === 0) {
+				return res.status(500).json({
+					success: false,
+					msg: reasonSummary
+						? `Failed to send all notifications. ${reasonSummary}`
+						: "Failed to send all notifications. Please verify channel settings (for email, check SMTP settings).",
+					data: result,
+				});
+			}
+
+			if (result.failed > 0) {
+				return res.status(200).json({
+					success: true,
+					msg: reasonSummary
+						? `Sent ${result.succeeded}/${result.totalResolved} test notifications. ${reasonSummary}`
+						: `Sent ${result.succeeded}/${result.totalResolved} test notifications`,
+					data: result,
+				});
 			}
 
 			return res.status(200).json({
 				success: true,
 				msg: "All notifications sent successfully",
+				data: result,
 			});
 		} catch (error) {
 			next(error);
