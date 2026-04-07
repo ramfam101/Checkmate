@@ -107,6 +107,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
 	}
 
+	private buildNotificationTargetMonitor = (monitor: Monitor, decision: MonitorActionDecision): Monitor => {
+		if (!decision.shouldResolveIncident || monitor.status !== "up") {
+			return monitor;
+		}
+
+		const mergedNotifications = Array.from(new Set([...(monitor.notifications ?? []), ...(monitor.escalationNotifications ?? [])]));
+		return {
+			...monitor,
+			notifications: mergedNotifications,
+		};
+	};
+
 	getHeartbeatJob = () => {
 		return async (monitor: Monitor) => {
 			try {
@@ -158,7 +170,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					const notificationTargetMonitor = this.buildNotificationTargetMonitor(statusChangeResult.monitor, decision);
+					this.notificationsService.handleNotifications(notificationTargetMonitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
@@ -204,10 +217,10 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			return;
 		}
 
-		const escalationMinutes = monitor.escalationMinutes;
+		const escalationMs = monitor.escalationTime;
 		const escalationNotificationIds = monitor.escalationNotifications ?? [];
 
-		if (!escalationMinutes || escalationMinutes < 1 || escalationNotificationIds.length === 0) {
+		if (!escalationMs || escalationMs < 15000 || escalationNotificationIds.length === 0) {
 			return;
 		}
 
@@ -226,7 +239,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		const elapsedMs = Date.now() - incidentStartMs;
-		const thresholdMs = escalationMinutes * 60 * 1000;
+		const thresholdMs = escalationMs;
 		if (elapsedMs < thresholdMs) {
 			return;
 		}

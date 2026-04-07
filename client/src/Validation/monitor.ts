@@ -13,7 +13,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
-	escalationMinutes: z.number().min(15000, "Interval must be at least 15 seconds"),
+	escalationTime: z.number().min(15000, "Interval must be at least 15 seconds"),
 	escalationNotifications: z.array(z.string()),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })

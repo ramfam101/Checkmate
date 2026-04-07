@@ -285,7 +285,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
-		escalationMinutes: {
+		escalationTime: {
 			type: Number,
 			default: undefined,
 		},

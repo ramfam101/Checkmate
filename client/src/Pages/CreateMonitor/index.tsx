@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, getValues } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -253,6 +253,12 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const escalationTime = getValues("escalationTime");
+		const escalationNotifications = getValues("escalationNotifications") ?? [];
+
+		data.escalationTime = escalationTime;
+		data.escalationNotifications = escalationNotifications;
+
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -771,12 +777,13 @@ const CreateMonitorPage = () => {
 				rightContent={
 					<Stack spacing={theme.spacing(LAYOUT.MD)}>
 						<Controller
-							name="escalationMinutes"
+							name="escalationTime"
 							control={control}
 							render={({ field, fieldState }) => (
 								<Select
 									{...field}
 									value={field.value ?? 60000}
+									onChange={(e) => field.onChange(Number(e.target.value))}
 									fieldLabel={t(
 										"pages.createMonitor.form.escalatingNotifications.timeOption"
 									)}
