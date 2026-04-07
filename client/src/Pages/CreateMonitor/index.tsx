@@ -765,6 +765,100 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationMinutes"
+							control={control}
+							render={({ field }) => (
+								<TextField
+									label={t("pages.createMonitor.form.escalation.option.minutes.label")}
+									type="number"
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const value = e.target.value;
+										field.onChange(value === "" ? undefined : Number(value));
+									}}
+									inputProps={{ min: 1 }}
+									fullWidth
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationChannels"
+							control={control}
+							render={({ field }) => {
+								// Map notifications to have 'name' property for Autocomplete
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedEscalationChannels = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedEscalationChannels}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											renderInput={(params) => (
+												<TextField
+													{...params}
+													label={t("pages.createMonitor.form.escalation.option.channels.label")}
+													placeholder="Select escalation channels"
+												/>
+											)}
+										/>
+										{selectedEscalationChannels.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationChannels.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation channel"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationChannels.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

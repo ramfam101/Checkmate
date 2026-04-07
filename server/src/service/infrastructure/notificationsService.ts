@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision, notificationIds: string[]) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,14 +108,35 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+	private decorateAsEscalation = (notificationMessage: NotificationMessage, monitor: Monitor): NotificationMessage => {
+		return {
+			...notificationMessage,
+			content: {
+				...notificationMessage.content,
+				title: `Escalation: ${monitor.name} is still down`,
+				summary: `Escalation: ${monitor.name} is still down`,
+			},
+		};
+	};
 
-		// Build notification message once for all notifications
+	private sendNotificationsByIds = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds: string[],
+		escalation = false
+	) => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (notifications.length === 0) {
+			return true;
+		}
+
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		let notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		if (escalation) {
+			notificationMessage = this.decorateAsEscalation(notificationMessage, monitor);
+		}
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -125,11 +147,28 @@ export class NotificationsService implements INotificationsService {
 			this.logger.warn({
 				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
 				service: SERVICE_NAME,
-				method: "sendNotifications",
+				method: escalation ? "sendEscalationNotifications" : "sendNotificationsByIds",
 			});
 		}
-		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
+	};
+
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const notificationIds = monitor.notifications ?? [];
+		return await this.sendNotificationsByIds(monitor, monitorStatusResponse, decision, notificationIds, false);
+	};
+
+	sendEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds: string[]
+	) => {
+		if (!notificationIds || notificationIds.length === 0) {
+			return false;
+		}
+
+		return await this.sendNotificationsByIds(monitor, monitorStatusResponse, decision, notificationIds, true);
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
