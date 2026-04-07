@@ -233,6 +233,7 @@ export const initializeServices = async ({
 
 	const notificationsService = new NotificationsService(
 		notificationsRepository,
+		incidentsRepository,
 		monitorsRepository,
 		webhookProvider,
 		emailProvider,

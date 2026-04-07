@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -431,21 +431,29 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			if (monitor.status === "down" || monitor.status === "breached") {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+			}
 			return decision;
 		}
 
 		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
+			// Monitor went down (unreachable) - only notify if not already down
+			if (prevStatus !== "down") {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "status_down";
+				decision.notificationReason = "status_change";
+			}
 		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
+			// Hardware monitor exceeded thresholds - only notify if not already breached
+			if (prevStatus !== "breached") {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "threshold_breach";
+				decision.notificationReason = "threshold_breach";
+			}
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;

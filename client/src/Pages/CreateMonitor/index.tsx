@@ -252,11 +252,20 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const sanitizedEscalationPolicy = (data.escalationPolicy ?? []).filter(
+			(step) => step.delayMinutes >= 0.1 && step.notifications.length > 0
+		);
+
+		const payload: MonitorFormData = {
+			...data,
+			escalationPolicy: sanitizedEscalationPolicy,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -762,6 +771,125 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationPolicy"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+
+								const currentStep = field.value?.[0] ?? {
+									delayMinutes: 0,
+									notifications: [],
+								};
+
+								const selectedEscalationNotifications = notificationOptions.filter((n) =>
+									(currentStep.notifications ?? []).includes(n.id)
+								);
+
+								const updateStep = (partial: {
+									delayMinutes?: number;
+									notifications?: string[];
+								}) => {
+									const nextStep = {
+										delayMinutes: partial.delayMinutes ?? currentStep.delayMinutes ?? 0,
+										notifications:
+											partial.notifications ?? currentStep.notifications ?? [],
+									};
+
+									if (
+										nextStep.delayMinutes < 0.1 &&
+										nextStep.notifications.length === 0
+									) {
+										field.onChange([]);
+										return;
+									}
+
+									field.onChange([nextStep]);
+								};
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<TextField
+											type="number"
+											value={currentStep.delayMinutes ?? 0}
+											onChange={(e) => {
+												const parsed = Number(e.target.value);
+												updateStep({
+													delayMinutes: Number.isFinite(parsed) ? parsed : 0,
+												});
+											}}
+											inputProps={{ min: 0, step: 0.1 }}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.delay.label"
+											)}
+											fullWidth
+										/>
+
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedEscalationNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												updateStep({ notifications: newValue.map((n) => n.id) });
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.notifications.label"
+											)}
+										/>
+
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																updateStep({
+																	notifications: (currentStep.notifications ?? []).filter(
+																		(id: string) => id !== notification.id
+																	),
+																});
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && (
+															<Divider />
+														)}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

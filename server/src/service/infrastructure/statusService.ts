@@ -236,6 +236,20 @@ export class StatusService implements IStatusService {
 			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
+			// Recover immediately when we get the first successful check after a down state.
+			// This allows the recovery notification to fire without waiting for the sliding window.
+			if (monitor.status === "down" && status === true) {
+				monitor.status = "up";
+				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+				return {
+					monitor: updated,
+					statusChanged: true,
+					prevStatus,
+					code,
+					timestamp: Date.now(),
+				};
+			}
+
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
 				monitor.status = newStatus;
