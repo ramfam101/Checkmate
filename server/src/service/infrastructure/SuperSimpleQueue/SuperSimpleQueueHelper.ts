@@ -168,6 +168,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				// Step 6.5: Handle escalation rules for active incidents
+				await this.processEscalations(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error processing escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
@@ -187,6 +197,67 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private processEscalations = async (monitor: Monitor, monitorStatusResponse: any, decision: MonitorActionDecision) => {
+		if (
+			!monitor.notificationEscalations ||
+			!monitor.notificationEscalations.notificationIds ||
+			monitor.notificationEscalations.notificationIds.length === 0
+		) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const incidentStart = Date.parse(activeIncident.startTime);
+		const sentEscalations = new Set((activeIncident.escalationsSent ?? []).map((e) => e.channelId));
+		const now = Date.now();
+		let hasEscalation = false;
+		const updatedEscalations = activeIncident.escalationsSent ? [...activeIncident.escalationsSent] : [];
+
+		const escalation = monitor.notificationEscalations;
+		if (!escalation.notificationIds || escalation.notificationIds.length === 0 || escalation.delayMinutes < 0) {
+			return;
+		}
+
+		const escalationDeadline = incidentStart + escalation.delayMinutes * 60 * 1000;
+		if (now < escalationDeadline) {
+			return;
+		}
+
+		for (const channelId of escalation.notificationIds) {
+			if (sentEscalations.has(channelId)) {
+				continue;
+			}
+
+			const sent = await this.notificationsService
+				.sendEscalationNotification(channelId, monitor, monitorStatusResponse, decision)
+				.catch((error: unknown) => {
+					this.logger.warn({
+						message: `Failed escalation for channel ${channelId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "processEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					return false;
+				});
+
+			if (sent) {
+				updatedEscalations.push({ channelId, sentAt: new Date().toISOString() });
+				sentEscalations.add(channelId);
+				hasEscalation = true;
+			}
+		}
+
+		if (hasEscalation) {
+			await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+				escalationsSent: updatedEscalations,
+			});
+		}
 	};
 
 	getCleanupOrphanedJob = () => {

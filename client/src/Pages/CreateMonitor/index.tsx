@@ -28,6 +28,7 @@ import {
 	SwitchComponent as Switch,
 	SliderWithLabel,
 	Dialog,
+	FieldLabel,
 } from "@/Components/inputs";
 import { SPACING, LAYOUT } from "@/Utils/Theme/constants";
 import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
@@ -252,11 +253,19 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const payload: MonitorFormData = {
+			...data,
+			notificationEscalations:
+				data.notificationEscalations?.notificationIds?.length
+					? data.notificationEscalations
+					: undefined,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -765,36 +774,113 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			{(watchedType === "http" ||
-				watchedType === "grpc" ||
-				watchedType === "websocket") && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.ignoreTls.title")}
-					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-					rightContent={
-						<Controller
-							name="ignoreTlsErrors"
-							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="notificationEscalations"
+						control={control}
+						render={({ field }) => {
+							const escalation = field.value ?? { notificationIds: [], delayMinutes: 0 };
+							const delayValue = Number.isFinite(Number(escalation.delayMinutes))
+								? Number(escalation.delayMinutes)
+								: 0;
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<FieldLabel>
+										{t("pages.createMonitor.form.escalations.option.delay.label")}
+									</FieldLabel>
+									<TextField
+										type="number"
+										fullWidth
+										value={delayValue}
+										onChange={(e) => {
+											const parsed = Number(e.target.value);
+											const delay = Number.isFinite(parsed)
+												? Math.max(0, parsed)
+												: 0;
+											field.onChange({ ...escalation, delayMinutes: delay });
+										}}
 									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
+									<FieldLabel>
+										{t("pages.createMonitor.form.escalations.option.notification.label")}
+									</FieldLabel>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={notificationOptions.filter((option) =>
+											escalation.notificationIds?.includes(option.id)
+										)}
+										getOptionLabel={(option) => option.name}
+										onChange={(_, value: Array<{ id: string }>) => {
+											const notificationIds = value.map((item) => item.id);
+											field.onChange({ ...escalation, notificationIds });
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										renderInput={(params) => (
+											<TextField
+												{...params}
+												placeholder={t(
+													"pages.createMonitor.form.escalations.option.notification.placeholder"
+												)}
+												fullWidth
+											/>
+										)}
+									/>
+									{escalation.notificationIds &&
+										escalation.notificationIds.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{notificationOptions
+													.filter((option) =>
+														escalation.notificationIds?.includes(option.id)
+													)
+													.map((notification, notificationIndex) => (
+														<Stack
+															direction="row"
+															alignItems="center"
+															key={notification.id}
+															width="100%"
+														>
+															<Typography flexGrow={1}>
+																{notification.notificationName}
+															</Typography>
+															<IconButton
+																size="small"
+																onClick={() => {
+																	field.onChange({
+																		...escalation,
+																		notificationIds:
+																			escalation.notificationIds?.filter(
+																				(id: string) => id !== notification.id
+																			) || [],
+																	});
+																}}
+																aria-label="Remove notification"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+															{notificationIndex <
+																(escalation.notificationIds?.length || 0) - 1 && (
+																<Divider />
+															)}
+														</Stack>
+													))}
+											</Stack>
+										)}
 								</Stack>
-							)}
-						/>
-					}
-				/>
-			)}
-
+							);
+						}}
+					/>
+				}
+			/>
 			{watchedType === "http" && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.advanced.title")}

@@ -15,6 +15,12 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendEscalationNotification: (
+		notificationId: string,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +145,39 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (
+		notificationId: string,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
+		const notification = await this.notificationsRepository.findById(notificationId, monitor.teamId);
+		if (!notification) {
+			this.logger.warn({
+				message: `Escalation notification ${notificationId} not found for team ${monitor.teamId}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			this.settingsService.getSettings().clientHost || ""
+		);
+		notificationMessage.metadata.notificationReason = "escalation";
+		notificationMessage.content.title = `Escalation: Monitor ${monitor.name} still down`;
+		notificationMessage.content.summary = `Escalation alert: Monitor "${monitor.name}" is still down after the configured delay.`;
+		notificationMessage.content.details = [
+			`Escalation Delay: ${monitor.notificationEscalations?.delayMinutes ?? 0} minute(s)`,
+			...(notificationMessage.content.details ?? []),
+		];
+
+		return this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

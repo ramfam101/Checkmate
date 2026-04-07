@@ -15,11 +15,25 @@ const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimp
 		logger: createLogger(),
 		networkService: { requestStatus: jest.fn() },
 		statusService: statusServiceMock,
-		notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+		notificationsService: {
+			handleNotifications: jest.fn().mockResolvedValue(undefined),
+			sendEscalationNotification: jest.fn().mockResolvedValue(true),
+		},
 		checkService: { buildCheck: jest.fn().mockResolvedValue({}) },
+		settingsService: {
+			getSettings: jest.fn().mockReturnValue({ clientHost: "http://localhost" }),
+			getDBSettings: jest.fn().mockResolvedValue({ checkTTL: 30 }),
+		},
 		buffer: { addToBuffer: jest.fn() },
 		incidentService: { handleIncident: jest.fn().mockResolvedValue(undefined) },
 		maintenanceWindowsRepository,
+		monitorsRepository: { updateById: jest.fn(), findById: jest.fn(), findAll: jest.fn() },
+		teamsRepository: { findAllTeamIds: jest.fn() },
+		monitorStatsRepository: { deleteByMonitorIdsNotIn: jest.fn() },
+		checksRepository: { deleteByMonitorIdsNotIn: jest.fn() },
+		incidentsRepository: { findActiveByMonitorId: jest.fn().mockResolvedValue(null), updateById: jest.fn() },
+		geoChecksService: {},
+		geoChecksRepository: {},
 		...overrides,
 	});
 	return { helper, maintenanceWindowsRepository };
@@ -47,13 +61,61 @@ describe("SuperSimpleQueueHelper", () => {
 				statusService: {
 					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: updatedMonitor, statusChanged: true, prevStatus: false, code: 200 }),
 				},
-				notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+				notificationsService: {
+					handleNotifications: jest.fn().mockResolvedValue(undefined),
+					sendEscalationNotification: jest.fn().mockResolvedValue(false),
+				},
 			});
 			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
 			const job = helper.getMonitorJob();
 			const monitor = { id: "m1", teamId: "team" } as Monitor;
 			await job(monitor);
 			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(monitor);
+		});
+
+		it("sends escalation when active incident is unacknowledged after delay", async () => {
+			const networkResponse = { monitor: { id: "m2" }, status: true };
+			const activeIncident = {
+				id: "i1",
+				monitorId: "m2",
+				teamId: "team",
+				startTime: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+				status: true,
+				resolutionType: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				escalationsSent: [],
+			};
+
+			const { helper } = createHelper({
+				networkService: { requestStatus: jest.fn().mockResolvedValue(networkResponse) },
+				statusService: {
+					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: networkResponse.monitor, statusChanged: true, prevStatus: false, code: 500 }),
+				},
+				incidentsRepository: {
+					findActiveByMonitorId: jest.fn().mockResolvedValue(activeIncident),
+					updateById: jest.fn().mockResolvedValue({ ...activeIncident, escalationsSent: [{ channelId: "n2", sentAt: new Date().toISOString() }] }),
+				},
+				notificationsService: {
+					handleNotifications: jest.fn().mockResolvedValue(true),
+					sendEscalationNotification: jest.fn().mockResolvedValue(true),
+				},
+			});
+
+			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
+
+			const job = helper.getMonitorJob();
+			const monitor = {
+				id: "m2",
+				teamId: "team",
+				notifications: ["n1"],
+				notificationEscalations: { notificationIds: ["n2"], delayMinutes: 5 },
+			} as Monitor;
+
+			await job(monitor);
+
+			expect(helper["notificationsService"].sendEscalationNotification).toHaveBeenCalledWith("n2", monitor, networkResponse, expect.any(Object));
+			expect(helper["incidentsRepository"].updateById).toHaveBeenCalled();
 		});
 
 		it("throws when monitor id is missing", async () => {

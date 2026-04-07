@@ -10,3 +10,4 @@ node_modules
 .vscode/*
 public
 dist
+chat.json

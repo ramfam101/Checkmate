@@ -72,6 +72,18 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationsSent: [
+			{
+				channelId: {
+					type: Schema.Types.ObjectId,
+					ref: "Notification",
+				},
+				sentAt: {
+					type: Date,
+					required: true,
+				},
+			},
+		],
 	},
 	{ timestamps: true }
 );

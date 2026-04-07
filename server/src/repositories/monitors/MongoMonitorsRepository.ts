@@ -5,10 +5,22 @@ import mongoose, { type FilterQuery, type PipelineStage } from "mongoose";
 import type { IMonitorsRepository, TeamQueryConfig, SummaryConfig } from "./IMonitorsRepository.js";
 import { MongoBulkWriteError } from "mongodb";
 import { AppError } from "@/utils/AppError.js";
+import { normalizeNotificationEscalations } from "@/utils/normalizeNotificationEscalations.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const normalizedEscalations = normalizeNotificationEscalations(monitor.notificationEscalations);
+		const monitorModel = new MonitorModel({
+			...monitor,
+			teamId,
+			userId,
+			notificationEscalations: normalizedEscalations.length
+				? {
+						notificationIds: normalizedEscalations.map((rule) => rule.notificationId),
+						delayMinutes: normalizedEscalations[0]?.delayMinutes ?? 0,
+				  }
+				: undefined,
+		});
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -167,11 +179,25 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const updatePayload: Partial<Monitor> & { notificationEscalations?: unknown } = {
+			...patch,
+		};
+
+		if (Object.prototype.hasOwnProperty.call(patch, "notificationEscalations")) {
+			const normalizedEscalations = normalizeNotificationEscalations(patch.notificationEscalations);
+			updatePayload.notificationEscalations = normalizedEscalations.length
+				? {
+						notificationIds: normalizedEscalations.map((rule) => rule.notificationId),
+						delayMinutes: normalizedEscalations[0]?.delayMinutes ?? 0,
+				  }
+				: undefined;
+		}
+
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
 			{
 				$set: {
-					...patch,
+					...updatePayload,
 				},
 			},
 			{ new: true, runValidators: true }
@@ -351,6 +377,32 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const rawEscalation = doc.notificationEscalations as
+			| {
+					notificationIds?: unknown[];
+					notificationId?: unknown;
+					channelId?: unknown;
+					delayMinutes?: number;
+			  }
+			| Array<{
+					notificationId?: unknown;
+					delayMinutes?: number;
+			  }>
+			| undefined;
+		const escalationIds = Array.isArray(rawEscalation)
+			? rawEscalation.map((rule) => rule?.notificationId).filter(Boolean)
+			: rawEscalation?.notificationIds?.length
+				? rawEscalation.notificationIds
+				: [rawEscalation?.notificationId ?? rawEscalation?.channelId].filter(Boolean);
+		const escalationDelay = Array.isArray(rawEscalation) ? Number(rawEscalation[0]?.delayMinutes ?? 0) : (rawEscalation?.delayMinutes ?? 0);
+		const notificationEscalations = doc.notificationEscalations
+			? {
+					notificationIds: escalationIds
+						.map((id: any) => toStringId(id))
+						.filter((id: string) => id),
+					delayMinutes: escalationDelay,
+				}
+			: undefined;
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +426,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			notificationEscalations,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +463,32 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const rawEscalation = doc.notificationEscalations as
+			| {
+					notificationIds?: unknown[];
+					notificationId?: unknown;
+					channelId?: unknown;
+					delayMinutes?: number;
+			  }
+			| Array<{
+					notificationId?: unknown;
+					delayMinutes?: number;
+			  }>
+			| undefined;
+		const escalationIds = Array.isArray(rawEscalation)
+			? rawEscalation.map((rule) => rule?.notificationId).filter(Boolean)
+			: rawEscalation?.notificationIds?.length
+				? rawEscalation.notificationIds
+				: [rawEscalation?.notificationId ?? rawEscalation?.channelId].filter(Boolean);
+		const escalationDelay = Array.isArray(rawEscalation) ? Number(rawEscalation[0]?.delayMinutes ?? 0) : (rawEscalation?.delayMinutes ?? 0);
+		const notificationEscalations = doc.notificationEscalations
+			? {
+					notificationIds: escalationIds
+						.map((id: any) => toStringId(id))
+						.filter((id: string) => id),
+					delayMinutes: escalationDelay,
+				}
+			: undefined;
 
 		return {
 			id: toStringId(doc._id),

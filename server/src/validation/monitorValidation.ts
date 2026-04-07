@@ -3,6 +3,8 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const escalationDelaySchema = z.coerce.number().min(0).default(0);
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -67,6 +69,12 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	notificationEscalations: z
+		.object({
+			notificationIds: z.array(z.string()),
+			delayMinutes: escalationDelaySchema,
+		})
+		.optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -100,6 +108,12 @@ export const editMonitorBodyValidation = z.object({
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
+	notificationEscalations: z
+		.object({
+			notificationIds: z.array(z.string()),
+			delayMinutes: escalationDelaySchema,
+		})
+		.optional(),
 	gameId: z.union([z.string(), z.literal("")]).optional(),
 	grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
 	selectedDisks: z.array(z.string()).optional(),
