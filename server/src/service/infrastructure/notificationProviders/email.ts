@@ -83,6 +83,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
+			case "escalation":
+				return `🚨 ESCALATION: Monitor ${message.monitor.name} still down - Immediate action required`;
 			case "threshold_breach":
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":

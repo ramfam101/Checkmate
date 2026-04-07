@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useMemo, useState, useEffect } from "react"; // useMemo is used to memoize the notification option list for Autocomplete
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
 import { useForm, Controller } from "react-hook-form";
@@ -192,6 +191,13 @@ const CreateMonitorPage = () => {
 
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
 	const { data: games } = useGet<GamesMap>("/monitors/games");
+
+	// Convert raw notification objects into Autocomplete-friendly options with a `name` property.
+	// This ensures the selected item label is displayed correctly in the Autocomplete field.
+	const notificationOptions = useMemo(
+		() => (notifications ?? []).map((n) => ({ ...n, name: n.notificationName })),
+		[notifications]
+	);
 
 	const { schema, defaults } = useMonitorForm({
 		data: existingMonitor ?? null,
@@ -764,6 +770,113 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+<ConfigBox
+    title={t("pages.createMonitor.form.escalatedNotifications.title")}
+    subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+    rightContent={
+        <Controller
+            name="escalationSteps"
+            control={control}
+            render={({ field }) => {
+                const escalationSteps = field.value ?? [];
+                return (
+                    <Stack spacing={theme.spacing(LAYOUT.MD)} width="100%">
+                        {escalationSteps.map((_step, index) => (
+                            <Stack
+                                direction="column"
+                                spacing={theme.spacing(LAYOUT.SM)}
+                                key={index}
+                                sx={{
+                                    border: `1px solid ${theme.palette.divider}`,
+                                    borderRadius: theme.shape.borderRadius,
+                                    padding: theme.spacing(LAYOUT.MD),
+                                    backgroundColor: theme.palette.mode === "dark" ? theme.palette.grey[900] : theme.palette.grey[50],
+                                }}
+                            >
+                                <Stack
+                                    direction={{ xs: "column", md: "row" }}
+                                    spacing={theme.spacing(LAYOUT.MD)}
+                                    alignItems="baseline" // Align labels and input tops consistently for horizontal row layout
+                                >
+                                    <Controller
+                                        name={`escalationSteps.${index}.afterMinutes`}
+                                        control={control}
+                                        render={({ field: stepField }) => (
+                                            // Use fieldLabel for consistent input label rendering in our custom TextField wrapper
+                                            <TextField
+                                                {...stepField}
+                                                fieldLabel={t("pages.createMonitor.form.escalatedNotifications.step.minutesLabel")}
+                                                type="number"
+                                                inputProps={{ min: 1 }}
+                                                value={stepField.value ?? 5}
+                                                onChange={(event) => stepField.onChange(Number(event.target.value))}
+                                                placeholder="Minutes"
+                                                sx={{ minWidth: 150 }}
+                                            />
+                                        )}
+                                    />
+                                    <Controller
+                                        name={`escalationSteps.${index}.notifications`}
+                                        control={control}
+                                        render={({ field: notificationField }) => {
+                                            // Convert the stored notification IDs into the actual option objects for Autocomplete
+                                            // so the selected chips render in the closed state.
+                                            const selectedOptions = notificationOptions.filter((option) =>
+                                                (notificationField.value ?? []).includes(option.id)
+                                            );
+                                            return (
+                                                <Autocomplete
+                                                    multiple
+                                                    options={notificationOptions}
+                                                    value={selectedOptions}
+                                                    getOptionLabel={(option) => option.name}
+                                                    onChange={(_: unknown, newValue: typeof notificationOptions) => {
+                                                        notificationField.onChange(newValue.map((n) => n.id));
+                                                    }}
+                                                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                                                    fieldLabel={t("pages.createMonitor.form.escalatedNotifications.step.notificationsLabel")}
+                                                    slotProps={{
+                                                        popper: {
+                                                            style: { minWidth: 300 },
+                                                        },
+                                                    }}
+                                                    renderInput={(params) => (
+                                                        // Ensure the dropdown input is wide enough to show notification names like "base email".
+                                                        <TextField
+                                                            {...params}
+                                                            placeholder={t("pages.createMonitor.form.escalatedNotifications.step.notificationsPlaceholder")}
+                                                            sx={{ minWidth: 250 }}
+                                                        />
+                                                    )}
+                                                />
+                                            );
+                                        }}
+                                    />
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => field.onChange(escalationSteps.filter((_, stepIndex) => stepIndex !== index))}
+                                        aria-label={t("pages.createMonitor.form.escalatedNotifications.step.remove")}
+                                        sx={{ alignSelf: "flex-start" }}
+                                    >
+                                        <Trash2 size={16} />
+                                    </IconButton>
+                                </Stack>
+                            </Stack>
+                        ))}
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => field.onChange([...escalationSteps, { afterMinutes: 5, notifications: [] }])}
+                            sx={{ alignSelf: "flex-start" }}
+                        >
+                            {t("pages.createMonitor.form.escalatedNotifications.addStep")}
+                        </Button>
+                    </Stack>
+                );
+            }}
+        />
+    }
+/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

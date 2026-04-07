@@ -5,6 +5,11 @@ import { GeoContinents } from "@/Types/GeoCheck";
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
 // Common base schema for all monitor types
+const escalationStepSchema = z.object({
+	afterMinutes: z.number().min(1, "Escalation step must wait at least 1 minute"),
+	notifications: z.array(z.string()),
+});
+
 const baseSchema = z.object({
 	name: z
 		.string()
@@ -13,6 +18,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationSteps: z.array(escalationStepSchema),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

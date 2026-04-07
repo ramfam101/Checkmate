@@ -53,7 +53,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
+		// Escalation has priority over regular status changes
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
+		// Down status has high priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
 		}
@@ -81,6 +86,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return "critical";
+			case "escalation":
+				return "critical";
 			case "threshold_breach":
 				return "warning";
 			case "monitor_up":
@@ -99,6 +106,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "threshold_breach":
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
@@ -135,6 +144,29 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `⚠️ ESCALATION: ${monitor.name} still down`;
+		const summary = `Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		const details = [`URL: ${monitor.url}`, `Status: Ongoing Outage`, `Type: ${monitor.type}`];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
 
 		return {
 			title,
