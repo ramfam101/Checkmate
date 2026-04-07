@@ -764,7 +764,42 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
-
+<ConfigBox
+    title={t("pages.createMonitor.form.escalatedNotifications.title")}
+    subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+    rightContent={
+<Stack spacing={theme.spacing(LAYOUT.MD)}>
+    <Controller
+        name="escalatedNotificationMinutes"
+        control={control}
+        render={({ field }) => (
+            <TextField
+                {...field}
+                type="text"
+                fieldLabel={t("Estimate After (minutes)")}
+                placeholder="e.g., 30"
+            />
+        )}
+    />
+    <Controller
+        name="escalatedNotificationId"
+        control={control}
+        render={({ field }) => (
+            <Select
+                {...field}
+                fieldLabel={t("Escalation Notification Channels")}
+            >
+                {(notifications ?? []).map((n) => (
+                    <MenuItem key={n.id} value={n.id}>
+                        {n.notificationName}
+                    </MenuItem>
+                ))}
+            </Select>
+        )}
+    />
+</Stack>
+    }
+/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

@@ -200,6 +200,14 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
+		escalatedNotificationMinutes: {
+			type: Number,
+			min: 1,
+		},
+		escalatedNotificationId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+		},
 		userId: {
 			type: Schema.Types.ObjectId,
 			ref: "User",

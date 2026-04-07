@@ -542,6 +542,19 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+					},
+					"option": {
+						"minutes": {
+							"label": "Escalate after (minutes)"
+						},
+						"channel": {
+							"label": "Escalation notification channel"
+						}
+					},
+					"escalatedNotifications": {
+						"description": "Configure notification channels that should be alerted after an incident has persisted for a set duration.",
+						"title": "Escalated notifications"
+					
 				},
 				"type": {
 					"description": "Select the type of check to perform",
