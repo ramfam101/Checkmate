@@ -14,7 +14,12 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotifications: (
+			monitor: Monitor,
+			monitorStatusResponse: MonitorStatusResponse,
+			decision: MonitorActionDecision,
+			escalationNotificationIds: string[]
+		) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -161,6 +166,40 @@ export class NotificationsService implements INotificationsService {
 				return false;
 		}
 	};
+
+	sendEscalationNotifications = async (
+        monitor: Monitor,
+        monitorStatusResponse: MonitorStatusResponse,
+        decision: MonitorActionDecision,
+        escalationNotificationIds: string[]
+    ): Promise<boolean> => {
+        if (!escalationNotificationIds?.length) {
+            return false;
+        }
+
+        const notifications = await this.notificationsRepository.findNotificationsByIds(escalationNotificationIds);
+
+        const settings = this.settingsService.getSettings();
+        const clientHost = settings.clientHost || "Host not defined";
+
+        const baseMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+        if (!baseMessage) {
+            return false;
+        }
+
+        const escalationMessage: NotificationMessage = {
+            ...baseMessage,
+            type: "escalation",
+        };
+
+        const tasks = notifications.map((notification) =>
+            this.send(notification, monitor, monitorStatusResponse, decision, escalationMessage)
+        );
+
+        const outcomes = await Promise.all(tasks);
+        const succeeded = outcomes.filter(Boolean).length;
+        return succeeded === notifications.length;
+    };
 
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);

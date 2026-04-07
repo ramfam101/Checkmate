@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -137,6 +137,19 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					throw new Error("No network response");
 				}
 
+				this.logger.info({
+                    message: `Heartbeat check completed for monitor ${monitorId}`,
+                    service: SERVICE_NAME,
+                    method: "getMonitorJob",
+                    details: {
+                        monitorName: monitor.name,
+                        monitorType: monitor.type,
+                        monitorUrl: monitor.url,
+                        statusCode: status.code,
+                        statusMessage: status.message,
+                    },
+                });
+
 				// Step 3.  Build check
 				const check = this.checkService.buildCheck(status);
 				if (!check) {
@@ -152,6 +165,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.buffer.addToBuffer(check);
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
+
+				this.logger.info({
+					message: `Monitor status updated for ${monitor.id}: prev=${statusChangeResult.prevStatus} current=${statusChangeResult.monitor.status} changed=${statusChangeResult.statusChanged}`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+				});
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
@@ -177,6 +196,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation (best effort, don't wait)
+				if (
+                    statusChangeResult.monitor.escalationDelay &&
+                    statusChangeResult.monitor.escalationNotifications &&
+                    statusChangeResult.monitor.escalationNotifications.length > 0
+                ) {
+                    this.handleEscalation(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+                        this.logger.warn({
+                            message: `Error handling escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+                            service: SERVICE_NAME,
+                            method: "getMonitorJob",
+                            stack: error instanceof Error ? error.stack : undefined,
+                        });
+                    });
+                }
+
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -455,4 +491,45 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private async handleEscalation(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> {
+		const escalationDelay = monitor.escalationDelay ?? 0;
+		const escalationNotifications = monitor.escalationNotifications ?? [];
+
+		if (escalationDelay <= 0 || escalationNotifications.length === 0) {
+			return;
+		}
+
+		const incident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!incident || incident.escalationNotified) {
+			return;
+		}
+
+		const downForMs = Date.now() - new Date(incident.createdAt).getTime();
+		const escalationDelayMs = escalationDelay * 60 * 1000;
+
+		if (downForMs < escalationDelayMs) {
+			return;
+		}
+
+		await this.notificationsService.sendEscalationNotifications(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			escalationNotifications
+		);
+		await this.incidentsRepository.markEscalationNotified(incident.id);
+
+		this.logger.info({
+			message: `Escalation notifications sent for monitor ${monitor.id} after ${escalationDelay} minutes`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+	}
+
+	
 }

@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationNotified: doc.escalationNotified ?? false,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -114,6 +115,26 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		}
 		return this.toEntity(incident);
 	};
+
+	async findActiveIncidentForMonitor(monitorId: string, teamId: string): Promise<Incident | null> {
+		const incident = await IncidentModel.findOne({
+			monitorId: new mongoose.Types.ObjectId(monitorId),
+			teamId: new mongoose.Types.ObjectId(teamId),
+			status: true, // Active incidents have status: true
+		});
+		if (!incident) {
+			return null;
+		}
+		return this.toEntity(incident);
+	}
+
+	async markEscalationNotified(incidentId: string): Promise<void> {
+		await IncidentModel.updateOne(
+			{ _id: new mongoose.Types.ObjectId(incidentId) },
+			{ escalationNotified: true }
+		);
+	}
+
 
 	findByTeamId = async (
 		teamId: string,

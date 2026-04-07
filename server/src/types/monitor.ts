@@ -56,6 +56,8 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalationDelay?: number | null;
+    escalationNotifications?: string[];
 }
 
 export interface MonitorsSummary {
