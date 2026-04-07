@@ -776,7 +776,7 @@ const CreateMonitorPage = () => {
 																	shouldValidate: true,
 																});
 															}}
-															aria-label="Remove notification"
+															aria-label={t("pages.createMonitor.form.notifications.removeNotificationAria")}
 														>
 															<Trash2 size={16} />
 														</IconButton>
@@ -871,7 +871,7 @@ const CreateMonitorPage = () => {
 														};
 														field.onChange(nextEscalations);
 													}}
-													aria-label="Clear escalation channel"
+													aria-label={t("pages.createMonitor.form.notifications.escalations.clearChannelAria")}
 												>
 													<Trash2 size={16} />
 												</IconButton>
@@ -885,7 +885,7 @@ const CreateMonitorPage = () => {
 												const nextEscalations = (field.value ?? []).filter((_, ruleIndex) => ruleIndex !== index);
 												field.onChange(nextEscalations);
 											}}
-											aria-label="Remove escalation"
+											aria-label={t("pages.createMonitor.form.notifications.escalations.removeRuleAria")}
 										>
 											<Trash2 size={16} />
 										</IconButton>
@@ -1153,7 +1153,7 @@ const CreateMonitorPage = () => {
 																				)
 																			);
 																		}}
-																		aria-label="Remove location"
+																		aria-label={t("pages.createMonitor.form.geoChecks.option.locations.removeLocationAria")}
 																	>
 																		<Trash2 size={16} />
 																	</IconButton>
