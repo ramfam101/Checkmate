@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { Settings } from "@/types/settings.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,9 +15,21 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendNotificationsByIds: (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
-	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	testAllNotifications: (notificationIds: string[]) => Promise<{
+		totalRequested: number;
+		totalResolved: number;
+		succeeded: number;
+		failed: number;
+		results: Array<{ id: string; type: Notification["type"]; name: string; success: boolean; reason?: string }>;
+	}>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -107,8 +120,12 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	sendNotificationsByIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -138,7 +155,8 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const notificationIds = monitor.notifications ?? [];
+		return await this.sendNotificationsByIds(notificationIds, monitor, monitorStatusResponse, decision);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
@@ -162,16 +180,59 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
+	private getTestFailureReason(notification: Notification, settings?: Settings): string {
+		switch (notification.type) {
+			case "email": {
+				const missingFields: string[] = [];
+				if (!settings?.systemEmailHost) missingFields.push("systemEmailHost");
+				if (!settings?.systemEmailPort) missingFields.push("systemEmailPort");
+				if (!settings?.systemEmailAddress) missingFields.push("systemEmailAddress");
+				if (!settings?.systemEmailPassword) missingFields.push("systemEmailPassword");
+				if (!settings?.systemEmailUser && !settings?.systemEmailAddress) missingFields.push("systemEmailUser");
+
+				if (missingFields.length > 0) {
+					return `Email delivery failed. Missing SMTP settings: ${missingFields.join(", ")}.`;
+				}
+
+				return "Email delivery failed. Verify SMTP host, port, username/password, sender address, and TLS settings.";
+			}
+			case "slack":
+			case "discord":
+			case "teams":
+			case "webhook":
+				return "Webhook delivery failed. Verify webhook URL and provider permissions.";
+			case "pager_duty":
+				return "PagerDuty delivery failed. Verify integration/routing key.";
+			case "matrix":
+				return "Matrix delivery failed. Verify homeserver URL, room ID, and access token.";
+			default:
+				return "Notification delivery failed. Verify channel configuration.";
+		}
+	}
+
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
 		const outcomes = await Promise.all(tasks);
+		const settings = await this.settingsService.getDBSettings();
 		const succeeded = outcomes.filter(Boolean).length;
 		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			return false;
-		}
-		return true;
+		const results = notifications.map((notification, index) => ({
+			id: notification.id,
+			type: notification.type,
+			name: notification.notificationName,
+			success: Boolean(outcomes[index]),
+			reason: outcomes[index] ? undefined : this.getTestFailureReason(notification, settings),
+		}));
+
+		// Return a summary so callers can distinguish partial delivery from complete failure.
+		return {
+			totalRequested: notificationIds.length,
+			totalResolved: outcomes.length,
+			succeeded,
+			failed,
+			results,
+		};
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

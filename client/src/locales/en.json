@@ -540,6 +540,18 @@
 					"title": "Incidents"
 				},
 				"notifications": {
+					"escalations": {
+						"title": "Escalation rules",
+						"description": "If the monitor stays down for the specified time, notify additional channels.",
+						"channelLabel": "Escalation notification channels",
+						"delayLabel": "Escalate after (minutes)",
+						"delayHelper": "The escalation triggers only if the incident is still unresolved.",
+						"addRule": "Add escalation rule",
+						"clearChannelAria": "Clear escalation channel",
+						"removeRuleAria": "Remove escalation rule",
+						"selectChannelFirst": "Select at least one notification channel before adding escalation rules."
+					},
+					"removeNotificationAria": "Remove notification channel",
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
@@ -582,6 +594,7 @@
 						"locations": {
 							"label": "Locations",
 							"placeholder": "Select locations",
+							"removeLocationAria": "Remove location",
 							"options": {
 								"EU": "Europe",
 								"NA": "North America",

@@ -10,7 +10,6 @@ PS: **We work closely with contributors on our [Discord channel](https://discord
 
 ---
 
-
 ## 🚀 Quick Setup Checklist
 
 Before you dive in, make sure you have these installed:
@@ -30,6 +29,7 @@ git --version
 ```
 
 **New to contributing?** Start here:
+
 1. Pick a [`good-first-issue`](https://github.com/bluewave-labs/checkmate/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 2. Comment that you'd like to work on it
 3. Follow the [setup guide](#set-up-checkmate-locally) below
@@ -76,7 +76,7 @@ Ask anything in our [Discord server](https://discord.com/invite/NAb6H3UTjK) — 
 #### Prerequisites
 
 - Node.js (with npm)
-- Docker 
+- Git
 - Git
 
 #### Step 1: Clone the Repository
@@ -171,9 +171,10 @@ npm install
 Create a `.env` file in the `client` directory:
 
 ```env
-VITE_APP_API_BASE_URL="http://localhost:52345/api/v1"
-VITE_APP_LOG_LEVEL="debug"
+
 ```
+
+````
 
 **Environment Variables Explained:**
 
@@ -184,9 +185,7 @@ Start the frontend:
 
 ```bash
 npm run dev
-```
-
-The client will run at `http://localhost:5173`.  
+````
 
 #### Step 5: Access the Application
 
@@ -226,7 +225,6 @@ docker rm uptime_database_mongo
 **MongoDB connection issues:**
 
 - Verify container is running: `docker ps`
-- Check container logs: `docker logs uptime_database_mongo` 
 
 **Module not found errors:**
 

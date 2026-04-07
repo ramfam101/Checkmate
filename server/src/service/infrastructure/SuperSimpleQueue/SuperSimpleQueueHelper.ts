@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,8 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
-	thresholdBreaches?: {
+	notificationReason: "status_change" | "threshold_breach" | null;	isEscalation?: boolean;	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
 		disk?: boolean;
@@ -155,6 +154,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
+
+				// Escalations are only scheduled when a new incident starts.
+				// The delayed task re-checks incident status before sending, so acknowledged/resolved incidents do not escalate.
+				if (decision.shouldCreateIncident) {
+					this.scheduleNotificationEscalations(statusChangeResult.monitor, status, decision);
+				}
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
@@ -416,6 +421,57 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private scheduleNotificationEscalations = (monitor: Monitor, status: MonitorStatusResponse, decision: MonitorActionDecision): void => {
+		const escalationRules = monitor.notificationEscalations ?? [];
+		if (escalationRules.length === 0) {
+			return;
+		}
+
+		for (const escalationRule of escalationRules) {
+			const delayMs = escalationRule.delayMinutes * 60 * 1000;
+
+			setTimeout(() => {
+				this.triggerEscalationNotification(monitor, status, decision, escalationRule.channelId, escalationRule.delayMinutes).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Failed escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "scheduleNotificationEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+			}, delayMs);
+		}
+	};
+
+	private triggerEscalationNotification = async (
+		monitor: Monitor,
+		status: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		channelId: string,
+		delayMinutes: number
+	): Promise<void> => {
+		// The active-incident lookup is the acknowledgement guard.
+		// If the incident has been resolved/acknowledged, escalation is skipped.
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		await this.notificationsService.sendNotificationsByIds([channelId], monitor, status, {
+			...decision,
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			isEscalation: true,
+		});
+
+		this.logger.info({
+			message: `Escalation notification sent for monitor ${monitor.id} after ${delayMinutes} minute(s)`,
+			service: SERVICE_NAME,
+			method: "triggerEscalationNotification",
+		});
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
