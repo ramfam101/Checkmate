@@ -10,6 +10,7 @@ import {
 	IStatusService,
 	IncidentService,
 	type IGeoChecksService,
+	IEscalationService,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
@@ -66,6 +67,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationService: IEscalationService;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +85,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationService: IEscalationService
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +104,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -156,6 +160,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				this.logger.info({
+					message: `Monitor ${statusChangeResult.monitor.id} status: ${statusChangeResult.monitor.status}, shouldSendNotification: ${decision.shouldSendNotification}`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+				});
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -168,15 +178,76 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				// Step 6.3. Handle incidents BEFORE escalations so incident exists for escalation checks
+				// IMPORTANT: We MUST await this so the incident is created before escalation check runs
+				try {
+					await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+					this.logger.debug({
+						message: `Incident handled for monitor ${statusChangeResult.monitor.id}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
+				} catch (error: unknown) {
 					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						message: `Error handling incident for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
-				});
+				}
+
+				// Step 6.5. Handle escalations for down status (best effort, run independently of notification sending)
+				if (statusChangeResult.monitor.status === "down") {
+					this.logger.info({
+						message: `Monitor ${statusChangeResult.monitor.id} is down, initiating escalation check`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
+					// Fetch the active incident and fresh monitor data from repository to ensure we have the latest escalation rules
+					try {
+						const [activeIncident, freshMonitor] = await Promise.all([
+							this.incidentsRepository.findActiveByMonitorId(
+								statusChangeResult.monitor.id,
+								statusChangeResult.monitor.teamId
+							),
+							this.monitorsRepository.findById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId),
+						]);
+
+						if (activeIncident && freshMonitor) {
+							this.logger.info({
+								message: `Checking escalations for monitor ${freshMonitor.id} with ${freshMonitor.escalationRules?.length || 0} rules. Incident started at ${activeIncident.startTime}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								details: {
+									incidentId: activeIncident.id,
+									incidentStartTime: activeIncident.startTime,
+									escalationRulesCount: freshMonitor.escalationRules?.length || 0,
+								},
+							});
+							this.escalationService.checkAndTriggerEscalations(freshMonitor, activeIncident).catch((error: unknown) => {
+								this.logger.error({
+									message: `Error handling escalations for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+						} else if (!activeIncident) {
+							this.logger.warn({
+								message: `No active incident found for monitor ${statusChangeResult.monitor.id}, skipping escalation check`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+						}
+					} catch (error: unknown) {
+						this.logger.error({
+							message: `Error fetching data for escalation check on monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

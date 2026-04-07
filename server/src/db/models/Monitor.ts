@@ -16,14 +16,27 @@ import type {
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
+type EscalationRuleDocument = {
+	delayMinutes: number;
+	notificationIds: Types.ObjectId[];
+};
+
+type EscalationHistoryDocument = {
+	escalationIndex: number;
+	triggeredAt: Date;
+	incidentId: Types.ObjectId;
+};
+
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt" | "escalationRules" | "escalationHistory"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
+	escalationRules: EscalationRuleDocument[];
+	escalationHistory: EscalationHistoryDocument[];
 	matchMethod?: MonitorMatchMethod;
 };
 
@@ -353,6 +366,47 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
+			default: [],
+		},
+		escalationRules: {
+			type: [
+				{
+					delayMinutes: {
+						type: Number,
+						required: true,
+						min: 1,
+						max: 10080,
+					},
+					notificationIds: [
+						{
+							type: Schema.Types.ObjectId,
+							ref: "Notification",
+						},
+					],
+					_id: false,
+				},
+			],
+			default: [],
+		},
+		escalationHistory: {
+			type: [
+				{
+					escalationIndex: {
+						type: Number,
+						required: true,
+					},
+					triggeredAt: {
+						type: Date,
+						required: true,
+					},
+					incidentId: {
+						type: Schema.Types.ObjectId,
+						ref: "Incident",
+						required: true,
+					},
+					_id: false,
+				},
+			],
 			default: [],
 		},
 	},

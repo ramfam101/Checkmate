@@ -15,6 +15,7 @@ export * from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.
 export * from "@/service/infrastructure/notificationMessageBuilder.js";
 export * from "@/service/infrastructure/bufferService.js";
 export * from "@/service/infrastructure/emailService.js";
+export * from "@/service/infrastructure/escalationService.js";
 export * from "@/service/infrastructure/globalPingService.js";
 export * from "@/service/infrastructure/networkService.js";
 export * from "@/service/infrastructure/notificationsService.js";

@@ -20,6 +20,7 @@ import {
 	InviteService,
 	MaintenanceWindowService,
 	IncidentService,
+	EscalationService,
 	// Notification providers
 	WebhookProvider,
 	SlackProvider,
@@ -48,6 +49,7 @@ import {
 	INotificationMessageBuilder,
 	ISettingsService,
 	SettingsService,
+	IEscalationService,
 	EnvConfig,
 } from "@/service/index.js";
 
@@ -147,6 +149,7 @@ export type InitializedServices = {
 	incidentService: IIncidentService;
 	logger: ILogger;
 	notificationsService: INotificationsService;
+	escalationService: IEscalationService;
 	statusPageService: IStatusPageService;
 	notificationMessageBuilder: INotificationMessageBuilder;
 
@@ -315,6 +318,13 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(
+		monitorsRepository,
+		incidentsRepository,
+		notificationsService,
+		logger
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -331,7 +341,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationService
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
@@ -395,6 +406,7 @@ export const initializeServices = async ({
 		incidentService,
 		logger,
 		notificationsService,
+		escalationService,
 		statusPageService,
 		notificationMessageBuilder,
 

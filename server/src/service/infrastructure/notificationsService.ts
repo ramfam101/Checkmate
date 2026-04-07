@@ -1,5 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
+import type { Incident } from "@/types/incident.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
@@ -17,6 +18,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotification: (notificationId: string, monitor: Monitor, incident: Incident) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -116,6 +118,16 @@ export class NotificationsService implements INotificationsService {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
+		this.logger.info({
+			message: `sendNotifications: Sending ${notifications.length} notifications for monitor ${monitor.id} with status: ${monitor.status}`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+			details: {
+				monitorStatus: monitor.status,
+				notificationCount: notifications.length,
+			},
+		});
+
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
@@ -138,6 +150,12 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		this.logger.info({
+			message: `handleNotifications called for monitor ${monitor.id} with status: ${monitor.status}, shouldSendNotification: ${decision.shouldSendNotification}`,
+			service: SERVICE_NAME,
+			method: "handleNotifications",
+		});
+
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
@@ -203,5 +221,161 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	sendEscalationNotification = async (
+		notificationId: string,
+		monitor: Monitor,
+		incident: Incident
+	): Promise<boolean> => {
+		try {
+			this.logger.info({
+				message: `Attempting to send escalation notification ${notificationId} for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+
+			const notification = await this.notificationsRepository.findById(
+				notificationId,
+				monitor.teamId
+			);
+
+			if (!notification) {
+				this.logger.warn({
+					message: `Notification ${notificationId} not found for escalation for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+					details: {
+						notificationId,
+						monitorId: monitor.id,
+						teamId: monitor.teamId,
+					},
+				});
+				return false;
+			}
+
+			this.logger.debug({
+				message: `Found notification ${notificationId} (type: ${notification.type}) for escalation`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+
+			// Calculate how long the incident has been active
+			const duration = this.formatDuration(
+				Date.now() - new Date(incident.startTime).getTime()
+			);
+
+			this.logger.debug({
+				message: `Building escalation message for incident that has been down for ${duration}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+
+			// Build escalation notification message
+			const notificationMessage: NotificationMessage = {
+				type: "monitor_down",
+				severity: "critical",
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: monitor.url,
+					type: monitor.type,
+					status: "down",
+				},
+				content: {
+					title: `🚨 ESCALATED ALERT: ${monitor.name} - Still Down`,
+					summary: `This is an escalated alert. Your monitor "${monitor.name}" has been down for ${duration} and is still not responding.`,
+					details: [
+						`⚠️ ESCALATION NOTICE: Initial alert was sent, but the issue persists.`,
+						``,
+						`Monitor: ${monitor.name}`,
+						`Type: ${monitor.type.toUpperCase()}`,
+						`URL: ${monitor.url}`,
+						``,
+						`Down Time: ${duration}`,
+						`Incident Started: ${new Date(incident.startTime).toISOString()}`,
+						`Current Time: ${new Date().toISOString()}`,
+						``,
+						`⚠️ Immediate action may be required to restore service.`,
+					],
+					timestamp: new Date(),
+				},
+				clientHost: this.settingsService.getSettings().clientHost || "localhost",
+				metadata: {
+					teamId: monitor.teamId,
+					notificationReason: "escalation",
+				},
+			};
+
+			if (!notificationMessage) {
+				this.logger.error({
+					message: `Failed to build escalation notification message for notification ${notificationId}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+
+			this.logger.debug({
+				message: `Built escalation message successfully, sending via ${notification.type} provider`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+
+			// Send through the appropriate provider
+			const result = await this.send(
+				notification,
+				monitor,
+				{} as any,
+				{} as any,
+				notificationMessage
+			);
+
+			if (result) {
+				this.logger.info({
+					message: `Escalation notification ${notificationId} sent successfully for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+					details: {
+						notificationType: notification.type,
+						incidentDuration: duration,
+					},
+				});
+			} else {
+				this.logger.warn({
+					message: `Failed to send escalation notification ${notificationId} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+					details: {
+						notificationType: notification.type,
+					},
+				});
+			}
+
+			return result;
+		} catch (error) {
+			this.logger.error({
+				message: `Failed to send escalation notification: ${error instanceof Error ? error.message : String(error)}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				details: {
+					notificationId,
+					monitorId: monitor.id,
+				},
+			});
+			return false;
+		}
+	};
+
+	private formatDuration = (ms: number): string => {
+		const seconds = Math.floor(ms / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+
+		if (days > 0) return `${days}d ${hours % 24}h`;
+		if (hours > 0) return `${hours}h ${minutes % 60}m`;
+		if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+		return `${seconds}s`;
 	};
 }
