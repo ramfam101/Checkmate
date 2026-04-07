@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, getValues } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	
 
 	useEffect(() => {
 		clearErrors();
@@ -252,6 +253,12 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const escalationTime = getValues("escalationTime");
+		const escalationNotifications = getValues("escalationNotifications") ?? [];
+
+		data.escalationTime = escalationTime;
+		data.escalationNotifications = escalationNotifications;
+
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -764,7 +771,144 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
-
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatingNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatingNotifications.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationTime"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Select
+									{...field}
+									value={field.value ?? 60000}
+									onChange={(e) => field.onChange(Number(e.target.value))}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalatingNotifications.timeOption"
+									)}
+									error={!!fieldState.error}
+								>
+									<MenuItem value={15000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fifteenSeconds"
+										)}
+									</MenuItem>
+									<MenuItem value={30000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.thirtySeconds"
+										)}
+									</MenuItem>
+									<MenuItem value={60000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.oneMinute"
+										)}
+									</MenuItem>
+									<MenuItem value={120000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.twoMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={180000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.threeMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={240000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fourMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={300000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fiveMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={600000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.tenMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={900000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fifteenMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={1800000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.thirtyMinutes"
+										)}
+									</MenuItem>
+								</Select>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								// Map notifications to have 'name' property for Autocomplete
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalatingNotifications.channelOption"
+											)}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

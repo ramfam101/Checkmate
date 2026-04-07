@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -107,6 +107,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
 	}
 
+	private buildNotificationTargetMonitor = (monitor: Monitor, decision: MonitorActionDecision): Monitor => {
+		if (!decision.shouldResolveIncident || monitor.status !== "up") {
+			return monitor;
+		}
+
+		const mergedNotifications = Array.from(new Set([...(monitor.notifications ?? []), ...(monitor.escalationNotifications ?? [])]));
+		return {
+			...monitor,
+			notifications: mergedNotifications,
+		};
+	};
+
 	getHeartbeatJob = () => {
 		return async (monitor: Monitor) => {
 			try {
@@ -158,7 +170,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					const notificationTargetMonitor = this.buildNotificationTargetMonitor(statusChangeResult.monitor, decision);
+					this.notificationsService.handleNotifications(notificationTargetMonitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
@@ -177,6 +190,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications for long-running incidents (best effort, don't wait)
+				this.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation notifications for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +210,61 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private handleEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> => {
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const escalationMs = monitor.escalationTime;
+		const escalationNotificationIds = monitor.escalationNotifications ?? [];
+
+		if (!escalationMs || escalationMs < 15000 || escalationNotificationIds.length === 0) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		if (activeIncident.escalatedAt) {
+			return;
+		}
+
+		const incidentStartMs = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(incidentStartMs)) {
+			return;
+		}
+
+		const elapsedMs = Date.now() - incidentStartMs;
+		const thresholdMs = escalationMs;
+		if (elapsedMs < thresholdMs) {
+			return;
+		}
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: monitor.status === "breached" ? "threshold_breach" : "status_down",
+			notificationReason: monitor.status === "breached" ? "threshold_breach" : "status_change",
+		};
+
+		const escalationMonitor: Monitor = {
+			...monitor,
+			notifications: escalationNotificationIds,
+		};
+
+		const sent = await this.notificationsService.handleNotifications(escalationMonitor, monitorStatusResponse, escalationDecision);
+		if (!sent) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalatedAt: new Date().toISOString(),
+		});
 	};
 
 	getCleanupOrphanedJob = () => {

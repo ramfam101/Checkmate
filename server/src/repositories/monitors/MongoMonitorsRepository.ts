@@ -8,7 +8,13 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const monitorModel = new MonitorModel({
+			...monitor,
+			teamId,
+			userId,
+			notifications: (monitor.notifications ?? []).map((id) => new mongoose.Types.ObjectId(id)),
+			escalationNotifications: (monitor.escalationNotifications ?? []).map((id) => new mongoose.Types.ObjectId(id)),
+		});
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -17,7 +23,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined, escalationNotifications: undefined }));
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -167,11 +173,23 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const updatePatch: Partial<Monitor> = { ...patch };
+
+		if (patch.notifications !== undefined) {
+			updatePatch.notifications = patch.notifications.map((id) => new mongoose.Types.ObjectId(id).toString());
+		}
+
+		if (patch.escalationNotifications !== undefined) {
+			updatePatch.escalationNotifications = patch.escalationNotifications.map((id) =>
+				new mongoose.Types.ObjectId(id).toString()
+			);
+		}
+
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
 			{
 				$set: {
-					...patch,
+					...updatePatch,
 				},
 			},
 			{ new: true, runValidators: true }
@@ -351,6 +369,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +393,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationTime: doc.escalationTime ?? undefined,
+			escalationNotifications: escalationNotificationIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +431,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +455,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationTime: doc.escalationTime ?? undefined,
+			escalationNotifications: escalationNotificationIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
