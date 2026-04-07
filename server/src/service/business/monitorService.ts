@@ -1,5 +1,5 @@
 import { NormalizeData, NormalizeDataUptimeDetails } from "@/utils/dataUtils.js";
-import { type Monitor } from "@/types/index.js";
+import { type Monitor, type Notification } from "@/types/index.js";
 import type {
 	MonitorType,
 	MonitorsWithChecksByTeamIdResult,
@@ -17,6 +17,7 @@ import type {
 	IIncidentsRepository,
 	IMonitorsRepository,
 	IMonitorStatsRepository,
+	INotificationsRepository,
 	IStatusPagesRepository,
 } from "@/repositories/index.js";
 import demoMonitorsData from "@/utils/demoMonitors.json" with { type: "json" };
@@ -85,6 +86,7 @@ export interface IMonitorService {
 	// other
 	exportMonitorsToJSON(args: { teamId: string }): Promise<Monitor[]>;
 	importMonitorsFromJSON(args: { teamId: string; userId: string; monitors: ImportedMonitor[] }): Promise<{ imported: number; errors: string[] }>;
+	checkEscalationNotifications(monitor: Monitor): Promise<void>;
 }
 
 export class MonitorService implements IMonitorService {
@@ -98,6 +100,7 @@ export class MonitorService implements IMonitorService {
 	private checksRepository: IChecksRepository;
 	private geoChecksRepository: IGeoChecksRepository;
 	private monitorStatsRepository: IMonitorStatsRepository;
+	private notificationsRepository: INotificationsRepository;
 	private statusPagesRepository: IStatusPagesRepository;
 	private incidentsRepository: IIncidentsRepository;
 
@@ -110,6 +113,7 @@ export class MonitorService implements IMonitorService {
 		checksRepository,
 		geoChecksRepository,
 		monitorStatsRepository,
+		notificationsRepository,
 		statusPagesRepository,
 		incidentsRepository,
 	}: {
@@ -121,6 +125,7 @@ export class MonitorService implements IMonitorService {
 		checksRepository: IChecksRepository;
 		geoChecksRepository: IGeoChecksRepository;
 		monitorStatsRepository: IMonitorStatsRepository;
+		notificationsRepository: INotificationsRepository;
 		statusPagesRepository: IStatusPagesRepository;
 		incidentsRepository: IIncidentsRepository;
 	}) {
@@ -132,6 +137,7 @@ export class MonitorService implements IMonitorService {
 		this.checksRepository = checksRepository;
 		this.geoChecksRepository = geoChecksRepository;
 		this.monitorStatsRepository = monitorStatsRepository;
+		this.notificationsRepository = notificationsRepository;
 		this.statusPagesRepository = statusPagesRepository;
 		this.incidentsRepository = incidentsRepository;
 	}
@@ -584,5 +590,59 @@ export class MonitorService implements IMonitorService {
 		}
 
 		return { imported: createdMonitors.length, errors };
+	};
+
+	checkEscalationNotifications = async (monitor: Monitor): Promise<void> => {
+		try {
+			// Check if escalation is enabled and monitor is down
+			if (!monitor.escalationEnabled || monitor.status !== "down" || !monitor.escalationThreshold || !monitor.escalationNotifications?.length) {
+				return;
+			}
+
+			// Get the active incident to calculate downtime
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident) {
+				return;
+			}
+
+			// Calculate downtime in minutes
+			const downtimeMs = Date.now() - new Date(activeIncident.startTime).getTime();
+			const downtimeMinutes = downtimeMs / (1000 * 60);
+
+			// Check if escalation threshold is exceeded
+			if (downtimeMinutes > monitor.escalationThreshold) {
+				// Get escalation notifications
+				const escalationNotificationIds = monitor.escalationNotifications;
+				const notifications = await this.notificationsRepository.findNotificationsByIds(escalationNotificationIds);
+
+				// Send escalation emails
+				const escalationTasks = notifications
+					.filter((notification: Notification) => notification.type === "email")
+					.map(async (notification: Notification) => {
+						if (notification.address) {
+							const subject = `ESCALATION: Monitor ${monitor.name} Still Down`;
+							const html = `
+								<h2>Monitor Escalation Alert</h2>
+								<p><strong>Monitor:</strong> ${monitor.name}</p>
+								<p><strong>URL:</strong> ${monitor.url}</p>
+								<p><strong>Status:</strong> Down</p>
+								<p><strong>Downtime:</strong> ${Math.round(downtimeMinutes)} minutes</p>
+								<p><strong>Escalation Threshold:</strong> ${monitor.escalationThreshold} minutes</p>
+								<p>This monitor has been down longer than the configured escalation threshold.</p>
+							`;
+							await this.emailService.sendEmail(notification.address, subject, html);
+						}
+					});
+
+				await Promise.all(escalationTasks);
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error checking escalation notifications for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "checkEscalationNotifications",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	};
 }

@@ -27,6 +27,9 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationThreshold: z.coerce.number().optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 // HTTP monitor schema
@@ -123,17 +126,31 @@ const websocketSchema = baseSchema.extend({
 });
 
 // Discriminated union of all monitor types
-export const monitorSchema = z.discriminatedUnion("type", [
-	httpSchema,
-	pingSchema,
-	portSchema,
-	dockerSchema,
-	gameSchema,
-	grpcSchema,
-	pagespeedSchema,
-	hardwareSchema,
-	websocketSchema,
-]);
+export const monitorSchema = z
+	.discriminatedUnion("type", [
+		httpSchema,
+		pingSchema,
+		portSchema,
+		dockerSchema,
+		gameSchema,
+		grpcSchema,
+		pagespeedSchema,
+		hardwareSchema,
+		websocketSchema,
+	])
+	.superRefine((data, ctx) => {
+		// Validate escalation threshold when escalation is enabled
+		if (
+			data.escalationEnabled &&
+			(!data.escalationThreshold || data.escalationThreshold < 1)
+		) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["escalationThreshold"],
+				message: "Escalation threshold must be at least 1 minute",
+			});
+		}
+	});
 
 export type MonitorFormData = z.infer<typeof monitorSchema>;
 

@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchEscalationEnabled = watch("escalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -252,6 +253,7 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		console.log("Form data being submitted:", data);
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -762,6 +764,124 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatedNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t(
+											"pages.createMonitor.form.escalatedNotifications.option.enabled.label"
+										)}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						{watchEscalationEnabled && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Controller
+									name="escalationThreshold"
+									control={control}
+									render={({ field }) => (
+										<TextField
+											{...field}
+											type="number"
+											value={field.value ?? 30}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalatedNotifications.option.threshold.label"
+											)}
+											helperText={t(
+												"pages.createMonitor.form.escalatedNotifications.option.threshold.helper"
+											)}
+										/>
+									)}
+								/>
+								<Controller
+									name="escalationNotifications"
+									control={control}
+									render={({ field }) => {
+										// Map notifications to have 'name' property for Autocomplete
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedNotifications = notificationOptions.filter((n) =>
+											(field.value ?? []).includes(n.id)
+										);
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selectedNotifications}
+													getOptionLabel={(option) => option.name}
+													onChange={(
+														_: unknown,
+														newValue: typeof notificationOptions
+													) => {
+														field.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalatedNotifications.option.notifications.label"
+													)}
+												/>
+												{selectedNotifications.length > 0 && (
+													<Stack
+														flex={1}
+														width="100%"
+													>
+														{selectedNotifications.map((notification, index) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={notification.id}
+																width="100%"
+															>
+																<Typography flexGrow={1}>
+																	{notification.notificationName}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		field.onChange(
+																			(field.value ?? []).filter(
+																				(id: string) => id !== notification.id
+																			)
+																		);
+																	}}
+																	aria-label="Remove notification"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{index < selectedNotifications.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 
