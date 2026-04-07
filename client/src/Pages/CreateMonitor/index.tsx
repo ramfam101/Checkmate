@@ -212,8 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
-	const [escalationMinutes, setEscalationMinutes] = useState<string>("");
-	const [escalationNotificationIds, setEscalationNotificationIds] = useState<string[]>([]);
+	
 
 	useEffect(() => {
 		clearErrors();
@@ -766,64 +765,109 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
-				<ConfigBox
-					title={t("pages.createMonitor.form.escalatingNotifications.title")}
-					subtitle={t("pages.createMonitor.form.escalatingNotifications.description")}
-					rightContent={
-						<Stack spacing={theme.spacing(LAYOUT.MD)}>
-
-							<TextField
-								type="number"
-								fieldLabel={t("pages.createMonitor.form.escalatingNotifications.timeOption")}
-								placeholder="Insert minutes until escalation"
-								value={escalationMinutes}
-								onChange={(e) => {
-									const value = e.target.value;
-									if (value === "") {
-										setEscalationMinutes("");
-									} else {
-										const numValue = Number(value);
-										// Only allow whole, positive numbers
-										if (Number.isInteger(numValue) && numValue > 0) {
-											setEscalationMinutes(value);
-										}
-									}
-								}}
-								fullWidth
-								inputProps={{ min: 1, step: 1 }}
-								error={escalationMinutes !== "" && !Number.isInteger(Number(escalationMinutes)) ? true : escalationMinutes !== "" && Number(escalationMinutes) < 1 ? true : false}
-								helperText={escalationMinutes !== "" && !Number.isInteger(Number(escalationMinutes)) ? "Please input a whole, positive number" : escalationMinutes !== "" && Number(escalationMinutes) < 1 ? "Please input a whole, positive number" : ""}
-							/>
-							{(() => {
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatingNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatingNotifications.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Select
+									{...field}
+									value={field.value ?? 60000}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalatingNotifications.timeOption"
+									)}
+									error={!!fieldState.error}
+								>
+									<MenuItem value={15000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fifteenSeconds"
+										)}
+									</MenuItem>
+									<MenuItem value={30000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.thirtySeconds"
+										)}
+									</MenuItem>
+									<MenuItem value={60000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.oneMinute"
+										)}
+									</MenuItem>
+									<MenuItem value={120000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.twoMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={180000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.threeMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={240000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fourMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={300000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fiveMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={600000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.tenMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={900000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.fifteenMinutes"
+										)}
+									</MenuItem>
+									<MenuItem value={1800000}>
+										{t(
+											"pages.createMonitor.form.frequency.option.frequency.value.thirtyMinutes"
+										)}
+									</MenuItem>
+								</Select>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								// Map notifications to have 'name' property for Autocomplete
 								const notificationOptions = (notifications ?? []).map((n) => ({
 									...n,
 									name: n.notificationName,
 								}));
-								const selectedEscalationNotifications = notificationOptions.filter((n) =>
-									escalationNotificationIds.includes(n.id)
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
 								);
-
 								return (
-									<>
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
 										<Autocomplete
 											multiple
 											options={notificationOptions}
-											value={selectedEscalationNotifications}
+											value={selectedNotifications}
 											fieldLabel={t(
 												"pages.createMonitor.form.escalatingNotifications.channelOption"
 											)}
 											getOptionLabel={(option) => option.name}
 											onChange={(_: unknown, newValue: typeof notificationOptions) => {
-												setEscalationNotificationIds(newValue.map((n) => n.id));
+												field.onChange(newValue.map((n) => n.id));
 											}}
 											isOptionEqualToValue={(option, value) => option.id === value.id}
 										/>
-										{selectedEscalationNotifications.length > 0 && (
+										{selectedNotifications.length > 0 && (
 											<Stack
 												flex={1}
 												width="100%"
 											>
-												{selectedEscalationNotifications.map((notification, index) => (
+												{selectedNotifications.map((notification, index) => (
 													<Stack
 														direction="row"
 														alignItems="center"
@@ -836,27 +880,28 @@ const CreateMonitorPage = () => {
 														<IconButton
 															size="small"
 															onClick={() => {
-															setEscalationNotificationIds(
-																escalationNotificationIds.filter(
-																	(id) => id !== notification.id
-																)
-															);
-														}}
-															aria-label="Remove escalation notification"
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove notification"
 														>
 															<Trash2 size={16} />
 														</IconButton>
-														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+														{index < selectedNotifications.length - 1 && <Divider />}
 													</Stack>
 												))}
 											</Stack>
 										)}
-									</>
+									</Stack>
 								);
-							})()}
-						</Stack>
-					}
-				/>
+							}}
+						/>
+					</Stack>
+				}
+			/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
