@@ -14,6 +14,13 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		notificationIds: string[],
+		reason: "status_change" | "threshold_breach",
+		escalationDowntimeMinutes?: number
+	) => Promise<string[]>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +146,74 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		notificationIds: string[],
+		reason: "status_change" | "threshold_breach",
+		escalationDowntimeMinutes?: number
+	): Promise<string[]> => {
+		const uniqueIds = [...new Set(notificationIds.filter(Boolean))];
+		if (uniqueIds.length === 0) {
+			return [];
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(uniqueIds);
+		if (notifications.length === 0) {
+			return [];
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: reason,
+		};
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, escalationDecision, clientHost);
+
+		const downtimeText = this.formatEscalationDowntimeText(escalationDowntimeMinutes ?? 0);
+		notificationMessage.metadata.isEscalation = true;
+		notificationMessage.metadata.downtimeText = downtimeText;
+
+		if (notificationMessage.type === "monitor_down") {
+			notificationMessage.content.title = `Service Escalation: ${monitor.name} still down`;
+			notificationMessage.content.summary = `Monitor "${monitor.name}" has remained down for ${downtimeText}.`;
+		}
+
+		const outcomes = await Promise.all(
+			notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage))
+		);
+
+		const succeededIds = notifications.filter((_, index) => outcomes[index]).map((notification) => notification.id);
+
+		if (succeededIds.length !== notifications.length) {
+			this.logger.warn({
+				message: `Escalation send completed with ${succeededIds.length} success, ${notifications.length - succeededIds.length} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+
+		return succeededIds;
+	};
+
+	private formatEscalationDowntimeText = (elapsedMinutes: number): string => {
+		const totalMinutes = Math.max(0, Math.floor(elapsedMinutes));
+		if (totalMinutes < 60) {
+			return `${totalMinutes} minute${totalMinutes === 1 ? "" : "s"}`;
+		}
+
+		const hours = Math.floor(totalMinutes / 60);
+		const minutes = totalMinutes % 60;
+		if (minutes === 0) {
+			return `${hours} hour${hours === 1 ? "" : "s"}`;
+		}
+		return `${hours} hour${hours === 1 ? "" : "s"} ${minutes} minute${minutes === 1 ? "" : "s"}`;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

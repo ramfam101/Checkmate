@@ -15,15 +15,17 @@ import type {
 } from "@/types/check.js";
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
+type MonitorEscalationDocument = { delayMinutes: number; channelId: Types.ObjectId };
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "escalations" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
+	escalations: MonitorEscalationDocument[];
 	matchMethod?: MonitorMatchMethod;
 };
 
@@ -198,6 +200,22 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationSchema = new Schema<MonitorEscalationDocument>(
+	{
+		delayMinutes: {
+			type: Number,
+			min: 0,
+			required: true,
+		},
+		channelId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+			required: true,
+		},
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +302,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalations: {
+			type: [escalationSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},
