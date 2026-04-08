@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision);
 
 		return {
 			type,
@@ -48,6 +48,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				escalationAfterMinutes: decision.escalationAfterMinutes ?? undefined,
 			},
 		};
 	}
@@ -56,6 +57,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
+		}
+
+		if (decision.notificationReason === "escalation" && monitor.status === "breached") {
+			return "threshold_breach";
 		}
 
 		// Threshold breach (only if not down)
@@ -93,7 +98,16 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		if (decision.notificationReason === "escalation") {
+			return this.buildEscalationContent(monitor, monitorStatusResponse, decision);
+		}
+
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
@@ -106,6 +120,42 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildEscalationContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const escalationAfterMinutes = decision.escalationAfterMinutes ?? monitor.escalationAfterMinutes ?? 0;
+		const isThresholdEscalation = monitor.status === "breached";
+		const title = isThresholdEscalation
+			? `Escalation: ${monitor.name} still exceeds thresholds`
+			: `Escalation: ${monitor.name} is still down`;
+		const summary = isThresholdEscalation
+			? `Monitor "${monitor.name}" is still in a breached state after ${escalationAfterMinutes} minute(s).`
+			: `Monitor "${monitor.name}" has remained down for ${escalationAfterMinutes} minute(s).`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: ${monitor.status}`,
+			`Type: ${monitor.type}`,
+			`Escalation delay reached: ${escalationAfterMinutes} minute(s)`,
+		];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {

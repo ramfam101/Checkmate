@@ -38,7 +38,9 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	escalationIncidentId?: string | null;
+	escalationAfterMinutes?: number | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,18 +156,28 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+					const notificationTask = this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision);
+
+					void notificationTask
+						.then(async (success) => {
+							if (success && decision.notificationReason === "escalation" && decision.escalationIncidentId) {
+								await this.incidentsRepository.updateById(decision.escalationIncidentId, statusChangeResult.monitor.teamId, {
+									escalationNotifiedAt: new Date().toISOString(),
+								});
+							}
+						})
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -418,7 +430,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private evaluateMonitorAction = async (statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> => {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -428,9 +440,37 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			escalationIncidentId: null,
+			escalationAfterMinutes: null,
 		};
 
 		if (!statusChanged) {
+			const hasEscalationChannels = (monitor.escalationNotificationIds?.length ?? 0) > 0;
+			const isEscalatableStatus = monitor.status === "down" || monitor.status === "breached";
+			if (!hasEscalationChannels || !isEscalatableStatus) {
+				return decision;
+			}
+
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident?.startTime || activeIncident.escalationNotifiedAt) {
+				return decision;
+			}
+
+			const escalationAfterMinutes = monitor.escalationAfterMinutes ?? 0;
+			const incidentStartTime = new Date(activeIncident.startTime).getTime();
+			if (Number.isNaN(incidentStartTime)) {
+				return decision;
+			}
+
+			const escalationDelayMs = escalationAfterMinutes * 60 * 1000;
+			if (Date.now() - incidentStartTime < escalationDelayMs) {
+				return decision;
+			}
+
+			decision.shouldSendNotification = true;
+			decision.notificationReason = "escalation";
+			decision.escalationIncidentId = activeIncident.id;
+			decision.escalationAfterMinutes = escalationAfterMinutes;
 			return decision;
 		}
 
@@ -454,5 +494,5 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
-	}
+	};
 }
