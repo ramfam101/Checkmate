@@ -91,7 +91,15 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+				
+				// Update monitor with incident start time and reset fired escalations
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					currentIncidentStartTime: incident.startTime,
+					firedEscalations: []
+				});
+				
+				return createdIncident;
 			}
 		}
 
@@ -102,7 +110,15 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			const resolvedIncident = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			
+			// Clear escalation tracking when incident is resolved
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				currentIncidentStartTime: undefined,
+				firedEscalations: []
+			});
+			
+			return resolvedIncident;
 		}
 
 		return null;

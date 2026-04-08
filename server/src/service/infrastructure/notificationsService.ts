@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { IEmailService } from "@/service/index.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -36,6 +37,7 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private emailService: IEmailService;
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -49,7 +51,8 @@ export class NotificationsService implements INotificationsService {
 		teamsProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		emailService: IEmailService
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -63,6 +66,7 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.emailService = emailService;
 	}
 
 	private send = async (
@@ -138,7 +142,103 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const regularNotificationsSent = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		
+		// Check for escalations if monitor is still down and has escalation rules
+		const escalationsSent = await this.checkAndSendEscalations(monitor, monitorStatusResponse, decision);
+		
+		return regularNotificationsSent || escalationsSent;
+	};
+
+	checkAndSendEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		// Only check escalations if monitor is currently down and has escalation rules
+		if (!monitor.currentIncidentStartTime || !monitor.escalations || monitor.escalations.length === 0) {
+			return false;
+		}
+
+		const now = Date.now();
+		const incidentStartTime = parseInt(monitor.currentIncidentStartTime);
+		const minutesDown = (now - incidentStartTime) / (1000 * 60);
+		
+		let escalationSent = false;
+		const firedEscalations = monitor.firedEscalations || [];
+
+		// Check each escalation rule
+		for (let i = 0; i < monitor.escalations.length; i++) {
+			const escalation = monitor.escalations[i];
+			
+			if (!escalation) continue;
+			
+			// Skip if this escalation has already fired
+			if (firedEscalations.includes(i)) {
+				continue;
+			}
+			
+			// Check if enough time has passed
+			if (minutesDown >= escalation.delayMinutes) {
+				// Send escalation emails
+				const escalationSentForRule = await this.sendEscalationEmails(monitor, monitorStatusResponse, escalation, i);
+				if (escalationSentForRule) {
+					escalationSent = true;
+					// Mark this escalation as fired
+					firedEscalations.push(i);
+				}
+			}
+		}
+
+		// Update fired escalations in monitor if any were sent
+		if (escalationSent) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				firedEscalations
+			});
+		}
+
+		return escalationSent;
+	};
+
+	sendEscalationEmails = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, escalation: any, escalationIndex: number) => {
+		// Send email to each contact in the escalation rule
+		const emailPromises = escalation.contacts.map(async (email: string) => {
+			try {
+				const subject = `ESCALATION: ${monitor.name} is still down`;
+				const html = `
+					<h2>Monitor Escalation Alert</h2>
+					<p><strong>${monitor.name}</strong> has been down for ${escalation.delayMinutes} minutes.</p>
+					<p>This is an escalation notification.</p>
+					<p><strong>Monitor Details:</strong></p>
+					<ul>
+						<li>URL: ${monitor.url}</li>
+						<li>Type: ${monitor.type}</li>
+						<li>Status: ${monitorStatusResponse.status ? 'Up' : 'Down'}</li>
+						<li>Response Time: ${monitorStatusResponse.responseTime || 'N/A'}ms</li>
+					</ul>
+					<p>Please check the monitor status and take appropriate action.</p>
+				`;
+				
+				const messageId = await this.emailService.sendEmail(email, subject, html);
+				return messageId !== false;
+			} catch (error) {
+				this.logger.error({
+					message: `Failed to send escalation email to ${email} for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationEmails"
+				});
+				return false;
+			}
+		});
+
+		const results = await Promise.all(emailPromises);
+		const successCount = results.filter(Boolean).length;
+		
+		if (successCount > 0) {
+			this.logger.info({
+				message: `Sent escalation ${escalationIndex + 1} for monitor ${monitor.id} to ${successCount}/${escalation.contacts.length} contacts`,
+				service: SERVICE_NAME,
+				method: "sendEscalationEmails"
+			});
+		}
+		
+		return successCount > 0;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

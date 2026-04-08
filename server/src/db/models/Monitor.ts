@@ -18,11 +18,17 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "escalations" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalations: Types.DocumentArray<{
+		delayMinutes: number;
+		contacts: string[];
+	}>;
+	currentIncidentStartTime?: string;
+	firedEscalations: number[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -198,6 +204,27 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationRuleSchema = new Schema(
+	{
+		delayMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+		},
+		contacts: {
+			type: [String],
+			required: true,
+			validate: {
+				validator: function (v: string[]) {
+					return v.length > 0 && v.every(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+				},
+				message: "Contacts must be a non-empty array of valid email addresses",
+			},
+		},
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +311,18 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalations: {
+			type: [escalationRuleSchema],
+			default: [],
+		},
+		currentIncidentStartTime: {
+			type: String,
+			default: null,
+		},
+		firedEscalations: {
+			type: [Number],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

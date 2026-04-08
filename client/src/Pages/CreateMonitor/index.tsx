@@ -765,6 +765,145 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			{/* Escalations Section */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field, fieldState }) => {
+							const escalations = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{/* Add Escalation Button */}
+									<Button
+										variant="outlined"
+										onClick={() => {
+											const newEscalations = [...escalations, { delayMinutes: 5, contacts: [""] }];
+											field.onChange(newEscalations);
+										}}
+										fullWidth
+									>
+										{t("pages.createMonitor.form.escalations.addEscalation")}
+									</Button>
+
+									{/* Escalation Rules */}
+									{escalations.map((escalation, index) => (
+										<Stack
+											key={index}
+											spacing={theme.spacing(SPACING.MD)}
+											sx={{
+												p: theme.spacing(SPACING.MD),
+												border: `1px solid ${theme.palette.divider}`,
+												borderRadius: theme.shape.borderRadius,
+												position: "relative",
+											}}
+										>
+											{/* Remove Escalation Button */}
+											<IconButton
+												size="small"
+												onClick={() => {
+													const newEscalations = escalations.filter((_, i) => i !== index);
+													field.onChange(newEscalations);
+												}}
+												sx={{
+													position: "absolute",
+													top: theme.spacing(SPACING.SM),
+													right: theme.spacing(SPACING.SM),
+												}}
+												aria-label="Remove escalation"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+
+											{/* Escalation Header */}
+											<Typography variant="subtitle2">
+												{t("pages.createMonitor.form.escalations.escalationNumber", { number: index + 1 })}
+											</Typography>
+
+											{/* Delay Minutes */}
+											<TextField
+												type="number"
+												fieldLabel={t("pages.createMonitor.form.escalations.delayMinutes")}
+												placeholder="5"
+												value={escalation.delayMinutes}
+												onChange={(e) => {
+													const newEscalations = [...escalations];
+													newEscalations[index] = {
+														...escalation,
+														delayMinutes: parseInt(e.target.value) || 1,
+													};
+													field.onChange(newEscalations);
+												}}
+												fullWidth
+												inputProps={{ min: 1 }}
+											/>
+
+											{/* Contacts */}
+											<Stack spacing={theme.spacing(SPACING.SM)}>
+												<Typography variant="body2">
+													{t("pages.createMonitor.form.escalations.contacts")}
+												</Typography>
+												{escalation.contacts.map((contact, contactIndex) => (
+													<Stack key={contactIndex} direction="row" spacing={theme.spacing(SPACING.SM)} alignItems="center">
+														<TextField
+															type="email"
+															placeholder={t("pages.createMonitor.form.escalations.emailPlaceholder")}
+															value={contact}
+															onChange={(e) => {
+																const newEscalations = [...escalations];
+																newEscalations[index].contacts[contactIndex] = e.target.value;
+																field.onChange(newEscalations);
+															}}
+															fullWidth
+														/>
+														{/* Remove Contact Button */}
+														{escalation.contacts.length > 1 && (
+															<IconButton
+																size="small"
+																onClick={() => {
+																	const newEscalations = [...escalations];
+																	newEscalations[index].contacts = escalation.contacts.filter((_, i) => i !== contactIndex);
+																	field.onChange(newEscalations);
+																}}
+																aria-label="Remove contact"
+															>
+																<Trash2 size={14} />
+															</IconButton>
+														)}
+													</Stack>
+												))}
+												{/* Add Contact Button */}
+												<Button
+													variant="text"
+													size="small"
+													onClick={() => {
+														const newEscalations = [...escalations];
+														newEscalations[index].contacts.push("");
+														field.onChange(newEscalations);
+													}}
+													sx={{ alignSelf: "flex-start" }}
+												>
+													{t("pages.createMonitor.form.escalations.addContact")}
+												</Button>
+											</Stack>
+										</Stack>
+									))}
+
+									{fieldState.error && (
+										<Typography color="error" variant="body2">
+											{fieldState.error.message}
+										</Typography>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

@@ -243,7 +243,8 @@ export const initializeServices = async ({
 		teamsProvider,
 		settingsService,
 		logger,
-		notificationMessageBuilder
+		notificationMessageBuilder,
+		emailService
 	);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
