@@ -48,6 +48,7 @@ export interface Monitor {
 	statusWindow: boolean[];
 	statusWindowSize: number;
 	statusWindowThreshold: number;
+	escalationMinutes?: number;
 	type: MonitorType;
 	ignoreTlsErrors: boolean;
 	useAdvancedMatching: boolean;
@@ -60,6 +61,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationNotifications?: string[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
