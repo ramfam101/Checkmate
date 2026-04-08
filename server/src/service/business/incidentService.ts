@@ -77,7 +77,6 @@ export class IncidentService implements IIncidentService {
 				let statusCode = code;
 				let message: string | undefined;
 
-				// For threshold breaches, use 9999 status code and build descriptive message
 				if (decision.incidentReason === "threshold_breach") {
 					statusCode = 9999;
 					message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
@@ -90,7 +89,9 @@ export class IncidentService implements IIncidentService {
 					status: true,
 					statusCode,
 					message,
+					sentEscalations: [],
 				};
+
 				return await this.incidentsRepository.create(incident);
 			}
 		}

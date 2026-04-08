@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -116,8 +116,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					throw new AppError({ message: "No monitor id", service: SERVICE_NAME, method: "getMonitorJob" });
 				}
 
-				// Step 1.  Check for maintenance window, if found, skip the check
-
 				const maintenanceWindowActive = await this.isInMaintenanceWindow(monitorId, teamId);
 				if (maintenanceWindowActive) {
 					this.logger.debug({
@@ -131,13 +129,11 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					return;
 				}
 
-				// Step 2.  Request monitor status
 				const status = await this.networkService.requestStatus(monitor);
 				if (!status) {
 					throw new Error("No network response");
 				}
 
-				// Step 3.  Build check
 				const check = this.checkService.buildCheck(status);
 				if (!check) {
 					this.logger.warn({
@@ -148,15 +144,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 					return;
 				}
-				// Step 4 Add check to buffer
-				this.buffer.addToBuffer(check);
-				// Step 4.  Update monitor status
-				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
-				// Step 5.  Get decisions
+				this.buffer.addToBuffer(check);
+
+				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				this.logger.info({
+					message: "DEBUG monitor decision",
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+					details: {
+						monitorId: statusChangeResult.monitor.id,
+						status: statusChangeResult.monitor.status,
+						prevStatus: statusChangeResult.prevStatus,
+						statusChanged: statusChangeResult.statusChanged,
+						decision,
+					},
+				});
+
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
@@ -168,15 +174,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
+				await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+
+				await this.handleEscalationNotifications(statusChangeResult.monitor, status);
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -189,6 +189,79 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
+	private async handleEscalationNotifications(monitor: Monitor, status: MonitorStatusResponse): Promise<void> {
+		this.logger.info({
+			message: "DEBUG escalation check",
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+			details: {
+				monitorId: monitor.id,
+				status: monitor.status,
+				escalationEnabled: monitor.escalationEnabled,
+				escalationIntervals: monitor.escalationIntervals,
+			},
+		});
+		
+		if (!monitor.escalationEnabled) {
+			return;
+		}
+
+		if (!Array.isArray(monitor.escalationIntervals) || monitor.escalationIntervals.length === 0) {
+			return;
+		}
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const startTimeMs = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(startTimeMs)) {
+			return;
+		}
+
+		const elapsedMinutes = Math.floor((Date.now() - startTimeMs) / 60000);
+		const alreadySent = activeIncident.sentEscalations ?? [];
+
+		const newlyTriggered = (monitor.escalationIntervals ?? [])
+			.filter((minutes) => elapsedMinutes >= minutes && !alreadySent.includes(minutes))
+			.sort((a, b) => a - b);
+
+		if (newlyTriggered.length === 0) {
+			return;
+		}
+
+		const updatedSentEscalations = [...alreadySent, ...newlyTriggered].sort((a, b) => a - b);
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			sentEscalations: updatedSentEscalations,
+		});
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: monitor.status === "breached" ? "threshold_breach" : "status_down",
+			notificationReason: monitor.status === "breached" ? "threshold_breach" : "status_change",
+		};
+
+		await this.notificationsService.handleNotifications(monitor, status, escalationDecision);
+
+		this.logger.info({
+			message: `Sent escalated notification(s) for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+			details: {
+				elapsedMinutes,
+				newlyTriggered,
+			},
+		});
+	}
+
 	getCleanupOrphanedJob = () => {
 		return async () => {
 			try {
@@ -198,7 +271,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					method: "getCleanupOrphanedJob",
 				});
 
-				// Get all valid team IDs
 				const validTeamIds = await this.teamsRepository.findAllTeamIds();
 				this.logger.debug({
 					message: `Found ${validTeamIds.length} valid teams`,
@@ -206,7 +278,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					method: "getCleanupOrphanedJob",
 				});
 
-				// Remove orphaned monitors (monitors without a valid team)
 				const deletedMonitorCount = await this.monitorsRepository.deleteByTeamIdsNotIn(validTeamIds);
 				if (deletedMonitorCount > 0) {
 					this.logger.info({
@@ -216,7 +287,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Remove orphaned monitorStats (stats without a valid monitor)
 				const allMonitorIds = await this.monitorsRepository.findAllMonitorIds();
 				this.logger.debug({
 					message: `Found ${allMonitorIds.length} valid monitors`,
@@ -233,7 +303,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Remove orphaned checks
 				const deletedChecksCount = await this.checksRepository.deleteByMonitorIdsNotIn(allMonitorIds);
 				if (deletedChecksCount > 0) {
 					this.logger.info({
@@ -243,7 +312,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Remove orphaned incidents
 				const deletedIncidentsCount = await this.incidentsRepository.deleteByMonitorIdsNotIn(allMonitorIds);
 				if (deletedIncidentsCount > 0) {
 					this.logger.info({
@@ -253,7 +321,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Remove orphaned geo checks
 				const deletedGeoChecksCount = await this.geoChecksRepository.deleteByMonitorIdsNotIn(allMonitorIds);
 				if (deletedGeoChecksCount > 0) {
 					this.logger.info({
@@ -286,7 +353,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const monitorId = monitor.id;
 				const teamId = monitor.teamId;
 
-				// Step 1: Validate monitor eligibility
 				if (!monitorId) {
 					throw new AppError({ message: "No monitor id", service: SERVICE_NAME, method: "getHeartbeatGeoJob" });
 				}
@@ -312,7 +378,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					return;
 				}
 
-				// Step 2: Check for maintenance window
 				const maintenanceWindowActive = await this.isInMaintenanceWindow(monitorId, teamId);
 				if (maintenanceWindowActive) {
 					this.logger.debug({
@@ -323,7 +388,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					return;
 				}
 
-				// Step 3: Build geo check (handles API calls and polling)
 				const geoCheck = await this.geoChecksService.buildGeoCheck(monitor);
 				if (!geoCheck) {
 					this.logger.warn({
@@ -334,7 +398,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					return;
 				}
 
-				// Step 4: Add geo check to buffer
 				this.buffer.addGeoCheckToBuffer(geoCheck);
 
 				this.logger.debug({
@@ -349,14 +412,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					method: "getHeartbeatGeoJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
-				// Don't throw - geo check failures shouldn't crash the job scheduler
 			}
 		};
 	};
 
 	async isInMaintenanceWindow(monitorId: string, teamId: string) {
 		const maintenanceWindows = await this.maintenanceWindowsRepository.findByMonitorId(monitorId, teamId);
-		// Check for active maintenance window:
 		const maintenanceWindowIsActive = maintenanceWindows.reduce((acc: boolean, window: MaintenanceWindow) => {
 			if (window.active) {
 				const start = new Date(window.start);
@@ -364,11 +425,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const now = new Date();
 				const repeatInterval = window.repeat || 0;
 
-				// If start is < now and end > now, we're in maintenance
 				if (start <= now && end >= now) return true;
-
-				// If maintenance window was set in the past with a repeat,
-				// we need to advance start and end to see if we are in range
 
 				while (start < now && repeatInterval !== 0) {
 					start.setTime(start.getTime() + repeatInterval);
@@ -389,7 +446,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			try {
 				const settings = await this.settingsService.getDBSettings();
 
-				const checkTTL = settings.checkTTL; // Check TTL is in DAYS, not MS
+				const checkTTL = settings.checkTTL;
 
 				if (checkTTL === CHECK_TTL_SENTINEL) {
 					this.logger.info({
@@ -418,41 +475,48 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
-		const { monitor, statusChanged, prevStatus } = statusChangeResult;
-
-		// Initialize result
-		const decision: MonitorActionDecision = {
+	private evaluateMonitorAction(statusChangeResult: any) {
+		const { statusChanged, monitor, prevStatus } = statusChangeResult;
+	
+			const effectiveStatusChanged =
+			statusChanged || (prevStatus === "initializing" && monitor.status === "down");
+	
+		if (!effectiveStatusChanged) {
+			return {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: false,
+				incidentReason: null,
+				notificationReason: null,
+			};
+		}
+	
+		if (monitor.status === "down") {
+			return {
+				shouldCreateIncident: true,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: "monitor_down",
+				notificationReason: "monitor_down",
+			};
+		}
+	
+		if (monitor.status === "up") {
+			return {
+				shouldCreateIncident: false,
+				shouldResolveIncident: true,
+				shouldSendNotification: true,
+				incidentReason: "monitor_up",
+				notificationReason: "monitor_up",
+			};
+		}
+	
+		return {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
-
-		if (!statusChanged) {
-			return decision;
-		}
-
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
-		}
-
-		return decision;
 	}
 }

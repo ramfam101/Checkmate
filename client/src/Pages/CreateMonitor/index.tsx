@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
 import { useForm, Controller } from "react-hook-form";
@@ -169,7 +168,6 @@ const CreateMonitorPage = () => {
 	const navigate = useNavigate();
 	const isEditMode = Boolean(monitorId);
 
-	// Extract page type from URL path (e.g., /pagespeed/create -> pagespeed)
 	const pageType = useMemo(() => {
 		const pathSegments = location.pathname.split("/").filter(Boolean);
 		const firstSegment = pathSegments[0];
@@ -202,6 +200,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
+
 	const { control, watch, handleSubmit, clearErrors } = form;
 
 	useEffect(() => {
@@ -209,7 +208,7 @@ const CreateMonitorPage = () => {
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
-
+	const watchedEscalationEnabled = watch("escalationEnabled") as boolean;
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
 
@@ -225,7 +224,7 @@ const CreateMonitorPage = () => {
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
 	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
 	const isSubmitting = isCreating || isUpdating;
-	// Delete functionality
+
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
@@ -237,7 +236,7 @@ const CreateMonitorPage = () => {
 		if (!monitorId) return;
 		await deleteFn(`/monitors/${monitorId}`);
 		setIsDeleteDialogOpen(false);
-		// Navigate based on page type
+
 		if (pageType === "pagespeed") {
 			navigate("/pagespeed");
 		} else if (pageType === "hardware") {
@@ -251,12 +250,40 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
+	const parseEscalationIntervals = (value: string): number[] => {
+		return value
+			.split(",")
+			.map((part) => part.trim())
+			.filter(Boolean)
+			.map((part) => Number(part))
+			.filter((num) => Number.isFinite(num) && num > 0)
+			.sort((a, b) => a - b);
+	};
+
+	const [escalationIntervalsInput, setEscalationIntervalsInput] = useState(
+		(defaults.escalationIntervals ?? []).join(", ")
+	);
+
+	useEffect(() => {
+		setEscalationIntervalsInput((defaults.escalationIntervals ?? []).join(", "));
+	}, [defaults.escalationIntervals]);
+
 	const onSubmit = async (data: MonitorFormData) => {
+		const escalationIntervals = data.escalationEnabled
+			? parseEscalationIntervals(escalationIntervalsInput)
+			: [];
+
+		const payload: MonitorFormData = {
+			...data,
+			escalationEnabled: data.escalationEnabled ?? false,
+			escalationIntervals,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -285,7 +312,7 @@ const CreateMonitorPage = () => {
 				refetch={refetchMonitor}
 				onDelete={handleDeleteClick}
 			/>
-			{/* Monitor Type Selection - only shown for uptime monitors */}
+
 			{showTypeSelector && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.type.title")}
@@ -362,7 +389,6 @@ const CreateMonitorPage = () => {
 				subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
 				rightContent={
 					<Stack spacing={theme.spacing(LAYOUT.MD)}>
-						{/* URL/Host/Container field - not shown for hardware */}
 						{generalSettingsConfig.showUrl && (
 							<Controller
 								name="url"
@@ -382,7 +408,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Port field - only for port and game types */}
 						{generalSettingsConfig.showPort && (
 							<Controller
 								name="port"
@@ -408,7 +433,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Game select - only for game type */}
 						{generalSettingsConfig.showGameSelect && (
 							<Controller
 								name="gameId"
@@ -437,7 +461,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* gRPC Service Name field - only for grpc type */}
 						{generalSettingsConfig.showGrpcServiceName && (
 							<Controller
 								name="grpcServiceName"
@@ -461,7 +484,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Secret field - only for hardware type */}
 						{generalSettingsConfig.showSecret && (
 							<Controller
 								name="secret"
@@ -574,7 +596,6 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			{/* Alert Thresholds - only for hardware type */}
 			{generalSettingsConfig.showSecret && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.thresholds.title")}
@@ -705,7 +726,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
@@ -762,6 +782,44 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send follow-up alerts if the incident stays open for a longer period of time."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable escalated notifications</Typography>
+								</Stack>
+							)}
+						/>
+
+						{watchedEscalationEnabled && (
+							<TextField
+								value={escalationIntervalsInput}
+								onChange={(e) => setEscalationIntervalsInput(e.target.value)}
+								type="text"
+								fieldLabel="Escalation times in minutes"
+								placeholder="10, 30, 60"
+								fullWidth
+								helperText="Enter comma separated minute values in ascending order."
+							/>
+						)}
+					</Stack>
 				}
 			/>
 
@@ -941,7 +999,6 @@ const CreateMonitorPage = () => {
 										name="geoCheckLocations"
 										control={control}
 										render={({ field }) => {
-											// Map continents to have 'name' property for Autocomplete
 											const locationOptions = GeoContinents.map((continent) => ({
 												id: continent,
 												name: t(
@@ -1057,6 +1114,7 @@ const CreateMonitorPage = () => {
 					{t("common.buttons.save")}
 				</Button>
 			</Stack>
+
 			<Dialog
 				open={isDeleteDialogOpen}
 				title={t("common.dialogs.delete.title")}
