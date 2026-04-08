@@ -351,6 +351,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalation = (doc.escalation ?? [])
+			.map((rule) => ({
+				delayMinutes: Number(rule.delayMinutes),
+				channelId: toStringId(rule.channelId),
+			}))
+			.filter((rule) => Number.isFinite(rule.delayMinutes) && rule.delayMinutes >= 1 && Boolean(rule.channelId))
+			.sort((a, b) => a.delayMinutes - b.delayMinutes);
 
 		return {
 			id: toStringId(doc._id),
@@ -391,6 +398,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalation,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -410,6 +418,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalation = (doc.escalation ?? [])
+			.map((rule) => ({
+				delayMinutes: Number(rule.delayMinutes),
+				channelId: toStringId(rule.channelId),
+			}))
+			.filter((rule) => Number.isFinite(rule.delayMinutes) && rule.delayMinutes >= 1 && Boolean(rule.channelId))
+			.sort((a, b) => a.delayMinutes - b.delayMinutes);
 
 		return {
 			id: toStringId(doc._id),
@@ -450,6 +465,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalation,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

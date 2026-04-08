@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation Rules",
+					"description": "Set timed escalation steps and choose who gets notified as an incident continues.",
+					"option": {
+						"addRule": "Add escalation rule",
+						"removeRule": "Remove escalation rule",
+						"empty": "No escalation rules configured yet.",
+						"ruleLabel": "Rule {{index}}",
+						"afterMinutes": {
+							"label": "Escalate after (minutes)",
+							"helper": "This rule triggers once when incident duration reaches this time."
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

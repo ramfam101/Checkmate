@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,17 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalation =
+		(watch("escalation") as Array<{ delayMinutes: number; channelId: string }>) ?? [];
+
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((n) => ({
+				...n,
+				name: n.notificationName,
+			})),
+		[notifications]
+	);
 
 	useEffect(() => {
 		clearErrors();
@@ -249,6 +260,30 @@ const CreateMonitorPage = () => {
 
 	const handleDeleteCancel = () => {
 		setIsDeleteDialogOpen(false);
+	};
+
+	const addEscalation = () => {
+		setValue("escalation", [...watchedEscalation, { delayMinutes: 15, channelId: "" }], {
+			shouldDirty: true,
+			shouldValidate: true,
+		});
+	};
+
+	const removeEscalation = (index: number) => {
+		setValue(
+			"escalation",
+			watchedEscalation.filter((_, i) => i !== index),
+			{ shouldDirty: true, shouldValidate: true }
+		);
+	};
+
+	const updateEscalation = (
+		index: number,
+		patch: Partial<{ delayMinutes: number; channelId: string }>
+	) => {
+		const next = [...watchedEscalation];
+		next[index] = { ...next[index], ...patch };
+		setValue("escalation", next, { shouldDirty: true, shouldValidate: true });
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
@@ -705,11 +740,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -762,6 +792,95 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Button
+							variant="outlined"
+							onClick={addEscalation}
+						>
+							{t("pages.createMonitor.form.escalation.option.addRule")}
+						</Button>
+
+						{watchedEscalation.length === 0 && (
+							<Typography color="text.secondary">
+								{t("pages.createMonitor.form.escalation.option.empty")}
+							</Typography>
+						)}
+
+						{watchedEscalation.map((entry, index) => {
+							const selectedChannel =
+								notificationOptions.find((option) => option.id === entry.channelId) ??
+								null;
+
+							return (
+								<Stack
+									key={`escalation-${index}`}
+									spacing={theme.spacing(SPACING.SM)}
+									sx={{
+										border: `1px solid ${theme.palette.divider}`,
+										borderRadius: theme.spacing(1),
+										padding: theme.spacing(LAYOUT.MD),
+									}}
+								>
+									<Stack
+										direction="row"
+										justifyContent="space-between"
+										alignItems="center"
+									>
+										<Typography fontWeight={500}>
+											{t("pages.createMonitor.form.escalation.option.ruleLabel", {
+												index: index + 1,
+											})}
+										</Typography>
+										<IconButton
+											size="small"
+											onClick={() => removeEscalation(index)}
+											aria-label={t(
+												"pages.createMonitor.form.escalation.option.removeRule"
+											)}
+										>
+											<Trash2 size={16} />
+										</IconButton>
+									</Stack>
+
+									<TextField
+										type="number"
+										value={entry.delayMinutes}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.afterMinutes.label"
+										)}
+										helperText={t(
+											"pages.createMonitor.form.escalation.option.afterMinutes.helper"
+										)}
+										onChange={(event) => {
+											const value = Number(event.target.value);
+											updateEscalation(index, {
+												delayMinutes: Number.isFinite(value) && value > 0 ? value : 1,
+											});
+										}}
+									/>
+
+									<Autocomplete
+										options={notificationOptions}
+										value={selectedChannel}
+										getOptionLabel={(option) => option.name}
+										onChange={(_, selected) => {
+											updateEscalation(index, {
+												channelId: selected?.id ?? "",
+											});
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+								</Stack>
+							);
+						})}
+					</Stack>
 				}
 			/>
 
