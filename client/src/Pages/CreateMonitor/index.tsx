@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalationEnabled = watch("escalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +763,114 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalationNotifications.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalationNotifications.enable.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						<Controller
+							name="escalationDelay"
+							control={control}
+							render={({ field }) => (
+								watchedEscalationEnabled ? (
+									<TextField
+										{...field}
+										type="number"
+										label={t("pages.createMonitor.form.escalationNotifications.delay.label")}
+										helperText={t("pages.createMonitor.form.escalationNotifications.delay.description")}
+										value={field.value ?? 30}
+										onChange={(e) => field.onChange(parseInt(e.target.value) || 30)}
+										InputProps={{
+											inputProps: { min: 1 },
+										}}
+									/>
+								) : <div style={{ display: 'none' }} />
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								// Map notifications to have 'name' property for Autocomplete
+								const escalationNotificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedEscalationNotifications = escalationNotificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return watchedEscalationEnabled ? (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={escalationNotificationOptions}
+											value={selectedEscalationNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof escalationNotificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								) : <div style={{ display: 'none' }} />;
+							}}
+						/>
+					</Stack>
 				}
 			/>
 
