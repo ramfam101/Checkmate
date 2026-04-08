@@ -10,6 +10,7 @@ import {
 	IStatusService,
 	IncidentService,
 	type IGeoChecksService,
+	type IEscalationService,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
@@ -66,6 +67,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationService: IEscalationService;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +85,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationService: IEscalationService
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +104,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -168,15 +172,42 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				// Step 7. Handle incidents (wait so incident exists before escalation check)
+				try {
+					await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+				} catch (error: unknown) {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
-				});
+				}
+				// Step 8. Handle escalations for active incidents (best effort, don't wait)
+				// Check on every run so delayed escalations fire even during ongoing incidents
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+				if (activeIncident) {
+					this.escalationService.processEscalations(statusChangeResult.monitor, activeIncident, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error processing escalations for job ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 9. Reset escalations when monitor recovers (best effort, don't wait)
+				if (decision.shouldResolveIncident) {
+					this.escalationService.resetEscalations(monitorId, teamId).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error resetting escalations for job ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

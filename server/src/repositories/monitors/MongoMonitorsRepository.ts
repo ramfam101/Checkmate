@@ -391,6 +391,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalations: (doc.escalations ?? []).map((esc: { delayMinutes: number; notificationId: unknown; isSent: boolean }) => ({
+				delayMinutes: esc.delayMinutes,
+				notificationId: toStringId(esc.notificationId),
+				isSent: esc.isSent,
+			})),
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -450,6 +455,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalations: (doc.escalations ?? []).map((esc: { delayMinutes: number; notificationId: unknown; isSent: boolean }) => ({
+				delayMinutes: esc.delayMinutes,
+				notificationId: toStringId(esc.notificationId),
+				isSent: esc.isSent,
+			})),
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -492,6 +502,31 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	findAllMonitorIds = async (): Promise<string[]> => {
 		const monitors = await MonitorModel.find({}, { _id: 1 }).lean();
 		return monitors.map((doc) => doc._id.toString());
+	};
+
+	updateEscalationSent = async (monitorId: string, teamId: string, notificationId: string): Promise<void> => {
+		await MonitorModel.updateOne(
+			{
+				_id: monitorId,
+				teamId,
+				"escalations.notificationId": new mongoose.Types.ObjectId(notificationId),
+			},
+			{
+				$set: { "escalations.$.isSent": true },
+			}
+		);
+	};
+
+	resetEscalations = async (monitorId: string, teamId: string): Promise<void> => {
+		await MonitorModel.updateOne(
+			{
+				_id: monitorId,
+				teamId,
+			},
+			{
+				$set: { "escalations.$[].isSent": false },
+			}
+		);
 	};
 }
 

@@ -44,4 +44,6 @@ export interface IMonitorsRepository {
 	updateNotifications(teamId: string, monitorIds: string[], notificationIds: string[], action: "add" | "remove" | "set"): Promise<number>;
 	deleteByTeamIdsNotIn(teamIds: string[]): Promise<number>;
 	findAllMonitorIds(): Promise<string[]>;
+	updateEscalationSent(monitorId: string, teamId: string, notificationId: string): Promise<void>;
+	resetEscalations(monitorId: string, teamId: string): Promise<void>;
 }

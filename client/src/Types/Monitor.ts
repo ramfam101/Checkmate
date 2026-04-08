@@ -38,6 +38,13 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 
 export type MonitorMatchMethod = "equal" | "include" | "regex" | "";
 
+export interface Escalation {
+	id?: string;
+	delayMinutes: number;
+	notificationId: string;
+	isSent: boolean;
+}
+
 export interface Monitor {
 	id: string;
 	userId: string;
@@ -76,6 +83,7 @@ export interface Monitor {
 	geoCheckEnabled?: boolean;
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;
+	escalations?: Escalation[];
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;

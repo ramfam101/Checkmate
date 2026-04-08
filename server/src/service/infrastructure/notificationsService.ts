@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotification: (monitor: Monitor, notificationId: string, monitorStatusResponse: MonitorStatusResponse) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +139,56 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (monitor: Monitor, notificationId: string, monitorStatusResponse: MonitorStatusResponse): Promise<boolean> => {
+		try {
+			// Fetch the specific notification
+			const notification = await this.notificationsRepository.findById(notificationId, monitor.teamId);
+			if (!notification) {
+				this.logger.warn({
+					message: `Notification ${notificationId} not found for escalation`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+
+			// Build escalation decision object
+			const escalationDecision: MonitorActionDecision = {
+				shouldSendNotification: true,
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				incidentReason: null,
+				notificationReason: "escalation",
+			};
+
+			// Build escalation message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, escalationDecision, clientHost);
+
+			// Send single notification
+			const success = await this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage);
+
+			if (!success) {
+				this.logger.warn({
+					message: `Failed to send escalation notification ${notificationId} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			}
+
+			return success;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

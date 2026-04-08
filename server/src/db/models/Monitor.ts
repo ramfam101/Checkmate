@@ -355,6 +355,24 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		escalations: [
+			{
+				delayMinutes: {
+					type: Number,
+					required: true,
+				},
+				notificationId: {
+					type: Schema.Types.ObjectId,
+					ref: "Notification",
+					required: true,
+				},
+				isSent: {
+					type: Boolean,
+					default: false,
+				},
+				_id: false,
+			},
+		],
 	},
 	{
 		timestamps: true,

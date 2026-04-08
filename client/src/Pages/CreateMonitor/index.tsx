@@ -28,6 +28,7 @@ import {
 	SwitchComponent as Switch,
 	SliderWithLabel,
 	Dialog,
+	EscalationConfig,
 } from "@/Components/inputs";
 import { SPACING, LAYOUT } from "@/Utils/Theme/constants";
 import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
@@ -761,6 +762,19 @@ const CreateMonitorPage = () => {
 								</Stack>
 							);
 						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<EscalationConfig
+						control={control}
+						fieldName="escalations"
+						notifications={notifications ?? []}
+						maxEscalations={5}
 					/>
 				}
 			/>
