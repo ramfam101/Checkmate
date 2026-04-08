@@ -49,6 +49,14 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const escalationSchema = z.object({
+	timeDelayMs: z.number().min(0, "Escalation delay must be zero or greater"),
+	notificationEmail: z.string().email("Invalid escalation email address"),
+	lastEscalationSentAt: z.union([z.date(), z.null()])
+		.optional()
+		.transform((value) => (value === undefined ? null : value)),
+});
+
 export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
@@ -75,6 +83,7 @@ export const createMonitorBodyValidation = z.object({
 	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
 	selectedDisks: z.array(z.string()).optional(),
 	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
+	escalations: z.array(escalationSchema).optional(),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
@@ -104,6 +113,7 @@ export const editMonitorBodyValidation = z.object({
 	grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
 	selectedDisks: z.array(z.string()).optional(),
 	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
+	escalations: z.array(escalationSchema).optional(),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),

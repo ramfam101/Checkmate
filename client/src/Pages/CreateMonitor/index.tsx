@@ -765,6 +765,92 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalations = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalations.map((escalation, index) => (
+										<Stack
+											key={index}
+											direction="row"
+											spacing={theme.spacing(LAYOUT.SM)}
+											alignItems="flex-start"
+										>
+											<TextField
+												value={Math.floor(escalation.timeDelayMs / 60000) || ""}
+												onChange={(e) => {
+													const minutes = parseInt(e.target.value) || 0;
+													const updatedEscalations = [...escalations];
+													updatedEscalations[index] = {
+														...updatedEscalations[index],
+														timeDelayMs: minutes * 60000,
+													};
+													field.onChange(updatedEscalations);
+												}}
+												type="number"
+												fieldLabel={t("pages.createMonitor.form.escalations.option.delay.label")}
+												placeholder="5"
+												fullWidth
+												size="small"
+											/>
+											<TextField
+												value={escalation.notificationEmail || ""}
+												onChange={(e) => {
+													const updatedEscalations = [...escalations];
+													updatedEscalations[index] = {
+														...updatedEscalations[index],
+														notificationEmail: e.target.value,
+													};
+													field.onChange(updatedEscalations);
+												}}
+												type="email"
+												fieldLabel={t("pages.createMonitor.form.escalations.option.email.label")}
+												placeholder="alert@example.com"
+												fullWidth
+												size="small"
+											/>
+											<IconButton
+												size="small"
+												onClick={() => {
+													const updatedEscalations = escalations.filter((_, i) => i !== index);
+													field.onChange(updatedEscalations);
+												}}
+												aria-label="Remove escalation"
+												sx={{ mt: 3 }}
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										size="small"
+										onClick={() => {
+											const newEscalation = {
+												timeDelayMs: 300000, // 5 minutes default
+												notificationEmail: "",
+												lastEscalationSentAt: null,
+											};
+											field.onChange([...escalations, newEscalation]);
+										}}
+										startIcon={<span>+</span>}
+									>
+										{t("pages.createMonitor.form.escalations.addButton")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

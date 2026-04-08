@@ -171,12 +171,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						message: `Error handling incident for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				if (statusChangeResult.monitor.status === "down") {
+					this.notificationsService.handleEscalations(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalations for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

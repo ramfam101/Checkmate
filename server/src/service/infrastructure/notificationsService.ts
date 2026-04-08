@@ -6,6 +6,8 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { IIncidentsRepository } from "@/repositories/index.js";
+import type { IEmailService } from "@/service/infrastructure/emailService.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,6 +16,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalations: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => Promise<void>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -26,6 +29,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -36,10 +40,12 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private emailService: IEmailService;
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -49,10 +55,12 @@ export class NotificationsService implements INotificationsService {
 		teamsProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		emailService: IEmailService
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -63,6 +71,7 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.emailService = emailService;
 	}
 
 	private send = async (
@@ -132,13 +141,114 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	handleEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		if (!monitor.escalations || monitor.escalations.length === 0) {
+			return;
+		}
+
+		try {
+			// Find the active incident for this monitor to get the downtime start time
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident) {
+				this.logger.warn({
+					message: `No active incident found for monitor ${monitor.id} during escalation check`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+				});
+				return;
+			}
+
+			const downtimeStart = new Date(activeIncident.startTime);
+			const now = new Date();
+			const downtimeDurationMs = now.getTime() - downtimeStart.getTime();
+
+			// Check each escalation
+			for (const escalation of monitor.escalations) {
+				const timeSinceLastEscalation = escalation.lastEscalationSentAt
+					? now.getTime() - new Date(escalation.lastEscalationSentAt).getTime()
+					: Infinity;
+
+				// Send escalation if enough time has passed since downtime started
+				// and either no escalation was sent yet or enough time has passed since last escalation
+				if (downtimeDurationMs >= escalation.timeDelayMs && timeSinceLastEscalation >= escalation.timeDelayMs) {
+					await this.sendEscalationEmail(monitor, escalation, monitorStatusResponse, downtimeDurationMs);
+					
+					// Update the escalation's lastEscalationSentAt
+					escalation.lastEscalationSentAt = now;
+				}
+			}
+
+			// Update the monitor with the updated escalations
+			if (monitor.escalations.some(e => e.lastEscalationSentAt)) {
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, { escalations: monitor.escalations });
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error handling escalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
+	private sendEscalationEmail = async (
+		monitor: Monitor,
+		escalation: NonNullable<Monitor['escalations']>[0],
+		monitorStatusResponse: MonitorStatusResponse,
+		downtimeDurationMs: number
+	) => {
+		try {
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			
+			const subject = `ESCALATION: Monitor "${monitor.name}" has been down for ${Math.floor(downtimeDurationMs / 60000)} minutes`;
+			const html = `
+				<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+					<h2 style="color: #d32f2f;">Monitor Escalation Alert</h2>
+					<p><strong>Monitor:</strong> ${monitor.name}</p>
+					<p><strong>URL:</strong> ${monitor.url}</p>
+					<p><strong>Status:</strong> DOWN</p>
+					<p><strong>Downtime Duration:</strong> ${Math.floor(downtimeDurationMs / 60000)} minutes</p>
+					<p><strong>Escalation Level:</strong> ${escalation.timeDelayMs / 60000} minute delay</p>
+					<p>Please investigate this issue immediately.</p>
+					<p><a href="${clientHost}/monitors/${monitor.id}" style="background-color: #1976d2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Monitor</a></p>
+				</div>
+			`;
+
+			const result = await this.emailService.sendEmail(escalation.notificationEmail, subject, html);
+			if (result) {
+				this.logger.info({
+					message: `Escalation email sent to ${escalation.notificationEmail} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationEmail",
+				});
+			} else {
+				this.logger.warn({
+					message: `Failed to send escalation email to ${escalation.notificationEmail} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationEmail",
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation email to ${escalation.notificationEmail}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationEmail",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const notificationResult = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		return notificationResult;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
