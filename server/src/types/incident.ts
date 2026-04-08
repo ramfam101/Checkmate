@@ -18,6 +18,7 @@ export interface Incident {
 	comment?: string | null;
 	createdAt: string;
 	updatedAt: string;
+	sentEscalations: string[];
 }
 
 export interface IncidentSummaryTopMonitor {

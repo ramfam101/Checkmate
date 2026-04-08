@@ -227,6 +227,11 @@ const CreateMonitorPage = () => {
 	const isSubmitting = isCreating || isUpdating;
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+	const [selectedEscalationNotificationId, setSelectedEscalationNotificationId] =
+		useState("");
+	const [escalationAfterMinutes, setEscalationAfterMinutes] = useState("60");
+
 	const { deleteFn, loading: isDeleting } = useDelete();
 
 	const handleDeleteClick = () => {
@@ -705,7 +710,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
@@ -713,6 +717,7 @@ const CreateMonitorPage = () => {
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
+
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Autocomplete
@@ -765,6 +770,184 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalationNotifications"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const escalationRules = field.value ?? [];
+
+							const addEscalationRule = () => {
+								const minutes = Number(escalationAfterMinutes);
+
+								if (
+									!selectedEscalationNotificationId ||
+									Number.isNaN(minutes) ||
+									minutes < 1
+								) {
+									return;
+								}
+
+								const alreadyExists = escalationRules.some(
+									(rule) =>
+										rule.notificationId === selectedEscalationNotificationId &&
+										rule.afterMinutes === minutes
+								);
+
+								if (alreadyExists) {
+									return;
+								}
+
+								field.onChange(
+									[
+										...escalationRules,
+										{
+											notificationId: selectedEscalationNotificationId,
+											afterMinutes: minutes,
+										},
+									].sort((a, b) => a.afterMinutes - b.afterMinutes)
+								);
+
+								setSelectedEscalationNotificationId("");
+								setEscalationAfterMinutes("60");
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack
+										direction={{ xs: "column", md: "row" }}
+										spacing={theme.spacing(LAYOUT.MD)}
+									>
+										<Select
+											value={selectedEscalationNotificationId}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.channel.label"
+											)}
+											onChange={(e) =>
+												setSelectedEscalationNotificationId(e.target.value as string)
+											}
+										>
+											<MenuItem value="">
+												{t(
+													"pages.createMonitor.form.escalations.option.channel.placeholder"
+												)}
+											</MenuItem>
+											{notificationOptions.map((notification) => (
+												<MenuItem
+													key={notification.id}
+													value={notification.id}
+												>
+													{notification.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+
+										<TextField
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.afterMinutes.label"
+											)}
+											value={escalationAfterMinutes}
+											onChange={(e) => setEscalationAfterMinutes(e.target.value)}
+										/>
+
+										<Button
+											type="button"
+											variant="outlined"
+											onClick={addEscalationRule}
+										>
+											{t("pages.createMonitor.form.escalations.option.addRule.label")}
+										</Button>
+									</Stack>
+
+									{escalationRules.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{escalationRules.map((rule, index) => {
+												const notification = notificationOptions.find(
+													(item) => item.id === rule.notificationId
+												);
+
+												return (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={`${rule.notificationId}-${rule.afterMinutes}`}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification?.notificationName ?? rule.notificationId} —{" "}
+															{rule.afterMinutes} min
+														</Typography>
+
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	escalationRules.filter(
+																		(existingRule) =>
+																			existingRule.notificationId !==
+																				rule.notificationId ||
+																			existingRule.afterMinutes !== rule.afterMinutes
+																	)
+																);
+															}}
+															aria-label="Remove escalation"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+
+														{index < escalationRules.length - 1 && <Divider />}
+													</Stack>
+												);
+											})}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			{(watchedType === "http" ||
+				watchedType === "grpc" ||
+				watchedType === "websocket") && (
+				<ConfigBox
+					title={t("pages.createMonitor.form.ignoreTls.title")}
+					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
+					rightContent={
+						<Controller
+							name="ignoreTlsErrors"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+					}
+				/>
+			)}
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

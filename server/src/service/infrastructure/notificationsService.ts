@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IIncidentsRepository, IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -37,9 +37,12 @@ export class NotificationsService implements INotificationsService {
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
 
+	private incidentsRepository: IIncidentsRepository;
+
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -63,6 +66,8 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+
+		this.incidentsRepository = incidentsRepository;
 	}
 
 	private send = async (
@@ -132,13 +137,85 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+	// Helper function
+	private handleEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<boolean> => {
+		if ((monitor.status !== "down" && monitor.status !== "breached") || !monitor.escalationNotifications?.length) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+		if (!activeIncident) {
+			return false;
+		}
+
+		const elapsedMinutes = Math.floor((Date.now() - new Date(activeIncident.startTime).getTime()) / 60000);
+
+		const alreadySent = new Set(activeIncident.sentEscalations ?? []);
+
+		const dueRules = monitor.escalationNotifications
+			.filter((rule) => elapsedMinutes >= rule.afterMinutes)
+			.filter((rule) => !alreadySent.has(`${rule.notificationId}:${rule.afterMinutes}`));
+
+		if (dueRules.length === 0) {
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(dueRules.map((rule) => rule.notificationId));
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: monitor.status === "breached" ? "threshold_breach" : "status_change",
+		};
+
+		const successfulRuleKeys: string[] = [];
+
+		for (const rule of dueRules) {
+			const notification = notifications.find((item) => item.id === rule.notificationId);
+
+			if (!notification) {
+				continue;
+			}
+
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, escalationDecision, clientHost, {
+				isEscalation: true,
+				escalationMinutes: rule.afterMinutes,
+			});
+
+			const sent = await this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage);
+
+			if (sent) {
+				successfulRuleKeys.push(`${rule.notificationId}:${rule.afterMinutes}`);
+			}
+		}
+
+		if (successfulRuleKeys.length > 0) {
+			await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+				sentEscalations: [...(activeIncident.sentEscalations ?? []), ...successfulRuleKeys],
+			});
+
+			return true;
+		}
+
+		return false;
+	};
+
+	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		let sentStandardNotification = false;
+
+		if (decision.shouldSendNotification) {
+			sentStandardNotification = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		}
+
+		const sentEscalation = await this.handleEscalations(monitor, monitorStatusResponse);
+
+		return sentStandardNotification || sentEscalation;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

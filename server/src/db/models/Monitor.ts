@@ -27,6 +27,22 @@ type MonitorDocumentBase = Omit<
 	matchMethod?: MonitorMatchMethod;
 };
 
+const escalationNotificationSchema = new Schema(
+	{
+		notificationId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+			required: true,
+		},
+		afterMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+		},
+	},
+	{ _id: false }
+);
+
 interface MonitorDocument extends MonitorDocumentBase {
 	_id: Types.ObjectId;
 	userId: Types.ObjectId;
@@ -284,6 +300,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationNotifications: {
+			type: [escalationNotificationSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

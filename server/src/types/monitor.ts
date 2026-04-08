@@ -15,6 +15,11 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 export const MonitorMatchMethods = ["equal", "include", "regex"] as const;
 export type MonitorMatchMethod = (typeof MonitorMatchMethods)[number] | "";
 
+export interface MonitorEscalation {
+	notificationId: string;
+	afterMinutes: number;
+}
+
 export interface Monitor {
 	id: string;
 	userId: string;
@@ -56,6 +61,8 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+
+	escalationNotifications: MonitorEscalation[];
 }
 
 export interface MonitorsSummary {

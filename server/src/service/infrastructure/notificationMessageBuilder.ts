@@ -13,7 +13,11 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		options?: {
+			isEscalation?: boolean;
+			escalationMinutes?: number;
+		}
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -27,11 +31,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		options?: {
+			isEscalation?: boolean;
+			escalationMinutes?: number;
+		}
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, options);
 
 		return {
 			type,
@@ -48,6 +56,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				isEscalation: options?.isEscalation,
+				escalationMinutes: options?.escalationMinutes,
 			},
 		};
 	}
@@ -93,14 +103,19 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		options?: { isEscalation?: boolean; escalationMinutes?: number }
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, options);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
-				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
+				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>, options);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
 			default:
@@ -108,11 +123,20 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
+	private buildMonitorDownContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		options?: { isEscalation?: boolean; escalationMinutes?: number }
+	): NotificationContent {
+		const title = options?.isEscalation ? `Escalation ${monitor.name} is still down` : `Monitor Down: ${monitor.name}`;
+		const summary = options?.isEscalation
+			? `Escalation ${monitor.name} has been down for ${options.escalationMinutes} minute(s) and is still unreachable.`
+			: `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
 
+		if (options?.isEscalation && options.escalationMinutes) {
+			details.push(`Escalation After: ${options.escalationMinutes} minute(s)`);
+		}
 		// Add response code if available
 		if (monitorStatusResponse.code) {
 			details.push(`Response Code: ${monitorStatusResponse.code}`);
@@ -144,9 +168,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildThresholdBreachContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): NotificationContent {
-		const title = `Threshold Exceeded: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" has exceeded one or more thresholds.`;
+	private buildThresholdBreachContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>,
+		options?: { isEscalation?: boolean; escalationMinutes?: number }
+	): NotificationContent {
+		const title = options?.isEscalation ? `Escalation: Threshold Exceeded - ${monitor.name}` : `Threshold Exceeded: ${monitor.name}`;
+		const summary = options?.isEscalation
+			? `Escalation: ${monitor.name} has exceeded one or more thresholds for ${options.escalationMinutes} minute(s) and is still in breach.`
+			: `Monitor "${monitor.name}" has exceeded one or more thresholds.`;
 		const details = [`URL: ${monitor.url}`, `Status: Threshold exceeded`, `Type: ${monitor.type}`];
 
 		const thresholds = this.extractThresholdBreaches(monitor, monitorStatusResponse);

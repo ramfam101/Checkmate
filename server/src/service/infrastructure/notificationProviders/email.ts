@@ -78,6 +78,19 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		if (message.metadata.isEscalation) {
+			const suffix = message.metadata.escalationMinutes ? ` (${message.metadata.escalationMinutes} min)` : "";
+
+			switch (message.type) {
+				case "monitor_down":
+					return `Escalation: Monitor ${message.monitor.name} is still down${suffix}`;
+				case "threshold_breach":
+					return `Escalation: Monitor ${message.monitor.name} threshold still exceeded${suffix}`;
+				default:
+					return `Escalation: ${message.monitor.name}${suffix}`;
+			}
+		}
+
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;

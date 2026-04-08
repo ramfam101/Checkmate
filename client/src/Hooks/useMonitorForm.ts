@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { monitorSchema, type MonitorFormData } from "@/Validation/monitor";
+import { monitorSchema } from "@/Validation/monitor";
+import type { MonitorFormData } from "@/Validation/monitor";
 import type { Monitor, MonitorType } from "@/Types/Monitor";
 
 interface UseMonitorFormOptions {
@@ -17,6 +18,8 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
 	geoCheckLocations: data?.geoCheckLocations || [],
 	geoCheckInterval: data?.geoCheckInterval || 300000,
+
+	escalationNotifications: data?.escalationNotifications || [],
 });
 
 export const useMonitorForm = ({
