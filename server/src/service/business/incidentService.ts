@@ -91,7 +91,9 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+
+				const createdIncident = await this.incidentsRepository.create(incident);
+				return createdIncident;
 			}
 		}
 
@@ -99,6 +101,7 @@ export class IncidentService implements IIncidentService {
 			if (!activeIncident) {
 				return null;
 			}
+
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
