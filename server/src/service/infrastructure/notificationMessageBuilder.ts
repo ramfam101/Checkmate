@@ -15,7 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
-	build	Message(
+	buildEscalationMessage(
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		clientHost: string,
@@ -28,7 +28,6 @@ const SERVICE_NAME = "NotificationMessageBuilder";
 
 export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	static SERVICE_NAME = SERVICE_NAME;
-
 	buildMessage(
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
