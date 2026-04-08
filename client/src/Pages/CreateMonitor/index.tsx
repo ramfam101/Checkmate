@@ -730,7 +730,7 @@ const CreateMonitorPage = () => {
 											flex={1}
 											width="100%"
 										>
-											{selectedNotifications.map((notification, index) => (
+											{selectedNotifications.map((notification) => (
 												<Stack
 													direction="row"
 													alignItems="center"
@@ -753,10 +753,120 @@ const CreateMonitorPage = () => {
 													>
 														<Trash2 size={16} />
 													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
+											
 												</Stack>
 											))}
 										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field, fieldState }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const escalationRule = field.value?.[0] ?? {
+								delayMinutes: 5,
+								notifications: [],
+							};
+							const selectedRuleNotifications = notificationOptions.filter((n) =>
+								(escalationRule.notifications ?? []).includes(n.id)
+							);
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack spacing={theme.spacing(SPACING.SM)}>
+										<TextField
+											type="number"
+											fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+											placeholder={t(
+												"pages.createMonitor.form.escalation.option.delay.placeholder"
+											)}
+											value={escalationRule.delayMinutes}
+											onChange={(e) => {
+												const nextValue = Number(e.target.value);
+												field.onChange([
+													{
+														...escalationRule,
+														delayMinutes: Number.isNaN(nextValue) ? 0 : nextValue,
+													},
+												]);
+											}}
+											fullWidth
+										/>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedRuleNotifications}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.notifications.label"
+											)}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange([
+													{
+														...escalationRule,
+														notifications: newValue.map((n) => n.id),
+													},
+												]);
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedRuleNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedRuleNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>{notification.notificationName}</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange([
+																	{
+																		...escalationRule,
+																		notifications: (escalationRule.notifications ?? []).filter(
+																			(id: string) => id !== notification.id
+																		),
+																	},
+																]);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedRuleNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+
+									{fieldState.error?.message && (
+										<Typography
+											variant="caption"
+											color="error"
+										>
+											{fieldState.error.message}
+										</Typography>
 									)}
 								</Stack>
 							);

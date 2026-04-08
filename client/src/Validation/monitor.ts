@@ -13,6 +13,18 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationRules: z
+		.array(
+			z.object({
+				delayMinutes: z
+					.number({ message: "Escalation delay is required" })
+					.int("Escalation delay must be a whole number")
+					.min(1, "Escalation delay must be at least 1 minute")
+					.max(10080, "Escalation delay must be at most 10080 minutes"),
+				notifications: z.array(z.string()).min(1, "Select at least one escalation notification"),
+			})
+		)
+		.length(1, "Exactly one escalation rule is supported"),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

@@ -168,6 +168,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				if (statusChangeResult.monitor.status === "down") {
+					this.notificationsService.handleEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
