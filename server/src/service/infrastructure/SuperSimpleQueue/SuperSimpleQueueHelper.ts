@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +177,35 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications for monitors that remain down
+				if (statusChangeResult.monitor.status === "down" && statusChangeResult.monitor.escalationAfterMinutes > 0) {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId);
+					const escalationChannels = statusChangeResult.monitor.escalationNotificationChannels ?? [];
+					if (activeIncident && escalationChannels.length > 0 && !activeIncident.escalationNotifiedAt) {
+						const incidentStartTime = new Date(activeIncident.startTime).getTime();
+						const elapsedMinutes = (Date.now() - incidentStartTime) / 60000;
+						if (elapsedMinutes >= statusChangeResult.monitor.escalationAfterMinutes) {
+							this.notificationsService.handleEscalationNotifications(statusChangeResult.monitor, status, escalationChannels).catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+							activeIncident.escalationNotifiedAt = Date.now().toString();
+							this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident).catch((error: unknown) => {
+								this.logger.warn({
+									message: `Error recording escalation notification for incident ${activeIncident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+						}
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
