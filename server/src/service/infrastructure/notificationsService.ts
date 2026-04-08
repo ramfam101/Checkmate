@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	handleEscalationNotifications: (monitor: Monitor, incident: Incident) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -107,6 +107,42 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
+	private sendEscalationToProvider = async (notification: Notification, escalationMessage: NotificationMessage | undefined): Promise<boolean> => {
+		if (!escalationMessage) {
+			this.logger.warn({
+				message: "Escalation message not provided",
+				service: SERVICE_NAME,
+				method: "sendEscalationToProvider",
+			});
+			return false;
+		}
+
+		// Route to provider based on notification type (same as regular notifications)
+		switch (notification.type) {
+			case "webhook":
+				return await this.webhookProvider.sendMessage!(notification, escalationMessage);
+			case "slack":
+				return await this.slackProvider.sendMessage!(notification, escalationMessage);
+			case "matrix":
+				return await this.matrixProvider.sendMessage!(notification, escalationMessage);
+			case "pager_duty":
+				return await this.pagerDutyProvider.sendMessage!(notification, escalationMessage);
+			case "discord":
+				return await this.discordProvider.sendMessage!(notification, escalationMessage);
+			case "email":
+				return await this.emailProvider.sendMessage!(notification, escalationMessage);
+			case "teams":
+				return await this.teamsProvider.sendMessage!(notification, escalationMessage);
+			default:
+				this.logger.warn({
+					message: `Unknown notification type: ${notification.type}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationToProvider",
+				});
+				return false;
+		}
+	};
+
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
@@ -139,6 +175,70 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotifications = async (monitor: Monitor, incident: Incident): Promise<boolean> => {
+		const escallationNotificationIds = monitor.escalationNotifications ?? [];
+		if (escallationNotificationIds.length === 0) {
+			this.logger.warn({
+				message: `Monitor ${monitor.id} has no escalation notifications configured`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escallationNotificationIds);
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: `No escalation notifications found for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+			return false;
+		}
+
+		// Build escalation-specific message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incident, clientHost);
+
+		// Send escalation to each notification channel
+		const tasks = notifications.map(async (notification) => {
+			try {
+				const result = await this.sendEscalationToProvider(notification, escalationMessage);
+				return result;
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				return false;
+			}
+		});
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+		} else {
+			this.logger.info({
+				message: `Escalation notification sent successfully to ${succeeded} channel(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+		}
+
+		// Return true if at least one notification succeeded
+		return succeeded > 0;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

@@ -267,6 +267,9 @@ export const initializeServices = async ({
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
 
+	// Set queue on helper to enable escalation scheduling
+	superSimpleQueueHelper.setQueue(superSimpleQueue);
+
 	// Business services
 	const userService = new UserService({
 		crypto,
