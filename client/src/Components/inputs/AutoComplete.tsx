@@ -1,6 +1,7 @@
 import Autocomplete from "@mui/material/Autocomplete";
 import type { AutocompleteProps } from "@mui/material/Autocomplete";
 import { TextField, Checkbox } from "@/Components/inputs";
+import Chip from "@mui/material/Chip";
 import ListItem from "@mui/material/ListItem";
 import Stack from "@mui/material/Stack";
 import { useTheme } from "@mui/material/styles";
@@ -28,9 +29,25 @@ export const AutoCompleteInput = ({
 	const defaultRenderInput = (params: any) => (
 		<TextField
 			{...params}
+			inputProps={{
+				...params.inputProps,
+				autoComplete: "off",
+			}}
 			placeholder="Type to search"
 		/>
 	);
+
+	const renderInputWithAutoCompleteOff = (params: any) => {
+		const enhancedParams = {
+			...params,
+			inputProps: {
+				...params.inputProps,
+				autoComplete: "off",
+			},
+		};
+
+		return (renderInput || defaultRenderInput)(enhancedParams);
+	};
 
 	const autocomplete = (
 		<Autocomplete
@@ -43,9 +60,17 @@ export const AutoCompleteInput = ({
 					style={{ marginRight: theme.spacing(3) }}
 				/>
 			}
-			renderInput={renderInput || defaultRenderInput}
+			renderInput={renderInputWithAutoCompleteOff}
 			getOptionKey={(option) => option.id}
-			renderTags={() => null}
+			renderTags={(value, getTagProps) =>
+				multiple &&
+				value.map((option, index) => (
+					<Chip
+						label={option.name}
+						{...getTagProps({ index })}
+					/>
+				))
+			}
 			renderOption={(props, option, { selected }) => {
 				const { key, ...optionProps } = props;
 				return (
@@ -65,8 +90,13 @@ export const AutoCompleteInput = ({
 				);
 			}}
 			sx={{
-				"&.MuiAutocomplete-root .MuiAutocomplete-input": {
-					padding: `0 ${theme.spacing(5)}`,
+				"& .MuiAutocomplete-inputRoot": {
+					flexWrap: "wrap",
+					alignItems: multiple ? "flex-start" : "center",
+					minHeight: multiple ? 56 : undefined,
+				},
+				"& .MuiAutocomplete-input": {
+					padding: multiple ? `${theme.spacing(1.25)} ${theme.spacing(5)} ${theme.spacing(0.5)}` : `0 ${theme.spacing(5)}`,
 				},
 				"& .MuiInputBase-root .MuiAutocomplete-endAdornment": {
 					right: theme.spacing(3),
