@@ -233,12 +233,18 @@ export class StatusService implements IStatusService {
 			}
 
 			const prevStatus = monitor.status;
-			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				// During init, only promote to "up" on a successful check.
+				// Never mark "down" from a single result — we need the full window for that.
+				// Without this guard, a failed check during init sets status="down" in the DB,
+				// which then triggers a spurious "back up" recovery notification on the next
+				// heartbeat once the window fills and failure rate is below threshold.
+				if (status === true) {
+					monitor.status = "up";
+				}
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -248,6 +254,11 @@ export class StatusService implements IStatusService {
 					timestamp: Date.now(),
 				};
 			}
+
+			// Window is full — status changes are driven exclusively by threshold logic.
+			// Initialise newStatus from the stored status so individual check results
+			// cannot bypass the threshold and cause phantom status transitions.
+			let newStatus: MonitorStatus = monitor.status;
 
 			// Check if threshold has been met
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
