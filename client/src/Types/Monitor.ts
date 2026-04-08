@@ -2,6 +2,7 @@ import type { GroupedCheck, CheckSnapshot } from "@/Types/Check";
 import type { PageSpeedGroupedCheck } from "@/Types/Check";
 import type { GeoContinent } from "@/Types/GeoCheck";
 export type { GeoContinent } from "@/Types/GeoCheck";
+import type { NotificationEscalation } from "@/Types/Escalation";
 
 export const MonitorTypes = [
 	"http",
@@ -60,6 +61,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationRules?: NotificationEscalation[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

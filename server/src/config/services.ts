@@ -109,6 +109,8 @@ import {
 	ITeamsRepository,
 	IMaintenanceWindowsRepository,
 } from "@/repositories/index.js";
+import MongoEscalationRepository from "@/repositories/escalationRepository.js";
+import { EscalationService } from "@/service/infrastructure/escalationService.js";
 import { ILogger } from "@/utils/logger.js";
 
 export type InitializedServices = {
@@ -205,8 +207,6 @@ export const initializeServices = async ({
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
-
 	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
 	const globalPingService = new GlobalPingService(logger);
@@ -246,6 +246,24 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationRepository = new MongoEscalationRepository();
+	const escalationService = new EscalationService(
+		escalationRepository,
+		incidentsRepository,
+		notificationsService,
+		notificationMessageBuilder,
+		settingsService,
+		logger
+	);
+	const incidentService = new IncidentService(
+		logger,
+		incidentsRepository,
+		monitorsRepository,
+		usersRepository,
+		notificationMessageBuilder,
+		escalationService
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -262,7 +280,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationService
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);

@@ -1,6 +1,7 @@
 import { MonitorModel } from "@/db/models/index.js";
 import type { MonitorDocument, CheckSnapshotDocument } from "@/db/models/index.js";
 import type { Monitor, MonitorsSummary, CheckSnapshot } from "@/types/index.js";
+import type { NotificationEscalation } from "@/types/escalation.js";
 import mongoose, { type FilterQuery, type PipelineStage } from "mongoose";
 import type { IMonitorsRepository, TeamQueryConfig, SummaryConfig } from "./IMonitorsRepository.js";
 import { MongoBulkWriteError } from "mongodb";
@@ -338,6 +339,24 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return documents.map((doc) => this.toEntity(doc));
 	};
 
+	private mapEscalationRules = (doc: MonitorDocument): NotificationEscalation[] | undefined => {
+		const rules = doc.escalationRules;
+		if (!rules?.length) {
+			return undefined;
+		}
+		const toStringId = (value: unknown): string => {
+			if (value instanceof mongoose.Types.ObjectId) {
+				return value.toString();
+			}
+			return value?.toString() ?? "";
+		};
+		return rules.map((r) => ({
+			...(r.id ? { id: r.id } : {}),
+			delayMinutes: r.delayMinutes,
+			channelId: toStringId(r.channelId),
+		}));
+	};
+
 	private toEntity = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
 			if (value instanceof mongoose.Types.ObjectId) {
@@ -374,6 +393,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationRules: this.mapEscalationRules(doc),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +453,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationRules: this.mapEscalationRules(doc),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, delayMinutes: number, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -22,6 +23,40 @@ const SERVICE_NAME = "NotificationMessageBuilder";
 
 export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	static SERVICE_NAME = SERVICE_NAME;
+
+	buildEscalationMessage(monitor: Monitor, delayMinutes: number, clientHost: string): NotificationMessage {
+		const title = `Escalation: ${monitor.name} still down`;
+		const summary = `Monitor "${monitor.name}" is still down after ${delayMinutes} minute(s). The incident has not been resolved.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: ${monitor.status === "down" ? "Down" : monitor.status}`,
+			`Type: ${monitor.type}`,
+			`Unacknowledged for: ${delayMinutes} minute(s) before this escalation`,
+		];
+
+		return {
+			type: "incident_escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title,
+				summary,
+				details,
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "incident_escalation",
+			},
+		};
+	}
 
 	buildMessage(
 		monitor: Monitor,
@@ -80,6 +115,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "incident_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,6 +139,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "incident_escalation":
+				return this.buildDefaultContent(monitor);
 			default:
 				return this.buildDefaultContent(monitor);
 		}

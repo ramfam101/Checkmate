@@ -7,17 +7,24 @@ interface UseMonitorFormOptions {
 	defaultType?: MonitorType;
 }
 
-const getBaseDefaults = (data?: Monitor | null) => ({
-	name: data?.name || "",
-	description: data?.description || "",
-	interval: data?.interval || 60000,
-	notifications: data?.notifications || [],
-	statusWindowSize: data?.statusWindowSize || 5,
-	statusWindowThreshold: data?.statusWindowThreshold || 60,
-	geoCheckEnabled: data?.geoCheckEnabled ?? false,
-	geoCheckLocations: data?.geoCheckLocations || [],
-	geoCheckInterval: data?.geoCheckInterval || 300000,
-});
+const getBaseDefaults = (data?: Monitor | null) => {
+	const escalationRules = data?.escalationRules ?? [];
+	const escalationDelayMinutes = escalationRules[0]?.delayMinutes ?? 0;
+	const escalationChannelIds = [...new Set(escalationRules.map((r) => r.channelId))];
+	return {
+		name: data?.name || "",
+		description: data?.description || "",
+		interval: data?.interval || 60000,
+		notifications: data?.notifications || [],
+		statusWindowSize: data?.statusWindowSize || 5,
+		statusWindowThreshold: data?.statusWindowThreshold || 60,
+		geoCheckEnabled: data?.geoCheckEnabled ?? false,
+		geoCheckLocations: data?.geoCheckLocations || [],
+		geoCheckInterval: data?.geoCheckInterval || 300000,
+		escalationDelayMinutes,
+		escalationChannelIds,
+	};
+};
 
 export const useMonitorForm = ({
 	data = null,

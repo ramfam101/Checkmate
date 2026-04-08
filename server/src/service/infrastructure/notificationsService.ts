@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendDirectNotification: (notification: Notification, message: NotificationMessage) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -196,5 +197,35 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	sendDirectNotification = async (notification: Notification, message: NotificationMessage): Promise<boolean> => {
+		try {
+			switch (notification.type) {
+				case "webhook":
+					return await this.webhookProvider.sendMessage(notification, message);
+				case "slack":
+					return await this.slackProvider.sendMessage(notification, message);
+				case "matrix":
+					return await this.matrixProvider.sendMessage(notification, message);
+				case "pager_duty":
+					return await this.pagerDutyProvider.sendMessage(notification, message);
+				case "discord":
+					return await this.discordProvider.sendMessage(notification, message);
+				case "email":
+					return await this.emailProvider.sendMessage(notification, message);
+				case "teams":
+					return await this.teamsProvider.sendMessage(notification, message);
+				default:
+					return false;
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: "Failed to send direct notification",
+				service: SERVICE_NAME,
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 }

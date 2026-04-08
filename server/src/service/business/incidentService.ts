@@ -6,6 +6,7 @@ import { getDateForRange } from "@/utils/dataUtils.js";
 import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from "@/repositories/index.js";
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
+import type { IEscalationService } from "@/service/infrastructure/escalationService.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
 
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationService: IEscalationService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationService: IEscalationService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -91,7 +95,15 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				// Initialize escalation trackers for this incident
+				const escalationRules = (monitor.escalationRules ?? []).filter((r) => r.delayMinutes > 0);
+				for (const rule of escalationRules) {
+					await this.escalationService.createEscalationTracker(createdIncident.id, monitor, rule);
+				}
+
+				return createdIncident;
 			}
 		}
 
@@ -102,7 +114,9 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			const resolved = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			await this.escalationService.acknowledgeIncident(activeIncident.id, activeIncident.teamId);
+			return resolved;
 		}
 
 		return null;
@@ -154,6 +168,7 @@ export class IncidentService implements IIncidentService {
 			incident.endTime = Date.now().toString();
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
+			await this.escalationService.acknowledgeIncident(incidentId, teamId);
 
 			this.logger.debug({
 				service: SERVICE_NAME,

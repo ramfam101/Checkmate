@@ -2,6 +2,7 @@ const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
+import type { IEscalationService } from "@/service/infrastructure/escalationService.js";
 import {
 	ICheckService,
 	INetworkService,
@@ -66,6 +67,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationService: IEscalationService;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +85,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationService: IEscalationService
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +104,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -177,6 +181,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+				await this.escalationService.processEscalations(statusChangeResult.monitor);
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
