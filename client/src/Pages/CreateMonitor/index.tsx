@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
@@ -161,6 +161,16 @@ const getGeneralSettingsConfig = (
 	return configs[type] || configs.http;
 };
 
+const DRAFT_STORAGE_PREFIX = "checkmate.monitorDraft";
+
+const buildDraftKey = ({
+	monitorId,
+	defaultType,
+}: {
+	monitorId?: string;
+	defaultType: MonitorType;
+}) => `${DRAFT_STORAGE_PREFIX}:${monitorId ?? "new"}:${defaultType}`;
+
 const CreateMonitorPage = () => {
 	const theme = useTheme();
 	const { t } = useTranslation();
@@ -203,10 +213,108 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { isDirty } = form.formState;
+	const hasRestoredDraftRef = useRef(false);
+
+	const draftKey = useMemo(
+		() =>
+			buildDraftKey({
+				monitorId,
+				defaultType,
+			}),
+		[monitorId, defaultType]
+	);
+
+	const removeDraft = useCallback(() => {
+		try {
+			localStorage.removeItem(draftKey);
+		} catch {
+			// Ignore localStorage failures and keep form usable.
+		}
+	}, [draftKey]);
+
+	const navigateToList = useCallback(() => {
+		if (pageType === "pagespeed") {
+			navigate("/pagespeed");
+		} else if (pageType === "hardware") {
+			navigate("/infrastructure");
+		} else {
+			navigate("/uptime");
+		}
+	}, [navigate, pageType]);
 
 	useEffect(() => {
 		form.reset(defaults);
+		hasRestoredDraftRef.current = false;
 	}, [defaults, form]);
+
+	useEffect(() => {
+		if (hasRestoredDraftRef.current) {
+			return;
+		}
+
+		try {
+			const savedDraft = localStorage.getItem(draftKey);
+			if (!savedDraft) {
+				hasRestoredDraftRef.current = true;
+				return;
+			}
+
+			const parsedDraft = JSON.parse(savedDraft) as Partial<MonitorFormData>;
+			form.reset({
+				...defaults,
+				...parsedDraft,
+			} as MonitorFormData);
+		} catch {
+			// Ignore corrupted drafts and continue with defaults.
+		}
+
+		hasRestoredDraftRef.current = true;
+	}, [defaults, draftKey, form]);
+
+	useEffect(() => {
+		if (!hasRestoredDraftRef.current) {
+			return;
+		}
+
+		let timeoutId: ReturnType<typeof setTimeout> | null = null;
+		const subscription = watch((values) => {
+			if (timeoutId) {
+				clearTimeout(timeoutId);
+			}
+
+			timeoutId = setTimeout(() => {
+				try {
+					localStorage.setItem(draftKey, JSON.stringify(values));
+				} catch {
+					// Ignore localStorage failures and keep form usable.
+				}
+			}, 600);
+		});
+
+		return () => {
+			subscription.unsubscribe();
+			if (timeoutId) {
+				clearTimeout(timeoutId);
+			}
+		};
+	}, [watch, draftKey]);
+
+	useEffect(() => {
+		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+			if (!isDirty) {
+				return;
+			}
+
+			event.preventDefault();
+			event.returnValue = "";
+		};
+
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		return () => {
+			window.removeEventListener("beforeunload", handleBeforeUnload);
+		};
+	}, [isDirty]);
 
 	const watchedType = watch("type") as MonitorType;
 
@@ -227,6 +335,7 @@ const CreateMonitorPage = () => {
 	const isSubmitting = isCreating || isUpdating;
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [isUnsavedDialogOpen, setIsUnsavedDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
 	const handleDeleteClick = () => {
@@ -237,18 +346,30 @@ const CreateMonitorPage = () => {
 		if (!monitorId) return;
 		await deleteFn(`/monitors/${monitorId}`);
 		setIsDeleteDialogOpen(false);
-		// Navigate based on page type
-		if (pageType === "pagespeed") {
-			navigate("/pagespeed");
-		} else if (pageType === "hardware") {
-			navigate("/infrastructure");
-		} else {
-			navigate("/uptime");
-		}
+		removeDraft();
+		navigateToList();
 	};
 
 	const handleDeleteCancel = () => {
 		setIsDeleteDialogOpen(false);
+	};
+
+	const handleCancelClick = () => {
+		if (isDirty) {
+			setIsUnsavedDialogOpen(true);
+			return;
+		}
+		navigateToList();
+	};
+
+	const handleUnsavedCancel = () => {
+		setIsUnsavedDialogOpen(false);
+	};
+
+	const handleDiscardChanges = () => {
+		removeDraft();
+		setIsUnsavedDialogOpen(false);
+		navigateToList();
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
@@ -260,13 +381,8 @@ const CreateMonitorPage = () => {
 		}
 
 		if (result?.success) {
-			if (pageType === "pagespeed") {
-				navigate("/pagespeed");
-			} else if (pageType === "hardware") {
-				navigate("/infrastructure");
-			} else {
-				navigate("/uptime");
-			}
+			removeDraft();
+			navigateToList();
 		}
 	};
 
@@ -765,6 +881,51 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title="Escalations"
+				subtitle="Resend alerts while a monitor remains down or breached."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable escalated notifications</Typography>
+								</Stack>
+							)}
+						/>
+						<Controller
+							name="escalationInterval"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Select
+									{...field}
+									value={field.value ?? 300000}
+									fieldLabel="Escalation interval"
+									disabled={!watch("escalationEnabled")}
+									error={!!fieldState.error}
+								>
+									<MenuItem value={60000}>Every 1 minute</MenuItem>
+									<MenuItem value={300000}>Every 5 minutes</MenuItem>
+									<MenuItem value={600000}>Every 10 minutes</MenuItem>
+									<MenuItem value={900000}>Every 15 minutes</MenuItem>
+									<MenuItem value={1800000}>Every 30 minutes</MenuItem>
+								</Select>
+							)}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1046,8 +1207,16 @@ const CreateMonitorPage = () => {
 
 			<Stack
 				direction="row"
+				spacing={theme.spacing(SPACING.MD)}
 				justifyContent="flex-end"
 			>
+				<Button
+					type="button"
+					variant="outlined"
+					onClick={handleCancelClick}
+				>
+					{t("common.buttons.cancel")}
+				</Button>
 				<Button
 					loading={isSubmitting}
 					type="submit"
@@ -1064,6 +1233,16 @@ const CreateMonitorPage = () => {
 				onConfirm={handleDeleteConfirm}
 				onCancel={handleDeleteCancel}
 				loading={isDeleting}
+			/>
+			<Dialog
+				open={isUnsavedDialogOpen}
+				title="Discard unsaved changes?"
+				content="You have unsaved changes. If you leave now, your draft will be lost."
+				onConfirm={handleDiscardChanges}
+				onCancel={handleUnsavedCancel}
+				confirmColor="error"
+				confirmText="Discard"
+				cancelText="Keep editing"
 			/>
 		</BasePage>
 	);

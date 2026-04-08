@@ -33,6 +33,7 @@ export class NotificationsService implements INotificationsService {
 	private pagerDutyProvider: INotificationProvider;
 	private matrixProvider: INotificationProvider;
 	private teamsProvider: INotificationProvider;
+	private telegramProvider: INotificationProvider;
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
@@ -47,6 +48,7 @@ export class NotificationsService implements INotificationsService {
 		pagerDutyProvider: INotificationProvider,
 		matrixProvider: INotificationProvider,
 		teamsProvider: INotificationProvider,
+		telegramProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
 		notificationMessageBuilder: INotificationMessageBuilder
@@ -60,6 +62,7 @@ export class NotificationsService implements INotificationsService {
 		this.pagerDutyProvider = pagerDutyProvider;
 		this.matrixProvider = matrixProvider;
 		this.teamsProvider = teamsProvider;
+		this.telegramProvider = telegramProvider;
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
@@ -97,6 +100,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.emailProvider.sendMessage!(notification, notificationMessage);
 			case "teams":
 				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
+			case "telegram":
+				return await this.telegramProvider.sendMessage!(notification, notificationMessage);
 			default:
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
@@ -138,7 +143,32 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const sent = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		if (sent) {
+			await this.updateEscalationState(monitor, decision);
+		}
+		return sent;
+	};
+
+	private updateEscalationState = async (monitor: Monitor, decision: MonitorActionDecision): Promise<void> => {
+		const shouldStampEscalation =
+			decision.notificationReason === "escalation" ||
+			((decision.notificationReason === "status_change" || decision.notificationReason === "threshold_breach") &&
+				(monitor.status === "down" || monitor.status === "breached"));
+
+		if (shouldStampEscalation) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				lastEscalationAt: new Date().toISOString(),
+			});
+			return;
+		}
+
+		const shouldResetEscalation = decision.notificationReason === "status_change" && monitor.status === "up";
+		if (shouldResetEscalation) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				lastEscalationAt: null,
+			});
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
@@ -157,6 +187,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.webhookProvider.sendTestAlert(notification);
 			case "teams":
 				return await this.teamsProvider.sendTestAlert(notification);
+			case "telegram":
+				return await this.telegramProvider.sendTestAlert(notification);
 			default:
 				return false;
 		}
