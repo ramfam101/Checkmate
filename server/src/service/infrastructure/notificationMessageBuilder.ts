@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, clientHost: string, delayMinutes: number): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -80,6 +81,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_down_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -97,6 +99,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_down_escalation":
+				return this.buildEscalationContent(monitor, 0);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -164,6 +168,44 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Thresholds Resolved: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" thresholds have returned to normal.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	buildEscalationMessage(monitor: Monitor, clientHost: string, delayMinutes: number): NotificationMessage {
+		return {
+			type: "monitor_down_escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: this.buildEscalationContent(monitor, delayMinutes),
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "status_change",
+			},
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, delayMinutes: number): NotificationContent {
+		const title = `ESCALATION: Monitor Down: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has remained down for ${delayMinutes} minute(s) after the initial alert.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down (escalated)`,
+			`Type: ${monitor.type}`,
+			`Escalation Delay: ${delayMinutes} minute(s)`,
+		];
 
 		return {
 			title,

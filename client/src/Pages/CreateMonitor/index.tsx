@@ -252,11 +252,22 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const computedEscalationEnabled = Boolean(data.escalation?.channelId) &&
+			Number(data.escalation?.delayMinutes ?? 0) >= 1;
+
+		const payload: MonitorFormData = {
+			...data,
+			escalation: {
+				...data.escalation,
+				enabled: computedEscalationEnabled,
+			},
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -758,12 +769,97 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										{/* Escalation moved to dedicated section below notifications */}
+									</Stack>
 								</Stack>
 							);
 						}}
 					/>
 				}
 			/>
+
+					<ConfigBox
+						title={t("pages.createMonitor.form.escalationRules.title")}
+						subtitle={t("pages.createMonitor.form.escalationRules.description")}
+						rightContent={
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Controller
+									name="escalation.delayMinutes"
+									control={control}
+									render={({ field: delayField, fieldState: delayFieldState }) => (
+										<TextField
+											{...delayField}
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalationRules.option.delay.label"
+											)}
+											fullWidth
+											error={!!delayFieldState.error}
+											helperText={delayFieldState.error?.message ?? ""}
+											inputProps={{ min: 1 }}
+											onChange={(e) => delayField.onChange(Number(e.target.value))}
+										/>
+									)}
+								/>
+
+								<Controller
+									name="escalation.channelId"
+									control={control}
+									render={({ field: channelField }) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedEscalationChannel =
+											notificationOptions.find((n) => n.id === channelField.value) ?? null;
+
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<Autocomplete
+													options={notificationOptions}
+													value={selectedEscalationChannel}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: (typeof notificationOptions)[number] | null) => {
+														channelField.onChange(newValue?.id ?? "");
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalationRules.option.channels.label"
+													)}
+												/>
+
+												{selectedEscalationChannel && (
+													<Stack
+														flex={1}
+														width="100%"
+													>
+														<Stack
+															direction="row"
+															alignItems="center"
+															width="100%"
+														>
+															<Typography flexGrow={1}>
+																{selectedEscalationChannel.notificationName}
+															</Typography>
+															<IconButton
+																size="small"
+																onClick={() => channelField.onChange("")}
+																aria-label="Remove escalation notification"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+														</Stack>
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</Stack>
+						}
+					/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

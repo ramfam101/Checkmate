@@ -23,6 +23,7 @@ const SERVICE_NAME = "NotificationsService";
 
 export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
+	private escalationTimers = new Map<string, NodeJS.Timeout>();
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
@@ -128,17 +129,119 @@ export class NotificationsService implements INotificationsService {
 				method: "sendNotifications",
 			});
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+		return {
+			allSucceeded: succeeded === notifications.length,
+			anySucceeded: succeeded > 0,
+		};
+	};
+
+	private clearEscalationTimer = (monitorId: string) => {
+		const existingTimer = this.escalationTimers.get(monitorId);
+		if (!existingTimer) {
+			return;
+		}
+
+		clearTimeout(existingTimer);
+		this.escalationTimers.delete(monitorId);
+	};
+
+	private scheduleEscalation = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> => {
+		const escalationConfig = monitor.escalation;
+		if (!escalationConfig?.enabled) {
+			this.clearEscalationTimer(monitor.id);
+			return;
+		}
+
+		const delayMinutes = escalationConfig.delayMinutes;
+		if (!Number.isFinite(delayMinutes) || delayMinutes <= 0) {
+			this.logger.warn({
+				message: `Skipping escalation for monitor ${monitor.id}: invalid delayMinutes=${delayMinutes}`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalation",
+			});
+			return;
+		}
+
+		this.clearEscalationTimer(monitor.id);
+		const delayMs = delayMinutes * 60 * 1000;
+
+		const timer = setTimeout(async () => {
+			try {
+				const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+				if (currentMonitor.status !== "down") {
+					return;
+				}
+
+				const currentEscalation = currentMonitor.escalation;
+				if (!currentEscalation?.enabled) {
+					return;
+				}
+
+				const escalationChannelId = currentEscalation.channelId?.trim();
+				if (!escalationChannelId) {
+					this.logger.warn({
+						message: `Skipping escalation for monitor ${currentMonitor.id}: no escalation channel configured`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalation",
+					});
+					return;
+				}
+
+				const escalationNotification = await this.notificationsRepository.findById(escalationChannelId, currentMonitor.teamId);
+				if (escalationNotification.type !== "email") {
+					this.logger.warn({
+						message: `Skipping escalation for monitor ${currentMonitor.id}: escalation channel ${escalationChannelId} is not an email notification`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalation",
+					});
+					return;
+				}
+
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+				const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(
+					currentMonitor,
+					clientHost,
+					currentEscalation.delayMinutes
+				);
+
+				await this.send(escalationNotification, currentMonitor, monitorStatusResponse, decision, escalationMessage);
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			} finally {
+				this.escalationTimers.delete(monitor.id);
+			}
+		}, delayMs);
+
+		this.escalationTimers.set(monitor.id, timer);
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
+			this.clearEscalationTimer(monitor.id);
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const sendResult = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		if (monitor.status === "down" && sendResult.anySucceeded) {
+			await this.scheduleEscalation(monitor, monitorStatusResponse, decision);
+		} else {
+			this.clearEscalationTimer(monitor.id);
+		}
+
+		return sendResult.allSucceeded;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
