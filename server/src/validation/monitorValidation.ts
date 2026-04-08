@@ -49,6 +49,11 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const escalationNotificationDelayValidation = z.object({
+	notificationId: z.string().min(1, "Notification ID is required"),
+	delay: z.number().min(1, "Escalation delay must be at least 1 minute"),
+});
+
 export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
@@ -67,6 +72,9 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationNotificationDelays: z.array(escalationNotificationDelayValidation).optional(),
+	escalationDelay: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +97,9 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationNotificationDelays: z.array(escalationNotificationDelayValidation).optional(),
+	escalationDelay: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -144,6 +155,9 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationNotifications: z.array(z.string()).default([]),
+	escalationNotificationDelays: z.array(escalationNotificationDelayValidation).default([]),
+	escalationDelay: z.number().min(1, "Escalation delay must be at least 1 minute").default(3),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

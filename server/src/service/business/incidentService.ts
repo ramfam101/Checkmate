@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -16,6 +17,7 @@ export interface IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null>;
+	handleEscalation(incidentId: string, teamId: string, notificationIds?: string[]): Promise<boolean>;
 	resolveIncident(incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string): Promise<Incident>;
 	getIncidentsByTeam(
 		teamId: string,
@@ -39,24 +41,54 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
 		return IncidentService.SERVICE_NAME;
 	}
+
+	private getEscalationTargets = (monitor: Monitor) => {
+		const fallbackDelay = monitor.escalationDelay && monitor.escalationDelay > 0 ? monitor.escalationDelay : 3;
+		const targetsByNotificationId = new Map<string, number>();
+
+		for (const target of monitor.escalationNotificationDelays ?? []) {
+			if (!target?.notificationId) {
+				continue;
+			}
+
+			const delay = Number(target.delay);
+			if (Number.isFinite(delay) && delay > 0) {
+				targetsByNotificationId.set(target.notificationId, delay);
+			}
+		}
+
+		for (const notificationId of monitor.escalationNotifications ?? []) {
+			if (!targetsByNotificationId.has(notificationId)) {
+				targetsByNotificationId.set(notificationId, fallbackDelay);
+			}
+		}
+
+		return Array.from(targetsByNotificationId.entries()).map(([notificationId, delay]) => ({
+			notificationId,
+			delay,
+		}));
+	};
 
 	handleIncident = async (
 		monitor: Monitor,
@@ -91,7 +123,43 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				// Schedule escalation if configured
+				const escalationTargets = this.getEscalationTargets(monitor);
+				if (escalationTargets.length > 0) {
+					const notificationIdsByDelay = new Map<number, string[]>();
+
+					for (const target of escalationTargets) {
+						const idsForDelay = notificationIdsByDelay.get(target.delay) ?? [];
+						notificationIdsByDelay.set(target.delay, [...idsForDelay, target.notificationId]);
+					}
+
+					for (const [delay, notificationIds] of notificationIdsByDelay.entries()) {
+						const escalationDelayMs = delay * 60 * 1000;
+
+						setTimeout(async () => {
+							try {
+								await this.handleEscalation(createdIncident.id, monitor.teamId, notificationIds);
+							} catch (error: unknown) {
+								this.logger.error({
+									message: `Failed to handle escalation for incident ${createdIncident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "handleIncident",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							}
+						}, escalationDelayMs);
+
+						this.logger.info({
+							message: `Scheduled escalation for incident ${createdIncident.id} in ${delay} minute(s) for ${notificationIds.length} notification(s)`,
+							service: SERVICE_NAME,
+							method: "handleIncident",
+						});
+					}
+				}
+
+				return createdIncident;
 			}
 		}
 
@@ -106,6 +174,123 @@ export class IncidentService implements IIncidentService {
 		}
 
 		return null;
+	};
+
+	handleEscalation = async (incidentId: string, teamId: string, notificationIds?: string[]): Promise<boolean> => {
+		try {
+			// Get the incident
+			const incident = await this.incidentsRepository.findById(incidentId, teamId);
+
+			// Check if escalation was already sent
+			if (incident.escalationSent) {
+				this.logger.info({
+					message: `Escalation already sent for incident ${incidentId}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				return false;
+			}
+
+			// Check if incident is still active
+			if (!incident.status) {
+				this.logger.info({
+					message: `Incident ${incidentId} is no longer active, skipping escalation`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				return false;
+			}
+
+			// Get the monitor
+			const monitor = await this.monitorsRepository.findById(incident.monitorId, teamId);
+
+			const escalationTargets = this.getEscalationTargets(monitor);
+			if (escalationTargets.length === 0) {
+				this.logger.info({
+					message: `No escalation notifications configured for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				return false;
+			}
+
+			const configuredNotificationIds = escalationTargets.map((target) => target.notificationId);
+			const targetNotificationIds = (notificationIds?.length ? notificationIds : configuredNotificationIds).filter((id) =>
+				configuredNotificationIds.includes(id)
+			);
+
+			if (targetNotificationIds.length === 0) {
+				this.logger.info({
+					message: `No matching escalation notifications are due for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				return false;
+			}
+
+			// Create a mock MonitorStatusResponse for escalation (we don't have the actual response)
+			const mockStatusResponse: MonitorStatusResponse = {
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				type: monitor.type,
+				status: monitor.status === "up", // Convert monitor status to boolean
+				code: incident.statusCode || 0,
+				message: incident.message || "Escalation triggered",
+				responseTime: 0,
+			};
+
+			// Create escalation decision
+			const escalationDecision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "status_change", // Use status_change for escalation notifications
+			};
+
+			const finalDelay = Math.max(...escalationTargets.map((target) => target.delay));
+			const finalNotificationIds = escalationTargets
+				.filter((target) => target.delay === finalDelay)
+				.map((target) => target.notificationId);
+			const isFinalEscalationBatch =
+				!notificationIds?.length ||
+				(targetNotificationIds.length === finalNotificationIds.length &&
+					targetNotificationIds.every((id) => finalNotificationIds.includes(id)));
+
+			const success = await this.notificationsService.handleNotifications(
+				{
+					...monitor,
+					escalationNotifications: targetNotificationIds,
+				},
+				mockStatusResponse,
+				escalationDecision,
+				true
+			);
+
+			if (success && isFinalEscalationBatch) {
+				incident.escalationSent = true;
+				incident.escalationTime = Date.now().toString();
+				await this.incidentsRepository.updateById(incident.id, teamId, incident);
+			}
+
+			if (success) {
+				this.logger.info({
+					message: `Escalation notifications sent successfully for incident ${incidentId}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			}
+
+			return success;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error handling escalation for incident ${incidentId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {

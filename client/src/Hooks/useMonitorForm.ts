@@ -7,11 +7,25 @@ interface UseMonitorFormOptions {
 	defaultType?: MonitorType;
 }
 
+const getEscalationNotificationDelayDefaults = (data?: Monitor | null) => {
+	if (data?.escalationNotificationDelays?.length) {
+		return data.escalationNotificationDelays;
+	}
+
+	return (data?.escalationNotifications ?? []).map((notificationId) => ({
+		notificationId,
+		delay: data?.escalationDelay || 3,
+	}));
+};
+
 const getBaseDefaults = (data?: Monitor | null) => ({
 	name: data?.name || "",
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalationNotifications: data?.escalationNotifications || [],
+	escalationNotificationDelays: getEscalationNotificationDelayDefaults(data),
+	escalationDelay: data?.escalationDelay || 3,
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
