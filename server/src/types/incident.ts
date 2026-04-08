@@ -16,6 +16,7 @@ export interface Incident {
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;
+	escalationsSent?: number[] | null; // Array of duration minutes for sent escalations
 	createdAt: string;
 	updatedAt: string;
 }

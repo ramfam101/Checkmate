@@ -223,12 +223,16 @@ export class NotificationsService implements INotificationsService {
 			const durationMinutes = (now - startTime) / (1000 * 60);
 
 			// Find escalated notifications that should be sent based on duration
+			// but haven't been sent yet
+			const alreadySentEscalations = activeIncident.escalationsSent || [];
 			const notificationsToSend = monitor.escalatedNotifications.filter(
-				(escNotif) => durationMinutes >= escNotif.durationMinutes
+				(escNotif) =>
+					durationMinutes >= escNotif.durationMinutes &&
+					!alreadySentEscalations.includes(escNotif.durationMinutes)
 			);
 
 			if (notificationsToSend.length === 0) {
-				// No escalation thresholds reached yet
+				// No new escalation thresholds reached yet
 				return false;
 			}
 
@@ -245,7 +249,8 @@ export class NotificationsService implements INotificationsService {
 				shouldCreateIncident: false,
 				shouldResolveIncident: false,
 				shouldSendNotification: true,
-				incidentReason: "escalation",
+				incidentReason: null,
+				notificationReason: "escalation",
 			};
 
 			const notificationMessage = this.notificationMessageBuilder.buildMessage(
@@ -277,11 +282,16 @@ export class NotificationsService implements INotificationsService {
 				return false;
 			}
 
+			// Mark escalations as sent in the incident record
+			const sentDurations = notificationsToSend.map(esc => esc.durationMinutes);
+			const updatedEscalationsSent = [...alreadySentEscalations, ...sentDurations];
+			await this.incidentsRepository.updateEscalationsSent(activeIncident.id, updatedEscalationsSent);
+
 			this.logger.info({
 				message: `Escalated notifications sent: ${succeeded}/${notifications.length}`,
 				service: SERVICE_NAME,
 				method: "handleEscalatedNotifications",
-				details: { monitorId: monitor.id, durationMinutes: Math.floor(durationMinutes) },
+				details: { monitorId: monitor.id, durationMinutes: Math.floor(durationMinutes), sentEscalations: sentDurations },
 			});
 
 			return true;

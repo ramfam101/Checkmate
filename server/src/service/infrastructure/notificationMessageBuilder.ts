@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision.notificationReason);
 
 		return {
 			type,
@@ -93,24 +93,27 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationReason?: string): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, notificationReason);
 			case "monitor_up":
-				return this.buildMonitorUpContent(monitor);
+				return this.buildMonitorUpContent(monitor, notificationReason);
 			case "threshold_breach":
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
 			default:
-				return this.buildDefaultContent(monitor);
+				return this.buildDefaultContent(monitor, notificationReason);
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
+	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationReason?: string): NotificationContent {
+		const isEscalation = notificationReason === "escalation";
+		const title = isEscalation ? `Escalation Alert: ${monitor.name}` : `Monitor Down: ${monitor.name}`;
+		const summary = isEscalation
+			? `Monitor "${monitor.name}" remains down and an escalation alert has been triggered.`
+			: `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
 
 		// Add response code if available
@@ -131,7 +134,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildMonitorUpContent(monitor: Monitor): NotificationContent {
+	private buildMonitorUpContent(monitor: Monitor, _notificationReason?: string): NotificationContent {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
@@ -173,10 +176,13 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildDefaultContent(monitor: Monitor): NotificationContent {
+	private buildDefaultContent(monitor: Monitor, notificationReason?: string): NotificationContent {
+		const isEscalation = notificationReason === "escalation";
 		return {
-			title: `Monitor: ${monitor.name}`,
-			summary: `Status update for monitor "${monitor.name}".`,
+			title: isEscalation ? `Escalated Alert: ${monitor.name}` : `Monitor: ${monitor.name}`,
+			summary: isEscalation
+				? `Escalation notification for monitor "${monitor.name}".`
+				: `Status update for monitor "${monitor.name}".`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
 			timestamp: new Date(),
 		};
