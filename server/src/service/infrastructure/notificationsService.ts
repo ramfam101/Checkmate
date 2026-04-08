@@ -36,6 +36,7 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private pendingEscalations: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -107,14 +108,26 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision, isEscalation = false) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		let notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		if (isEscalation && notificationMessage.type === "monitor_down") {
+			notificationMessage = {
+				...notificationMessage,
+				type: "monitor_still_down",
+				content: {
+					...notificationMessage.content,
+					title: `Monitor Still Down: ${monitor.name}`,
+					summary: `Monitor "${monitor.name}" is STILL down and has not recovered.`,
+				},
+			};
+		}
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -138,7 +151,40 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const result = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		// Schedule escalation notification if monitor is down and escalation is configured
+		if (!monitorStatusResponse.status && monitor.escalationDelay && monitor.escalationNotifications?.length) {
+			// Cancel any existing pending escalation for this monitor before scheduling a new one
+			const existing = this.pendingEscalations.get(monitor.id);
+			if (existing) {
+				clearTimeout(existing);
+			}
+			const timer = setTimeout(async () => {
+				this.pendingEscalations.delete(monitor.id);
+				try {
+					const current = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+					if (current.status === "down") {
+						await this.sendNotifications(
+							{ ...current, notifications: current.escalationNotifications ?? [] },
+							monitorStatusResponse,
+							decision,
+							true
+						);
+					}
+				} catch (error) {
+					this.logger.error({
+						message: "Failed to send escalation notification",
+						service: SERVICE_NAME,
+						method: "handleNotifications",
+						details: error instanceof Error ? { message: error.message } : undefined,
+					});
+				}
+			}, monitor.escalationDelay);
+			this.pendingEscalations.set(monitor.id, timer);
+		}
+
+		return result;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
