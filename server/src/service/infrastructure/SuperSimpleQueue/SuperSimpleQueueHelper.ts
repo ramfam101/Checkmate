@@ -23,13 +23,16 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import type { ISuperSimpleQueue } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	setQueue(queue: ISuperSimpleQueue): void;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -38,7 +41,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -66,6 +69,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private queue: ISuperSimpleQueue | null = null;
 
 	constructor(
 		logger: ILogger,
@@ -105,6 +109,10 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 	get serviceName() {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
+	}
+
+	setQueue(queue: ISuperSimpleQueue): void {
+		this.queue = queue;
 	}
 
 	getHeartbeatJob = () => {
@@ -177,6 +185,26 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Schedule escalation notification if conditions met (best effort, don't wait)
+				if (
+					statusChangeResult.statusChanged &&
+					statusChangeResult.monitor.status === "down" &&
+					statusChangeResult.monitor.escalationDelayMinutes &&
+					statusChangeResult.monitor.escalationDelayMinutes > 0 &&
+					statusChangeResult.monitor.escalationTargets &&
+					statusChangeResult.monitor.escalationTargets.length > 0 &&
+					this.queue
+				) {
+					this.queue.scheduleEscalationNotification(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error scheduling escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -350,6 +378,77 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				// Don't throw - geo check failures shouldn't crash the job scheduler
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async (monitor: Monitor) => {
+			try {
+				const monitorId = monitor.id;
+				const teamId = monitor.teamId;
+
+				if (!monitorId) {
+					throw new AppError({ message: "No monitor id", service: SERVICE_NAME, method: "getEscalationJob" });
+				}
+
+				// Step 1: Fetch the latest monitor state to ensure we have current status
+				const latestMonitor = await this.monitorsRepository.findById(monitorId, teamId);
+				if (!latestMonitor) {
+					this.logger.warn({
+						message: `Monitor ${monitorId} not found when checking escalation condition`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+					return;
+				}
+
+				// Step 2: Only proceed if monitor is STILL down
+				if (latestMonitor.status !== "down") {
+					this.logger.debug({
+						message: `Monitor ${monitorId} is no longer down, skipping escalation notification`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+						details: { currentStatus: latestMonitor.status },
+					});
+					return;
+				}
+
+				// Step 3: Build a minimal notification message for escalation
+				const escalationStatusResponse = {
+					monitorId: latestMonitor.id,
+					teamId: latestMonitor.teamId,
+					type: latestMonitor.type,
+					status: false,
+					code: 0,
+					message: "Escalation notification triggered",
+					responseTime: 0,
+				};
+				const decision = {
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: true,
+					incidentReason: null,
+					notificationReason: "escalation" as const,
+				};
+
+				// Step 4: Send escalation notification (using the configured notification channels)
+				const success = await this.notificationsService.handleEscalationNotification(latestMonitor, escalationStatusResponse, decision);
+
+				this.logger.info({
+					message: `Escalation notification job executed for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					details: { success },
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				// Don't throw - escalation failures shouldn't crash the job scheduler
 			}
 		};
 	};

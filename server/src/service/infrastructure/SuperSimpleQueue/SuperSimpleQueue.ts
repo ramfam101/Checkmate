@@ -47,6 +47,7 @@ export interface ISuperSimpleQueue {
 	pauseJob(monitor: Monitor): Promise<void>;
 	resumeJob(monitor: Monitor): Promise<void>;
 	updateJob(monitor: Monitor): Promise<void>;
+	scheduleEscalationNotification(monitor: Monitor): Promise<void>;
 	shutdown(): Promise<void>;
 	getMetrics(): Promise<QueueMetrics>;
 	getJobs(): Promise<QueueJobSummary[]>;
@@ -89,8 +90,12 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 		try {
 			this.scheduler.start();
 
+			// Set queue reference in helper for escalation scheduling
+			this.helper.setQueue(this);
+
 			this.scheduler.addTemplate("monitor-job", this.helper.getHeartbeatJob());
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
+			this.scheduler.addTemplate("escalation-job", this.helper.getEscalationJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
 			const monitors = await this.monitorsRepository.findAll();
@@ -276,6 +281,49 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 				lastRunTook: job.lockedAt ? null : (job.lastFinishedAt ?? 0) - (job.lastRunAt ?? 0),
 				lastFailedAt: job.lastFailedAt ?? null,
 			};
+		});
+	};
+
+	scheduleEscalationNotification = async (monitor: Monitor) => {
+		const escalationDelayMinutes = Number(monitor.escalationDelayMinutes ?? 0);
+		if (!Number.isFinite(escalationDelayMinutes) || escalationDelayMinutes <= 0) {
+			this.logger.debug({
+				message: "Escalation delay is invalid or not configured",
+				service: SERVICE_NAME,
+				method: "scheduleEscalationNotification",
+				details: { monitorId: monitor.id, escalationDelayMinutes: monitor.escalationDelayMinutes },
+			});
+			return;
+		}
+
+		if (!monitor.notifications || monitor.notifications.length === 0) {
+			this.logger.debug({
+				message: "No notifications configured for escalation",
+				service: SERVICE_NAME,
+				method: "scheduleEscalationNotification",
+				details: { monitorId: monitor.id },
+			});
+			return;
+		}
+
+		const escalationJobId = `${monitor.id}-escalation`;
+		const delayMs = escalationDelayMinutes * 60 * 1000;
+		const startAtTime = Date.now() + delayMs;
+
+		this.scheduler.addJob({
+			id: escalationJobId,
+			template: "escalation-job",
+			startAt: startAtTime,
+			repeat: 0, // Run once
+			active: monitor.isActive,
+			data: monitor,
+		});
+
+		this.logger.debug({
+			message: `Scheduled escalation notification for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalationNotification",
+			details: { escalationDelayMinutes, targetCount: monitor.escalationTargets?.length ?? 0 },
 		});
 	};
 
