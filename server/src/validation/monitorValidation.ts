@@ -3,6 +3,10 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const escalationSchema = z.object({
+	delayMinutes: z.number().min(1, "Escalation delay must be at least 1 minute"),
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -78,6 +82,7 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalations: z.array(escalationSchema).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +112,7 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalations: z.array(escalationSchema).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
