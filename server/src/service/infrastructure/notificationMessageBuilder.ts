@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalated notification has highest priority
+		if (decision.shouldSendEscalatedNotification) {
+			return "escalated";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalated":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,6 +109,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalated":
+				return this.buildEscalatedContent(monitor, monitorStatusResponse);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
@@ -164,6 +172,29 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Thresholds Resolved: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" thresholds have returned to normal.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalatedContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `ESCALATED: Monitor Still Down - ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		const details = [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`, `This is an ESCALATED notification`];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
 
 		return {
 			title,

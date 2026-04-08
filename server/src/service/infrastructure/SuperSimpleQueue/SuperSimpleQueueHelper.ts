@@ -37,6 +37,7 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalatedNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -154,10 +155,10 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
+				if (decision.shouldSendNotification || decision.shouldSendEscalatedNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -418,7 +419,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private evaluateMonitorAction = async (statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> => {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -426,11 +427,29 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalatedNotification: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
 		if (!statusChanged) {
+			// Even if status didn't change, check for escalation if monitor is down
+			if ((monitor.status === "down" || monitor.status === "breached") && monitor.escalatedNotifications && monitor.escalatedNotifications.length > 0) {
+				try {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+					if (activeIncident) {
+						const incidentDuration = Date.now() - new Date(activeIncident.startTime).getTime();
+						const escalationThreshold = (monitor.escalationDelay ?? 30) * 60 * 1000; // minutes to milliseconds
+						decision.shouldSendEscalatedNotification = incidentDuration > escalationThreshold;
+					}
+				} catch (error) {
+					this.logger.warn({
+						message: `Error checking for escalation: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "evaluateMonitorAction",
+					});
+				}
+			}
 			return decision;
 		}
 
