@@ -37,6 +37,7 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldEscalate: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -155,6 +156,27 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
+				
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+				if (activeIncident && !activeIncident.escalationSentAt && statusChangeResult.monitor.escalationDelay > 0) {
+					const timeSinceDown = Date.now() - parseInt(activeIncident.startTime);
+					console.log(`Time since down: ${timeSinceDown} ms, Escalation delay: ${statusChangeResult.monitor.escalationDelay} minutes`);
+					if (timeSinceDown >= (statusChangeResult.monitor.escalationDelay * 60000)) {
+						decision.shouldEscalate = true;
+					}
+				}
+				
+				if (decision.shouldEscalate){
+					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, { ...decision, shouldSendNotification: true }).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+					await this.incidentsRepository.updateById(activeIncident!.id, teamId, { escalationSentAt: new Date().toISOString() });
+				}
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
@@ -426,6 +448,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldEscalate: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
