@@ -12,6 +12,7 @@ import {
 	type IGeoChecksService,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +39,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +178,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications for active incidents
+				void this.handleEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +198,43 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private handleEscalation = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		if (!monitor.escalation) {
+			return;
+		}
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalationNotifiedAt) {
+			return;
+		}
+
+		const startedAt = new Date(activeIncident.startTime).getTime();
+		const elapsedMinutes = Math.floor((Date.now() - startedAt) / 60000);
+		if (elapsedMinutes < monitor.escalation.afterMinutes) {
+			return;
+		}
+
+		const sent = await this.notificationsService.sendEscalationNotification(
+			monitor,
+			monitorStatusResponse,
+			monitor.escalation.notificationId,
+			monitor.escalation.afterMinutes
+		);
+
+		if (!sent) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			...activeIncident,
+			escalationNotifiedAt: new Date().toISOString(),
+		});
 	};
 
 	getCleanupOrphanedJob = () => {

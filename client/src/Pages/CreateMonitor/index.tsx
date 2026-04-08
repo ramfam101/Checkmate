@@ -212,6 +212,14 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
+	);
 
 	useEffect(() => {
 		clearErrors();
@@ -705,11 +713,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -749,13 +752,109 @@ const CreateMonitorPage = () => {
 																)
 															);
 														}}
-														aria-label="Remove notification"
+														aria-label={t(
+															"pages.createMonitor.form.notifications.removeAriaLabel"
+														)}
 													>
 														<Trash2 size={16} />
 													</IconButton>
 													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalation"
+						control={control}
+						render={({ field }) => {
+							const escalation = field.value ?? { afterMinutes: 5, notificationId: "" };
+							const selectedEscalationChannel = notificationOptions.find(
+								(option) => option.id === escalation.notificationId
+							);
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack
+										direction="column"
+										spacing={theme.spacing(LAYOUT.MD)}
+									>
+										<TextField
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.afterMinutes.label"
+											)}
+											value={escalation.afterMinutes}
+											onWheel={(e) => {
+												e.currentTarget.blur();
+											}}
+											onChange={(e) => {
+												const parsed = Number(e.target.value);
+												field.onChange({
+													...escalation,
+													afterMinutes: Number.isFinite(parsed) ? Math.max(1, parsed) : 1,
+												});
+											}}
+											inputProps={{ min: 1 }}
+										/>
+										<Autocomplete
+											multiple={false}
+											options={notificationOptions}
+											value={selectedEscalationChannel ?? null}
+											getOptionLabel={(option) => option.name}
+											onChange={(
+												_: unknown,
+												newValue: (typeof notificationOptions)[number] | null
+											) => {
+												field.onChange({
+													...escalation,
+													notificationId: newValue?.id ?? "",
+												});
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.channels.label"
+											)}
+										/>
+									</Stack>
+									{selectedEscalationChannel && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											<Stack
+												direction="row"
+												alignItems="center"
+												width="100%"
+											>
+												<Typography flexGrow={1}>
+													{selectedEscalationChannel.notificationName}
+												</Typography>
+												<IconButton
+													size="small"
+													onClick={() => {
+														field.onChange({
+															...escalation,
+															notificationId: "",
+														});
+													}}
+													aria-label={t(
+														"pages.createMonitor.form.escalations.removeAriaLabel"
+													)}
+												>
+													<Trash2 size={16} />
+												</IconButton>
+											</Stack>
 										</Stack>
 									)}
 								</Stack>
@@ -990,7 +1089,9 @@ const CreateMonitorPage = () => {
 																				)
 																			);
 																		}}
-																		aria-label="Remove location"
+																		aria-label={t(
+																			"pages.createMonitor.form.geoChecks.option.locations.removeAriaLabel"
+																		)}
 																	>
 																		<Trash2 size={16} />
 																	</IconButton>

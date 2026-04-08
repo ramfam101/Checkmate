@@ -62,6 +62,12 @@ export const createMonitorBodyValidation = z.object({
 	port: z.number().optional(),
 	isActive: z.boolean().optional(),
 	interval: z.number().optional(),
+	escalation: z
+		.object({
+			afterMinutes: z.number().int().min(1),
+			notificationId: z.string().min(1),
+		})
+		.optional(),
 	cpuAlertThreshold: z.number().optional(),
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
@@ -88,6 +94,12 @@ export const editMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
+	escalation: z
+		.object({
+			afterMinutes: z.number().int().min(1),
+			notificationId: z.string().min(1),
+		})
+		.optional(),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),

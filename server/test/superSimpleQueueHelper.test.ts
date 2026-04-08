@@ -16,6 +16,7 @@ const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimp
 		networkService: { requestStatus: jest.fn() },
 		statusService: statusServiceMock,
 		notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+		sendEscalationNotification: jest.fn().mockResolvedValue(true),
 		checkService: { buildCheck: jest.fn().mockResolvedValue({}) },
 		buffer: { addToBuffer: jest.fn() },
 		incidentService: { handleIncident: jest.fn().mockResolvedValue(undefined) },
@@ -54,6 +55,37 @@ describe("SuperSimpleQueueHelper", () => {
 			const monitor = { id: "m1", teamId: "team" } as Monitor;
 			await job(monitor);
 			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(monitor);
+		});
+
+		it("sends escalation only after the configured duration", async () => {
+			const now = Date.now();
+			const monitor = { id: "m1", teamId: "team", escalation: { afterMinutes: 5, notificationId: "n1" } } as Monitor;
+			const { helper } = createHelper({
+				networkService: { requestStatus: jest.fn().mockResolvedValue({ monitor, status: false, code: 500 }) },
+				statusService: {
+					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor, statusChanged: false, prevStatus: false, code: 500 }),
+				},
+				incidentsRepository: {
+					findActiveByMonitorId: jest.fn().mockResolvedValue({
+						id: "i1",
+						teamId: "team",
+						monitorId: "m1",
+						startTime: new Date(now - 6 * 60000).toISOString(),
+						status: true,
+						escalationNotifiedAt: null,
+					} as never),
+					updateById: jest.fn().mockResolvedValue(undefined),
+				},
+			});
+			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
+			const job = helper.getMonitorJob();
+			await job(monitor);
+			expect(helper["notificationsService"].sendEscalationNotification).toHaveBeenCalledWith(monitor, expect.any(Object), "n1", 5);
+			expect(helper["incidentsRepository"].updateById).toHaveBeenCalledWith(
+				"i1",
+				"team",
+				expect.objectContaining({ escalationNotifiedAt: expect.any(String) })
+			);
 		});
 
 		it("throws when monitor id is missing", async () => {

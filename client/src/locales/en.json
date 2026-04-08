@@ -541,7 +541,21 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
+					"removeAriaLabel": "Remove notification",
 					"title": "Notifications"
+				},
+				"escalations": {
+					"title": "Escalated notifications",
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"removeAriaLabel": "Remove escalation notification",
+					"option": {
+						"afterMinutes": {
+							"label": "Escalate after (minutes)"
+						},
+						"channels": {
+							"label": "Escalation Notification Channel"
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",
@@ -582,6 +596,7 @@
 						"locations": {
 							"label": "Locations",
 							"placeholder": "Select locations",
+							"removeAriaLabel": "Remove location",
 							"options": {
 								"EU": "Europe",
 								"NA": "North America",
