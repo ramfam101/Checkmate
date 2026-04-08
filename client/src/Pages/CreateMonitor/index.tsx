@@ -697,73 +697,136 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			<ConfigBox
-				title={t("pages.createMonitor.form.notifications.title")}
-				subtitle={t("pages.createMonitor.form.notifications.description")}
-				rightContent={
-					<Controller
-						name="notifications"
-						control={control}
-						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
-							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
-							);
-							return (
-								<Stack spacing={theme.spacing(LAYOUT.MD)}>
-									<Autocomplete
-										multiple
-										options={notificationOptions}
-										value={selectedNotifications}
-										getOptionLabel={(option) => option.name}
-										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
-										}}
-										isOptionEqualToValue={(option, value) => option.id === value.id}
-									/>
-									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
-											{selectedNotifications.map((notification, index) => (
-												<Stack
-													direction="row"
-													alignItems="center"
-													key={notification.id}
-													width="100%"
-												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
-													<IconButton
-														size="small"
-														onClick={() => {
-															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
-														}}
-														aria-label="Remove notification"
-													>
-														<Trash2 size={16} />
-													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
-												</Stack>
-											))}
-										</Stack>
-									)}
-								</Stack>
-							);
-						}}
-					/>
-				}
-			/>
+			   <ConfigBox
+				   title={t("pages.createMonitor.form.notifications.title")}
+				   subtitle={t("pages.createMonitor.form.notifications.description")}
+				   rightContent={
+					   <>
+						   <Controller
+							   name="notifications"
+							   control={control}
+							   render={({ field }) => {
+								   // Map notifications to have 'name' property for Autocomplete
+								   const notificationOptions = (notifications ?? []).map((n) => ({
+									   ...n,
+									   name: n.notificationName,
+								   }));
+								   const selectedNotifications = notificationOptions.filter((n) =>
+									   (field.value ?? []).includes(n.id)
+								   );
+								   return (
+									   <Stack spacing={theme.spacing(LAYOUT.MD)}>
+										   <Autocomplete
+											   multiple
+											   options={notificationOptions}
+											   value={selectedNotifications}
+											   getOptionLabel={(option) => option.name}
+											   onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												   field.onChange(newValue.map((n) => n.id));
+											   }}
+											   isOptionEqualToValue={(option, value) => option.id === value.id}
+										   />
+										   {selectedNotifications.length > 0 && (
+											   <Stack
+												   flex={1}
+												   width="100%"
+											   >
+												   {selectedNotifications.map((notification, index) => (
+													   <Stack
+														   direction="row"
+														   alignItems="center"
+														   key={notification.id}
+														   width="100%"
+													   >
+														   <Typography flexGrow={1}>
+															   {notification.notificationName}
+														   </Typography>
+														   <IconButton
+															   size="small"
+															   onClick={() => {
+																   field.onChange(
+																	   (field.value ?? []).filter(
+																		   (id: string) => id !== notification.id
+																	   )
+																   );
+															   }}
+															   aria-label="Remove notification"
+														   >
+															   <Trash2 size={16} />
+														   </IconButton>
+														   {index < selectedNotifications.length - 1 && <Divider />}
+													   </Stack>
+												   ))}
+											   </Stack>
+										   )}
+									   </Stack>
+								   );
+							   }}
+						   />
+						   {/* Escalated Notifications Field */}
+						   <Controller
+							   name="escalatedNotifications"
+							   control={control}
+							   render={({ field }) => {
+								   const notificationOptions = (notifications ?? []).map((n) => ({
+									   ...n,
+									   name: n.notificationName,
+								   }));
+								   const selectedEscalated = notificationOptions.filter((n) =>
+									   (field.value ?? []).includes(n.id)
+								   );
+								   return (
+									   <Stack spacing={theme.spacing(LAYOUT.MD)}>
+										   <Typography variant="subtitle2">
+											   {t("pages.createMonitor.form.notifications.escalatedTitle", "Escalated Notifications")}
+										   </Typography>
+										   <Autocomplete
+											   multiple
+											   options={notificationOptions}
+											   value={selectedEscalated}
+											   getOptionLabel={(option) => option.name}
+											   onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												   field.onChange(newValue.map((n) => n.id));
+											   }}
+											   isOptionEqualToValue={(option, value) => option.id === value.id}
+										   />
+										   {selectedEscalated.length > 0 && (
+											   <Stack flex={1} width="100%">
+												   {selectedEscalated.map((notification, index) => (
+													   <Stack
+														   direction="row"
+														   alignItems="center"
+														   key={notification.id}
+														   width="100%"
+													   >
+														   <Typography flexGrow={1}>
+															   {notification.notificationName}
+														   </Typography>
+														   <IconButton
+															   size="small"
+															   onClick={() => {
+																   field.onChange(
+																	   (field.value ?? []).filter(
+																		   (id: string) => id !== notification.id
+																	   )
+																   );
+															   }}
+															   aria-label="Remove escalated notification"
+														   >
+															   <Trash2 size={16} />
+														   </IconButton>
+														   {index < selectedEscalated.length - 1 && <Divider />}
+													   </Stack>
+												   ))}
+											   </Stack>
+										   )}
+									   </Stack>
+								   );
+							   }}
+						   />
+					   </>
+				   }
+			   />
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

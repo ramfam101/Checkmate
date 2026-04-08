@@ -165,14 +165,16 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
-	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
-		const monitor = await this.monitorsRepository.create(body, teamId, userId);
-		if (!monitor) {
-			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
-		}
 
-		this.jobQueue.addJob(monitor.id, monitor);
-	};
+	       createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<Monitor> => {
+		       // Pass escalatedNotifications if present
+		       const monitor = await this.monitorsRepository.create(body, teamId, userId);
+		       if (!monitor) {
+			       throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
+		       }
+		       this.jobQueue.addJob(monitor.id, monitor);
+		       return monitor;
+	       };
 
 	createMonitors = async (monitors: Array<Monitor>): Promise<Monitor[] | null> => {
 		const createdMonitors = await this.monitorsRepository.createMonitors(monitors);
@@ -436,11 +438,12 @@ export class MonitorService implements IMonitorService {
 		return groups;
 	};
 
-	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
-		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
-		await this.jobQueue.updateJob(editedMonitor);
-		return editedMonitor;
-	};
+	       editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
+		       // Pass escalatedNotifications if present
+		       const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
+		       await this.jobQueue.updateJob(editedMonitor);
+		       return editedMonitor;
+	       };
 
 	updateNotifications = async ({
 		teamId,

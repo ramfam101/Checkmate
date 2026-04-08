@@ -278,12 +278,18 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: undefined,
 		},
-		notifications: [
-			{
-				type: Schema.Types.ObjectId,
-				ref: "Notification",
-			},
-		],
+		   notifications: [
+			   {
+				   type: Schema.Types.ObjectId,
+				   ref: "Notification",
+			   },
+		   ],
+		   escalatedNotifications: [
+			   {
+				   type: Schema.Types.ObjectId,
+				   ref: "Notification",
+			   },
+		   ],
 		secret: {
 			type: String,
 		},
