@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -29,6 +30,7 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	checkAndHandleEscalations(): Promise<void>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -39,19 +41,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -261,6 +266,192 @@ export class IncidentService implements IIncidentService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
+		}
+	};
+
+	/**
+	 * Check for and handle escalations for active incidents that have exceeded their escalation time
+	 */
+	checkAndHandleEscalations = async (): Promise<void> => {
+		try {
+			// Get all active incidents
+			const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+
+			this.logger.info({
+				message: `Checking ${activeIncidents.length} active incidents for escalation`,
+				service: SERVICE_NAME,
+				method: "checkAndHandleEscalations",
+			});
+
+			for (const incident of activeIncidents) {
+				// Get the monitor for this incident
+				const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+				if (!monitor) {
+					this.logger.warn({
+						message: `Monitor ${incident.monitorId} not found for incident ${incident.id}`,
+						service: SERVICE_NAME,
+						method: "checkAndHandleEscalations",
+					});
+					continue;
+				}
+
+				// Check if escalation is configured for this monitor
+				if (!monitor.escalationAfterMinutes) {
+					this.logger.debug({
+						message: `Escalation not configured for monitor ${monitor.name} (after: ${monitor.escalationAfterMinutes})`,
+						service: SERVICE_NAME,
+						method: "checkAndHandleEscalations",
+					});
+					continue;
+				}
+
+				// Calculate how long the incident has been active (in minutes)
+				const incidentStartTime = new Date(incident.startTime).getTime();
+				const currentTime = Date.now();
+				const incidentDurationMinutes = (currentTime - incidentStartTime) / (1000 * 60);
+
+				this.logger.debug({
+					message: `Incident ${incident.id} on monitor ${monitor.name} has been active for ${incidentDurationMinutes.toFixed(1)} minutes (escalation after: ${monitor.escalationAfterMinutes})`,
+					service: SERVICE_NAME,
+					method: "checkAndHandleEscalations",
+				});
+
+				// Check if escalation time has been exceeded
+				if (incidentDurationMinutes >= monitor.escalationAfterMinutes) {
+					// Check if escalation notifications have already been sent
+					const hasEscalated = incident.escalatedAt;
+
+					this.logger.debug({
+						message: `Incident ${incident.id} has exceeded escalation time. Already escalated: ${!!hasEscalated}`,
+						service: SERVICE_NAME,
+						method: "checkAndHandleEscalations",
+					});
+
+					if (!hasEscalated && monitor.escalationNotifications && monitor.escalationNotifications.length > 0) {
+						this.logger.info({
+							message: `🚨 SENDING ESCALATION: Incident ${incident.id} on monitor ${monitor.name} active for ${incidentDurationMinutes.toFixed(1)} minutes (threshold: ${monitor.escalationAfterMinutes}m). Using ${monitor.escalationNotifications.length} notification channels`,
+							service: SERVICE_NAME,
+							method: "checkAndHandleEscalations",
+							details: {
+								incidentId: incident.id,
+								monitorId: monitor.id,
+								duration: incidentDurationMinutes.toFixed(1),
+								threshold: monitor.escalationAfterMinutes,
+								channels: monitor.escalationNotifications,
+							},
+						});
+
+						// Send escalation notifications
+						await this.sendEscalationNotifications(monitor, incident);
+
+						// Mark incident as escalated
+						await this.incidentsRepository.updateById(incident.id, incident.teamId, {
+							escalatedAt: new Date().toISOString(),
+						});
+
+						this.logger.info({
+							message: `✅ Escalation notifications sent successfully for incident ${incident.id}`,
+							service: SERVICE_NAME,
+							method: "checkAndHandleEscalations",
+							details: { incidentId: incident.id, monitorId: monitor.id },
+						});
+					} else if (!hasEscalated && (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0)) {
+						this.logger.warn({
+							message: `⚠️ Monitor ${monitor.name} has escalation enabled but NO escalation notification channels configured. Escalation will not be sent.`,
+							service: SERVICE_NAME,
+							method: "checkAndHandleEscalations",
+							details: {
+								monitorId: monitor.id,
+								escalationAfterMinutes: monitor.escalationAfterMinutes,
+								escalationNotificationsCount: monitor.escalationNotifications?.length ?? 0,
+							},
+						});
+					}
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "checkAndHandleEscalations",
+				message: error instanceof Error ? error.message : "Unknown error",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
+	/**
+	 * Send escalation notifications for an incident
+	 */
+	private sendEscalationNotifications = async (monitor: Monitor, incident: Incident): Promise<void> => {
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+			this.logger.warn({
+				message: `❌ No escalation notifications configured for monitor ${monitor.name}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+			return;
+		}
+
+		this.logger.info({
+			message: `📧 Processing escalation notifications for monitor ${monitor.name}`,
+			service: SERVICE_NAME,
+			method: "sendEscalationNotifications",
+			details: {
+				monitorId: monitor.id,
+				notificationCount: monitor.escalationNotifications.length,
+				notificationIds: monitor.escalationNotifications,
+			},
+		});
+
+		const escalationStatusResponse = {
+			monitorId: monitor.id,
+			teamId: monitor.teamId,
+			type: monitor.type,
+			status: false, // Incident is still active
+			code: incident.statusCode || 0,
+			message: `ESCALATION: Incident has been active for ${monitor.escalationAfterMinutes} minutes`,
+			responseTime: 0,
+		};
+
+		const escalationDecision = {
+			shouldSendNotification: true,
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			incidentReason: "escalation" as const,
+			notificationReason: "escalation" as const,
+		};
+
+		const escalationMonitor = {
+			...monitor,
+			notifications: monitor.escalationNotifications,
+		};
+
+		this.logger.debug({
+			message: `escalationMonitor.notifications set to [${escalationMonitor.notifications.join(", ")}]`,
+			service: SERVICE_NAME,
+			method: "sendEscalationNotifications",
+		});
+
+		try {
+			this.logger.info({
+				message: `Calling notificationsService.handleNotifications for escalation...`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+				details: { decision: escalationDecision },
+			});
+			await this.notificationsService.handleNotifications(escalationMonitor, escalationStatusResponse, escalationDecision);
+			this.logger.info({
+				message: `✅ Escalation notifications sent successfully for monitor ${monitor.name}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `❌ Failed to send escalation notifications for monitor ${monitor.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 		}
 	};
 }
