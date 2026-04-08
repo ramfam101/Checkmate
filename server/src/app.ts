@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -102,7 +103,15 @@ export const createApp = ({
 
 	// FE routes
 	app.get("*", (req, res) => {
-		res.sendFile(path.join(frontendPath, "index.html"));
+		const indexPath = path.join(frontendPath, "index.html");
+		if (fs.existsSync(indexPath)) {
+			res.sendFile(indexPath);
+		} else {
+			res.status(404).json({
+				msg: "Frontend build missing",
+				frontendPath,
+			});
+		}
 	});
 	app.use(handleErrors);
 	return app;

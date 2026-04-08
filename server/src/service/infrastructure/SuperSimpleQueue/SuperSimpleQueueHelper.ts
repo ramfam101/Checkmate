@@ -168,6 +168,33 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				// Step 6b. Handle escalation notifications
+				if (monitor.escalationRetries !== undefined && monitor.escalationRetries > 0 && (monitor.escalationNotifications?.length ?? 0) > 0) {
+					const prevStatus = statusChangeResult.prevStatus;
+					const newStatus = statusChangeResult.monitor.status;
+
+					if (newStatus === "down") {
+						// Monitor is down — increment escalation counter
+						await this.monitorsRepository.incrementEscalationCounter(monitorId, teamId);
+						const updatedMonitor = await this.monitorsRepository.findById(monitorId, teamId);
+						const counter = updatedMonitor.escalationCounter ?? 0;
+
+						if (counter >= monitor.escalationRetries) {
+							this.notificationsService.handleEscalationNotifications(updatedMonitor, status).catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending escalation notifications for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+						}
+					} else if (prevStatus === "down" && newStatus === "up") {
+						// Monitor recovered — reset escalation counter
+						await this.monitorsRepository.resetEscalationCounter(monitorId, teamId);
+					}
+				}
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({

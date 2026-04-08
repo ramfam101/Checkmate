@@ -765,6 +765,110 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationRetries"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value === 0 ? "" : field.value}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? 0 : Number(val));
+									}}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delayMinutes")}
+									placeholder={t("pages.createMonitor.form.escalation.option.delayPlaceholder")}
+									inputProps={{ min: 0, max: 10 }}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Stack spacing={theme.spacing(LAYOUT.SM)}>
+							<Typography
+								variant="body2"
+								sx={{ fontWeight: 500 }}
+							>
+								{t("pages.createMonitor.form.escalation.option.notifications")}:
+							</Typography>
+							<Controller
+								name="escalationNotifications"
+								control={control}
+								render={({ field }) => {
+									const notificationOptions = (notifications ?? []).map((n) => ({
+										...n,
+										name: n.notificationName,
+									}));
+									const selectedNotifications = notificationOptions.filter((n) =>
+										(field.value ?? []).includes(n.id)
+									);
+									return (
+										<Stack spacing={theme.spacing(LAYOUT.SM)}>
+											<Autocomplete
+												multiple
+												options={notificationOptions}
+												value={selectedNotifications}
+												getOptionLabel={(option) => option.name}
+												onChange={(_: unknown, newValue: typeof notificationOptions) => {
+													field.onChange(newValue.map((n) => n.id));
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+											/>
+											{selectedNotifications.length > 0 && (
+												<Stack
+													flex={1}
+													width="100%"
+													spacing={theme.spacing(SPACING.XS)}
+												>
+													{selectedNotifications.map((notification) => (
+														<Stack
+															direction="row"
+															alignItems="center"
+															justifyContent="space-between"
+															key={notification.id}
+															width="100%"
+															sx={{
+																padding: theme.spacing(SPACING.SM),
+																borderRadius: theme.shape.borderRadius,
+																backgroundColor: theme.palette.action.hover,
+															}}
+														>
+															<Typography variant="body2">
+																{notification.notificationName}
+															</Typography>
+															<IconButton
+																size="small"
+																onClick={() => {
+																	field.onChange(
+																		(field.value ?? []).filter(
+																			(id: string) => id !== notification.id
+																		)
+																	);
+																}}
+																aria-label="Remove notification"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+														</Stack>
+													))}
+												</Stack>
+											)}
+										</Stack>
+									);
+								}}
+							/>
+						</Stack>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

@@ -29,6 +29,8 @@ export interface IMonitorsRepository {
 
 	// update
 	updateById(monitorId: string, teamId: string, updates: Partial<Monitor>): Promise<Monitor>;
+	incrementEscalationCounter(monitorId: string, teamId: string): Promise<void>;
+	resetEscalationCounter(monitorId: string, teamId: string): Promise<void>;
 	togglePauseById(monitorId: string, teamId: string): Promise<Monitor>;
 	// delete
 	deleteById(monitorId: string, teamId: string): Promise<Monitor>;

@@ -182,6 +182,14 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return this.toEntity(updatedMonitor);
 	};
 
+	incrementEscalationCounter = async (monitorId: string, teamId: string): Promise<void> => {
+		await MonitorModel.updateOne({ _id: monitorId, teamId }, { $inc: { escalationCounter: 1 } });
+	};
+
+	resetEscalationCounter = async (monitorId: string, teamId: string): Promise<void> => {
+		await MonitorModel.updateOne({ _id: monitorId, teamId }, { $set: { escalationCounter: 0 } });
+	};
+
 	togglePauseById = async (monitorId: string, teamId: string) => {
 		const monitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
@@ -391,6 +399,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationRetries: doc.escalationRetries ?? 0,
+			escalationNotifications: doc.escalationNotifications ?? [],
+			escalationCounter: doc.escalationCounter ?? 0,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -450,6 +461,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationRetries: doc.escalationRetries ?? 0,
+			escalationNotifications: doc.escalationNotifications ?? [],
+			escalationCounter: doc.escalationCounter ?? 0,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

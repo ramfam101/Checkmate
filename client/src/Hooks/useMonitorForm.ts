@@ -17,6 +17,8 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
 	geoCheckLocations: data?.geoCheckLocations || [],
 	geoCheckInterval: data?.geoCheckInterval || 300000,
+	escalationRetries: data?.escalationRetries ?? 0,
+	escalationNotifications: data?.escalationNotifications || [],
 });
 
 export const useMonitorForm = ({
@@ -40,14 +42,14 @@ export const useMonitorForm = ({
 					matchMethod: data?.matchMethod || "",
 					expectedValue: data?.expectedValue || "",
 					jsonPath: data?.jsonPath || "",
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "ping":
 				defaults = {
 					...base,
 					type: "ping",
 					url: data?.url || "",
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "port":
 				defaults = {
@@ -55,14 +57,14 @@ export const useMonitorForm = ({
 					type: "port",
 					url: data?.url || "",
 					port: data?.port || 80,
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "docker":
 				defaults = {
 					...base,
 					type: "docker",
 					url: data?.url || "",
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "game":
 				defaults = {
@@ -71,7 +73,7 @@ export const useMonitorForm = ({
 					url: data?.url || "",
 					port: data?.port || 27015,
 					gameId: data?.gameId || "",
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "grpc":
 				defaults = {
@@ -81,14 +83,14 @@ export const useMonitorForm = ({
 					port: data?.port || 50051,
 					grpcServiceName: data?.grpcServiceName || "",
 					ignoreTlsErrors: data?.ignoreTlsErrors || false,
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "pagespeed":
 				defaults = {
 					...base,
 					type: "pagespeed",
 					url: data?.url || "",
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "hardware":
 				defaults = {
@@ -101,7 +103,7 @@ export const useMonitorForm = ({
 					diskAlertThreshold: data?.diskAlertThreshold ?? 100,
 					tempAlertThreshold: data?.tempAlertThreshold ?? 100,
 					selectedDisks: data?.selectedDisks || [],
-				};
+				} as unknown as MonitorFormData;
 				break;
 			case "websocket":
 				defaults = {
@@ -109,7 +111,7 @@ export const useMonitorForm = ({
 					type: "websocket",
 					url: data?.url || "",
 					ignoreTlsErrors: data?.ignoreTlsErrors || false,
-				};
+				} as unknown as MonitorFormData;
 				break;
 			default:
 				defaults = {
@@ -121,7 +123,7 @@ export const useMonitorForm = ({
 					matchMethod: "",
 					expectedValue: "",
 					jsonPath: "",
-				};
+				} as unknown as MonitorFormData;
 		}
 
 		return { schema: monitorSchema, defaults };

@@ -351,6 +351,20 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: 300000,
 		},
+		escalationRetries: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		escalationCounter: {
+			type: Number,
+			default: 0,
+		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],
