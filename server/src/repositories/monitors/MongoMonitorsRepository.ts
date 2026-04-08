@@ -17,7 +17,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined, escalationChannels: undefined }));
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -351,6 +351,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationChannelIds = (doc.escalationChannels ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -362,6 +363,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			statusWindow: doc.statusWindow ?? [],
 			statusWindowSize: doc.statusWindowSize,
 			statusWindowThreshold: doc.statusWindowThreshold,
+			escalateAfter: doc.escalateAfter ?? 30,
+			escalationMinutes: doc.escalateAfter ?? 30,
 			type: doc.type,
 			ignoreTlsErrors: doc.ignoreTlsErrors,
 			useAdvancedMatching: doc.useAdvancedMatching ?? false,
@@ -374,6 +377,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationChannels: escalationChannelIds,
+			escalationNotifications: escalationChannelIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +415,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationChannelIds = (doc.escalationChannels ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -421,6 +427,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			statusWindow: doc.statusWindow ?? [],
 			statusWindowSize: doc.statusWindowSize,
 			statusWindowThreshold: doc.statusWindowThreshold,
+			escalateAfter: doc.escalateAfter ?? 30,
+			escalationMinutes: doc.escalateAfter ?? 30,
 			type: doc.type,
 			ignoreTlsErrors: doc.ignoreTlsErrors,
 			useAdvancedMatching: doc.useAdvancedMatching ?? false,
@@ -433,6 +441,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationChannels: escalationChannelIds,
+			escalationNotifications: escalationChannelIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

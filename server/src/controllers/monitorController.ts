@@ -59,6 +59,23 @@ class MonitorController implements IMonitorController {
 		return MonitorController.SERVICE_NAME;
 	}
 
+	private normalizeEscalationFields<T extends Record<string, unknown>>(body: T): T {
+		const normalized = { ...body } as T & {
+			escalateAfter?: number;
+			escalationChannels?: string[];
+			escalationMinutes?: number;
+			escalationNotifications?: string[];
+		};
+
+		normalized.escalateAfter = normalized.escalateAfter ?? normalized.escalationMinutes;
+		normalized.escalationChannels = normalized.escalationChannels ?? normalized.escalationNotifications;
+
+		delete normalized.escalationMinutes;
+		delete normalized.escalationNotifications;
+
+		return normalized as T;
+	}
+
 	getMonitorCertificate = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const validatedParams = getCertificateParamValidation.parse(req.params);
@@ -202,11 +219,12 @@ class MonitorController implements IMonitorController {
 	createMonitor = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const validatedBody = createMonitorBodyValidation.parse(req.body);
+			const normalizedBody = this.normalizeEscalationFields(validatedBody);
 
 			const userId = requireUserId(req.user?.id);
 			const teamId = requireTeamId(req.user?.teamId);
 
-			const monitor = await this.monitorService.createMonitor(teamId, userId, validatedBody);
+			const monitor = await this.monitorService.createMonitor(teamId, userId, normalizedBody);
 
 			return res.status(200).json({
 				success: true,
@@ -273,10 +291,11 @@ class MonitorController implements IMonitorController {
 		try {
 			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
 			const validatedBody = editMonitorBodyValidation.parse(req.body);
+			const normalizedBody = this.normalizeEscalationFields(validatedBody);
 			const monitorId = validatedParams.monitorId;
 			const teamId = requireTeamId(req.user?.teamId);
 
-			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: validatedBody });
+			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: normalizedBody });
 
 			return res.status(200).json({
 				success: true,
