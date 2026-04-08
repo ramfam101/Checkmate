@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Monitor, MonitorStatusResponse, Incident } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +271,77 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage {
+		const escalationMinutes = monitor.escalationAfterMinutes || 0;
+
+		return {
+			type: "monitor_down", // Use monitor_down type for escalation as it's also a down state
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: this.buildEscalationContent(monitor, incident, escalationMinutes),
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+				isEscalation: true,
+				incidentId: incident.id,
+				escalationMinutes,
+			},
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, incident: Incident, escalationMinutes: number): NotificationContent {
+		const downDuration = this.calculateDownDuration(incident.startTime);
+		const title = `🔔 [ESCALATION] Monitor ${monitor.name} Still Down`;
+		const summary = `Your monitor "${monitor.name}" has been down for ${escalationMinutes} minutes and escalation has been triggered.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Down Since: ${new Date(incident.startTime).toISOString()}`,
+			`Down Duration: ${downDuration}`,
+			`Incident ID: ${incident.id}`,
+		];
+
+		if (incident.message) {
+			details.push(`Message: ${incident.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private calculateDownDuration(startTimeString: string): string {
+		try {
+			const startTime = new Date(startTimeString).getTime();
+			const nowTime = Date.now();
+			const durationMs = nowTime - startTime;
+
+			const hours = Math.floor(durationMs / (1000 * 60 * 60));
+			const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+			const seconds = Math.floor((durationMs % (1000 * 60)) / 1000);
+
+			if (hours > 0) {
+				return `${hours}h ${minutes}m ${seconds}s`;
+			} else if (minutes > 0) {
+				return `${minutes}m ${seconds}s`;
+			} else {
+				return `${seconds}s`;
+			}
+		} catch {
+			return "Unknown";
+		}
 	}
 }

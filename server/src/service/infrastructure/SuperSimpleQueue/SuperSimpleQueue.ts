@@ -47,6 +47,7 @@ export interface ISuperSimpleQueue {
 	pauseJob(monitor: Monitor): Promise<void>;
 	resumeJob(monitor: Monitor): Promise<void>;
 	updateJob(monitor: Monitor): Promise<void>;
+	scheduleEscalationJob(incidentId: string, monitorId: string, teamId: string, delayMs: number): Promise<void>;
 	shutdown(): Promise<void>;
 	getMetrics(): Promise<QueueMetrics>;
 	getJobs(): Promise<QueueJobSummary[]>;
@@ -93,6 +94,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
+			this.scheduler.addTemplate("escalation-job", this.helper.getEscalationJob());
 			const monitors = await this.monitorsRepository.findAll();
 			if (!monitors) {
 				return true;
@@ -202,6 +204,30 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			// Remove geo job if disabled or monitor type changed
 			this.scheduler.removeJob(geoJobId);
 		}
+	};
+
+	scheduleEscalationJob = async (incidentId: string, monitorId: string, teamId: string, delayMs: number) => {
+		const jobId = `escalation-${incidentId}`;
+		const runAt = new Date(Date.now() + delayMs);
+
+		this.scheduler.addJob({
+			id: jobId,
+			template: "escalation-job",
+			repeat: 0, // One-time job
+			active: true,
+			runAt: runAt.getTime().toString(),
+			data: {
+				incidentId,
+				monitorId,
+				teamId,
+			},
+		});
+
+		this.logger.debug({
+			message: `Scheduled escalation job ${jobId} to run at ${runAt.toISOString()}`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalationJob",
+		});
 	};
 
 	shutdown = async () => {
