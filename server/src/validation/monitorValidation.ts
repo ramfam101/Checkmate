@@ -67,6 +67,14 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationRules: z
+		.array(
+			z.object({
+				afterMinutes: z.number().min(1),
+				notificationIds: z.array(z.string()),
+			})
+		)
+		.optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -103,6 +111,14 @@ export const editMonitorBodyValidation = z.object({
 	gameId: z.union([z.string(), z.literal("")]).optional(),
 	grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
 	selectedDisks: z.array(z.string()).optional(),
+	escalationRules: z
+		.array(
+			z.object({
+				afterMinutes: z.number().min(1),
+				notificationIds: z.array(z.string()),
+			})
+		)
+		.optional(),
 	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
@@ -144,6 +160,14 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationRules: z
+		.array(
+			z.object({
+				afterMinutes: z.number().min(1),
+				notificationIds: z.array(z.string()),
+			})
+		)
+		.default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

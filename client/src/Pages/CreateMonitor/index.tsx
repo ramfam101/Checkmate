@@ -40,6 +40,7 @@ import {
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import type { EscalationRule } from "@/Types/Monitor";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -758,6 +759,125 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const rules: EscalationRule[] = field.value ?? [];
+
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+
+							const updateRule = (index: number, updated: EscalationRule) => {
+								const next = [...rules];
+								next[index] = updated;
+								field.onChange(next);
+							};
+
+							const addRule = () => {
+								field.onChange([
+									...rules,
+									{ afterMinutes: 5, notificationIds: [] } as EscalationRule,
+								]);
+							};
+
+							const removeRule = (index: number) => {
+								const next = rules.filter((_, i) => i !== index);
+								field.onChange(next);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Button
+										variant="outlined"
+										onClick={addRule}
+										disabled={isSubmitting}
+									>
+										{t("pages.createMonitor.form.escalations.add")}
+									</Button>
+
+									{rules.length === 0 && (
+										<Typography color="text.secondary">
+											{t("pages.createMonitor.form.escalations.empty")}
+										</Typography>
+									)}
+
+									{rules.map((rule, index) => {
+										const selectedNotifications = notificationOptions.filter((n) =>
+											(rule.notificationIds ?? []).includes(n.id)
+										);
+										return (
+											<Stack
+												key={`escalation-${index}`}
+												spacing={theme.spacing(SPACING.MD)}
+												sx={{
+													border: `1px solid ${theme.palette.divider}`,
+													borderRadius: theme.spacing(1),
+													p: theme.spacing(SPACING.MD),
+												}}
+											>
+												<Stack
+													direction={{ xs: "column", md: "row" }}
+													spacing={theme.spacing(SPACING.MD)}
+													alignItems={{ md: "center" }}
+												>
+													<TextField
+														type="number"
+														fieldLabel={t("pages.createMonitor.form.escalations.afterMinutes")}
+														value={rule.afterMinutes}
+														onChange={(e) =>
+															updateRule(index, {
+																...rule,
+																afterMinutes: Number(e.target.value) || 0,
+															})
+														}
+														inputProps={{ min: 1 }}
+														sx={{ maxWidth: 240 }}
+													/>
+
+													<Autocomplete
+														multiple
+														options={notificationOptions}
+														value={selectedNotifications}
+														getOptionLabel={(option) => option.name}
+														onChange={(_: unknown, newValue: typeof notificationOptions) =>
+															updateRule(index, {
+																...rule,
+																notificationIds: newValue.map((n) => n.id),
+															})
+														}
+														isOptionEqualToValue={(option, value) => option.id === value.id}
+														fieldLabel={t(
+															"pages.createMonitor.form.escalations.channels"
+														)}
+														sx={{ flex: 1, minWidth: 260 }}
+													/>
+
+													<IconButton
+														size="small"
+														onClick={() => removeRule(index)}
+														aria-label="Remove escalation rule"
+														disabled={isSubmitting}
+													>
+														<Trash2 size={16} />
+													</IconButton>
+												</Stack>
+											</Stack>
+										);
+									})}
 								</Stack>
 							);
 						}}

@@ -107,8 +107,16 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIdsOverride?: string[]
+	) => {
+		const notificationIds = notificationIdsOverride ?? monitor.notifications ?? [];
+		if (!notificationIds.length) {
+			return true;
+		}
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -132,13 +140,48 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	private scheduleEscalations = (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		if (!monitor.escalationRules?.length) {
+			return;
+		}
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		for (const rule of monitor.escalationRules) {
+			const delayMs = Math.max(1, rule.afterMinutes) * 60_000;
+			setTimeout(async () => {
+				try {
+					const latest = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+					if (latest.status !== "down" && latest.status !== "breached") {
+						return;
+					}
+					await this.sendNotifications(latest, monitorStatusResponse, decision, rule.notificationIds);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Failed to send escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}, delayMs);
+		}
+	};
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const result = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		// Schedule escalation notifications if configured
+		this.scheduleEscalations(monitor, monitorStatusResponse, decision);
+
+		return result;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
