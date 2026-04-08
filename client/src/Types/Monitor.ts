@@ -39,6 +39,10 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 export type MonitorMatchMethod = "equal" | "include" | "regex" | "";
 
 export interface Monitor {
+	escalationEnabled?: boolean;
+	escalationNotificationId?: string | null;
+	escalationIntervals?: number[];
+	maxEscalationAlerts?: number;
 	id: string;
 	userId: string;
 	teamId: string;

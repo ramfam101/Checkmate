@@ -140,6 +140,22 @@ export class MonitorService implements IMonitorService {
 		return MonitorService.SERVICE_NAME;
 	}
 
+	private normalizeEscalationConfig<T extends Partial<Monitor>>(monitor: T): T {
+		const normalizedIntervals = [...(monitor.escalationIntervals ?? [])]
+			.filter((value) => Number.isFinite(value) && value > 0)
+			.filter((value, index, array) => array.indexOf(value) === index)
+			.sort((a, b) => a - b);
+		const escalationEnabled = monitor.escalationEnabled ?? false;
+
+		return {
+			...monitor,
+			escalationEnabled,
+			escalationNotificationId: escalationEnabled ? (monitor.escalationNotificationId ?? null) : null,
+			escalationIntervals: escalationEnabled ? normalizedIntervals : [],
+			maxEscalationAlerts: escalationEnabled ? Math.max(1, Math.min(monitor.maxEscalationAlerts ?? 1, 10)) : 1,
+		};
+	}
+
 	private getDateRange = (dateRange: DateRangeKey) => {
 		const startDates = {
 			recent: new Date(new Date().setHours(new Date().getHours() - 2)),
@@ -166,7 +182,7 @@ export class MonitorService implements IMonitorService {
 	};
 
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
-		const monitor = await this.monitorsRepository.create(body, teamId, userId);
+		const monitor = await this.monitorsRepository.create(this.normalizeEscalationConfig(body), teamId, userId);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
 		}
@@ -437,7 +453,11 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
-		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
+		const editedMonitor = await this.monitorsRepository.updateById(
+			monitorId,
+			teamId,
+			this.normalizeEscalationConfig(body)
+		);
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;
 	};
@@ -563,7 +583,7 @@ export class MonitorService implements IMonitorService {
 		const errors: string[] = [];
 
 		const cleanedMonitors: Monitor[] = monitors.map((monitor) => ({
-			...monitor,
+			...this.normalizeEscalationConfig(monitor),
 			id: "",
 			teamId,
 			userId,

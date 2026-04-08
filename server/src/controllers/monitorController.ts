@@ -59,6 +59,14 @@ class MonitorController implements IMonitorController {
 		return MonitorController.SERVICE_NAME;
 	}
 
+	private validateEscalationNotification = async (teamId: string, escalationNotificationId?: string | null) => {
+		if (!escalationNotificationId) {
+			return;
+		}
+
+		await this.notificationsService.findById(escalationNotificationId, teamId);
+	};
+
 	getMonitorCertificate = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const validatedParams = getCertificateParamValidation.parse(req.params);
@@ -205,6 +213,7 @@ class MonitorController implements IMonitorController {
 
 			const userId = requireUserId(req.user?.id);
 			const teamId = requireTeamId(req.user?.teamId);
+			await this.validateEscalationNotification(teamId, validatedBody.escalationNotificationId);
 
 			const monitor = await this.monitorService.createMonitor(teamId, userId, validatedBody);
 
@@ -275,6 +284,7 @@ class MonitorController implements IMonitorController {
 			const validatedBody = editMonitorBodyValidation.parse(req.body);
 			const monitorId = validatedParams.monitorId;
 			const teamId = requireTeamId(req.user?.teamId);
+			await this.validateEscalationNotification(teamId, validatedBody.escalationNotificationId);
 
 			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: validatedBody });
 
