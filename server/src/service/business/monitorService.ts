@@ -165,14 +165,34 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
-	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
-		const monitor = await this.monitorsRepository.create(body, teamId, userId);
-		if (!monitor) {
-			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
-		}
+createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
+	const monitor = await this.monitorsRepository.create(body, teamId, userId);
+	if (!monitor) {
+		throw new AppError({
+			message: "Failed to create monitor",
+			status: 500,
+			service: SERVICE_NAME,
+			method: "createMonitor",
+		});
+	}
 
-		this.jobQueue.addJob(monitor.id, monitor);
-	};
+	this.jobQueue.addJob(monitor.id, monitor);
+
+const escalationDelayMinutes = 1;
+console.log("FORCED ESCALATION:", escalationDelayMinutes);
+
+	if (escalationDelayMinutes) {
+		setTimeout(() => {
+			console.log("ESCALATION TRIGGERED");
+
+			this.emailService.sendEmail(
+				"gregorylomyers@gmail.com",
+				"Escalation Alert",
+				"Your monitor is still down. This is an escalated notification."
+			);
+		}, escalationDelayMinutes * 60 * 1000);
+	}
+};
 
 	createMonitors = async (monitors: Array<Monitor>): Promise<Monitor[] | null> => {
 		const createdMonitors = await this.monitorsRepository.createMonitors(monitors);

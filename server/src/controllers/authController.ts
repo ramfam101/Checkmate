@@ -55,8 +55,8 @@ class AuthController implements IAuthController {
 
 	registerUser = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			const newUser = req.body.user;
-			const newUserToken = req.body.token;
+			const newUser = req.body.user ?? req.body;
+			const newUserToken = req.body.token ?? null;
 			if (newUser?.email) {
 				const newUserEmail = requireUserEmail(newUser.email);
 				newUser.email = newUserEmail.toLowerCase();
