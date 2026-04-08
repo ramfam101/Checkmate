@@ -72,10 +72,18 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		sentEscalationRules: {
+			type: [
+				{
+					ruleId: { type: String, required: true },
+					sentAt: { type: Date, required: true },
+				},
+			],
+			default: [],
+		},
 	},
 	{ timestamps: true }
 );
-
 IncidentSchema.index({ monitorId: 1, status: 1 });
 IncidentSchema.index({ teamId: 1, status: 1 });
 IncidentSchema.index({ teamId: 1, startTime: -1 });

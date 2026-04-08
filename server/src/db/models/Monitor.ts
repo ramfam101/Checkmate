@@ -197,6 +197,23 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	},
 	{ _id: false }
 );
+const escalationRuleSchema = new Schema<{
+	delayMinutes: number;
+	channelId: Types.ObjectId;
+}>(
+	{
+		delayMinutes: {
+			type: Number,
+			required: true,
+		},
+		channelId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+			required: true,
+		},
+	},
+	{ _id: false }
+);
 
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
@@ -284,6 +301,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+        escalationRules: {
+        	type: [escalationRuleSchema],
+        	default: [],
+        },
 		secret: {
 			type: String,
 		},

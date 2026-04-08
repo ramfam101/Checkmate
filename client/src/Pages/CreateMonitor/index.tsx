@@ -161,12 +161,25 @@ const getGeneralSettingsConfig = (
 	return configs[type] || configs.http;
 };
 
+const dedupeEscalationRules = (
+	rules: Array<{ delayMinutes: number; channelId: string }> = []
+) =>
+	rules.filter(
+		(rule, index, arr) =>
+			index ===
+			arr.findIndex(
+				(r) =>
+					r.delayMinutes === rule.delayMinutes &&
+					r.channelId === rule.channelId
+			)
+	);
+
 const CreateMonitorPage = () => {
 	const theme = useTheme();
 	const { t } = useTranslation();
 	const { monitorId } = useParams();
 	const location = useLocation();
-	const navigate = useNavigate();
+		const navigate = useNavigate();
 	const isEditMode = Boolean(monitorId);
 
 	// Extract page type from URL path (e.g., /pagespeed/create -> pagespeed)
@@ -205,8 +218,11 @@ const CreateMonitorPage = () => {
 	const { control, watch, handleSubmit, clearErrors } = form;
 
 	useEffect(() => {
-		form.reset(defaults);
-	}, [defaults, form]);
+	form.reset({
+		...defaults,
+		escalationRules: dedupeEscalationRules(defaults.escalationRules ?? []),
+	});
+}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
 
@@ -252,23 +268,39 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
-		let result;
-		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
-		} else {
-			result = await post("/monitors", data);
-		}
+	    const uniqueEscalationRules =
+		    (data.escalationRules ?? []).filter(
+			    (rule, index, arr) =>
+				    index ===
+				    arr.findIndex(
+					    (r) =>
+						    r.delayMinutes === rule.delayMinutes &&
+						    r.channelId === rule.channelId
+				)
+		);
 
-		if (result?.success) {
-			if (pageType === "pagespeed") {
-				navigate("/pagespeed");
-			} else if (pageType === "hardware") {
-				navigate("/infrastructure");
-			} else {
-				navigate("/uptime");
-			}
-		}
+	    const cleanedData: MonitorFormData = {
+		    ...data,
+		    escalationRules: uniqueEscalationRules,
 	};
+
+	    let result;
+	    if (isEditMode && monitorId) {
+	    	result = await patch(`/monitors/${monitorId}`, cleanedData);
+	    } else {
+	    	result = await post("/monitors", cleanedData);
+	    }
+
+	    if (result?.success) {
+		if (pageType === "pagespeed") {
+			navigate("/pagespeed");
+		} else if (pageType === "hardware") {
+			navigate("/infrastructure");
+		} else {
+			navigate("/uptime");
+		}
+	}
+};
 
 	const onError = (errors: unknown) => {
 		logger.debug("Monitor creation validation errors", errors);
@@ -343,7 +375,7 @@ const CreateMonitorPage = () => {
 											)}
 										/>
 										<RadioWithDescription
-											value="websocket"
+										value="websocket"
 											label={t("pages.common.monitors.monitorTypes.optionWebSocket")}
 											description={t(
 												"pages.createMonitor.form.type.optionWebSocketDescription"
@@ -765,6 +797,94 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+            <ConfigBox
+            	title="Escalated Notifications"
+            	subtitle="Send additional alerts if the incident stays unresolved"
+            	rightContent={
+            		<Controller
+            			name="escalationRules"
+            			control={control}
+            			render={({ field }) => {
+            				const escalationRules = field.value ?? [];
+            				const notificationOptions = (notifications ?? []).map((n) => ({
+            					...n,
+            					name: n.notificationName,
+            				}));
+            				return (
+            					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+            						{escalationRules.map((rule, index) => (
+            							<Stack
+            								key={index}
+            								direction="row"
+            								alignItems="flex-start"
+            								spacing={theme.spacing(SPACING.LG)}
+            								sx={{ width: "100%" }}
+            							>
+            								<TextField
+            									value={rule.delayMinutes ?? ""}
+            									onChange={(e) => {
+            										const newRules = [...escalationRules];
+            										newRules[index].delayMinutes = Number(e.target.value);
+            										field.onChange(newRules);
+            									}}
+            									type="number"
+            									fieldLabel="Delay (minutes)"
+            									placeholder="0"
+            									sx={{ flex: "0 0 200px" }}
+            								/>
+            								<Select
+            									value={rule.channelId ?? ""}
+            									onChange={(e) => {
+            										const newRules = [...escalationRules];
+            										newRules[index].channelId = e.target.value;
+            										field.onChange(newRules);
+            									}}
+            									fieldLabel="Notification Channel"
+            									sx={{ flex: "1 1 auto", minWidth: 0 }}
+            								>
+            									<MenuItem value="">
+            										Select channel
+            									</MenuItem>
+            									{notificationOptions.map((notification) => (
+            										<MenuItem
+            											key={notification.id}
+            											value={notification.id}
+            										>
+            											{notification.name}
+            										</MenuItem>
+            									))}
+            								</Select>
+            								<IconButton
+            									size="small"
+            									onClick={() => {
+            										const newRules = escalationRules.filter((_, i) => i !== index);
+            										field.onChange(newRules);
+            									}}
+            									aria-label="Remove escalation rule"
+            									sx={{ flex: "0 0 auto", mt: 1 }}
+            									title="Remove rule"
+            								>
+            									<Trash2 size={16} />
+            								</IconButton>
+            							</Stack>
+            						))}
+            						<Button
+            							variant="outlined"
+            							onClick={() => {
+            								const newRules = [...escalationRules, { delayMinutes: 0, channelId: "" }];
+            								field.onChange(newRules);
+            							}}
+            						>
+            							Add Rule
+            						</Button>
+            					</Stack>
+            				);
+            			}}
+            		/>
+            	}
+            />
+
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -871,7 +991,7 @@ const CreateMonitorPage = () => {
 									/>
 									<Controller
 										name="jsonPath"
-										control={control}
+									 control={control}
 										render={({ field, fieldState }) => (
 											<TextField
 												{...field}
