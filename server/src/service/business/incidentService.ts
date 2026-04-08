@@ -8,6 +8,7 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { IEscalationService } from "@/service/business/escalationService.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationService: IEscalationService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationService: IEscalationService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -77,7 +81,6 @@ export class IncidentService implements IIncidentService {
 				let statusCode = code;
 				let message: string | undefined;
 
-				// For threshold breaches, use 9999 status code and build descriptive message
 				if (decision.incidentReason === "threshold_breach") {
 					statusCode = 9999;
 					message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
@@ -86,12 +89,28 @@ export class IncidentService implements IIncidentService {
 				const incident = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
+					startTime: new Date().toISOString(), // <-- FIX: Valid ISO string that Mongoose can parse into a Date
 					status: true,
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				// <-- FIX: Safely check for array and cast ObjectIds to strings
+				if (monitor.escalation && Array.isArray(monitor.escalation.notificationIds) && monitor.escalation.notificationIds.length > 0) {
+					const safeNotificationIds = monitor.escalation.notificationIds.map((id) => id.toString());
+
+					await this.escalationService.createEscalationTracker(
+						createdIncident.id,
+						safeNotificationIds,
+						monitor.escalation.delayMinutes,
+						monitor.id,
+						monitor.teamId
+					);
+				}
+
+				return createdIncident;
 			}
 		}
 
@@ -100,9 +119,14 @@ export class IncidentService implements IIncidentService {
 				return null;
 			}
 			activeIncident.status = false;
-			activeIncident.endTime = Date.now().toString();
+			activeIncident.endTime = new Date().toISOString(); // <-- FIX: Valid ISO string
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+
+			const resolvedIncident = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+
+			await this.escalationService.resolveEscalations(activeIncident.id);
+
+			return resolvedIncident;
 		}
 
 		return null;
@@ -151,9 +175,11 @@ export class IncidentService implements IIncidentService {
 			incident.resolvedBy = userId;
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;
-			incident.endTime = Date.now().toString();
+			incident.endTime = new Date().toISOString(); // <-- FIX: Valid ISO string
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
+
+			await this.escalationService.resolveEscalations(incident.id);
 
 			this.logger.debug({
 				service: SERVICE_NAME,
@@ -187,7 +213,12 @@ export class IncidentService implements IIncidentService {
 	) => {
 		try {
 			if (!teamId) {
-				throw new AppError({ message: "No team ID in request", service: SERVICE_NAME, method: "getIncidentsByTeam", status: 400 });
+				throw new AppError({
+					message: "No team ID in request",
+					service: SERVICE_NAME,
+					method: "getIncidentsByTeam",
+					status: 400,
+				});
 			}
 
 			const startDate = getDateForRange(dateRange);
@@ -224,7 +255,12 @@ export class IncidentService implements IIncidentService {
 	getIncidentSummary = async (teamId: string, limit?: number) => {
 		try {
 			if (!teamId) {
-				throw new AppError({ message: "No team ID in request", service: SERVICE_NAME, method: "getIncidentSummary", status: 400 });
+				throw new AppError({
+					message: "No team ID in request",
+					service: SERVICE_NAME,
+					method: "getIncidentSummary",
+					status: 400,
+				});
 			}
 
 			const parsedLimit = limit ?? 10;

@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
 
-// URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
-// Common base schema for all monitor types
+const escalationSchema = z.object({
+	delayMinutes: z
+		.union([z.number(), z.string()])
+		.transform((val) => (typeof val === "string" ? Number(val) : val))
+		.pipe(z.number().min(0).max(1440))
+		.default(0),
+	notificationIds: z.array(z.string()).default([]),
+});
+
 const baseSchema = z.object({
 	name: z
 		.string()
@@ -13,6 +20,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalation: escalationSchema.optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -29,7 +37,6 @@ const baseSchema = z.object({
 		.optional(),
 });
 
-// HTTP monitor schema
 const httpSchema = baseSchema.extend({
 	type: z.literal("http"),
 	url: urlSchema,
@@ -40,13 +47,11 @@ const httpSchema = baseSchema.extend({
 	jsonPath: z.string().optional(),
 });
 
-// Ping monitor schema
 const pingSchema = baseSchema.extend({
 	type: z.literal("ping"),
 	url: z.string().min(1, "Host is required"),
 });
 
-// Port monitor schema
 const portSchema = baseSchema.extend({
 	type: z.literal("port"),
 	url: z.string().min(1, "Host is required"),
@@ -56,13 +61,11 @@ const portSchema = baseSchema.extend({
 		.max(65535, "Port must be at most 65535"),
 });
 
-// Docker monitor schema
 const dockerSchema = baseSchema.extend({
 	type: z.literal("docker"),
 	url: z.string().min(1, "Container ID is required"),
 });
 
-// Game server monitor schema
 const gameSchema = baseSchema.extend({
 	type: z.literal("game"),
 	url: z.string().min(1, "Host is required"),
@@ -73,7 +76,6 @@ const gameSchema = baseSchema.extend({
 	gameId: z.string().min(1, "Game type is required"),
 });
 
-// gRPC monitor schema
 const grpcSchema = baseSchema.extend({
 	type: z.literal("grpc"),
 	url: z.string().min(1, "Host is required"),
@@ -85,13 +87,11 @@ const grpcSchema = baseSchema.extend({
 	ignoreTlsErrors: z.boolean(),
 });
 
-// PageSpeed monitor schema
 const pagespeedSchema = baseSchema.extend({
 	type: z.literal("pagespeed"),
 	url: urlSchema,
 });
 
-// Hardware/Infrastructure monitor schema
 const hardwareSchema = baseSchema.extend({
 	type: z.literal("hardware"),
 	url: urlSchema,
@@ -115,14 +115,12 @@ const hardwareSchema = baseSchema.extend({
 	selectedDisks: z.array(z.string()),
 });
 
-// WebSocket monitor schema
 const websocketSchema = baseSchema.extend({
 	type: z.literal("websocket"),
 	url: z.string().min(1, "WebSocket URL is required"),
 	ignoreTlsErrors: z.boolean(),
 });
 
-// Discriminated union of all monitor types
 export const monitorSchema = z.discriminatedUnion("type", [
 	httpSchema,
 	pingSchema,
@@ -137,7 +135,6 @@ export const monitorSchema = z.discriminatedUnion("type", [
 
 export type MonitorFormData = z.infer<typeof monitorSchema>;
 
-// Type-specific schemas exported for individual use
 export {
 	httpSchema,
 	pingSchema,

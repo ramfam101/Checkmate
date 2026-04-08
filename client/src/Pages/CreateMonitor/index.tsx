@@ -169,7 +169,6 @@ const CreateMonitorPage = () => {
 	const navigate = useNavigate();
 	const isEditMode = Boolean(monitorId);
 
-	// Extract page type from URL path (e.g., /pagespeed/create -> pagespeed)
 	const pageType = useMemo(() => {
 		const pathSegments = location.pathname.split("/").filter(Boolean);
 		const firstSegment = pathSegments[0];
@@ -225,7 +224,6 @@ const CreateMonitorPage = () => {
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
 	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
 	const isSubmitting = isCreating || isUpdating;
-	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
@@ -237,7 +235,6 @@ const CreateMonitorPage = () => {
 		if (!monitorId) return;
 		await deleteFn(`/monitors/${monitorId}`);
 		setIsDeleteDialogOpen(false);
-		// Navigate based on page type
 		if (pageType === "pagespeed") {
 			navigate("/pagespeed");
 		} else if (pageType === "hardware") {
@@ -285,7 +282,6 @@ const CreateMonitorPage = () => {
 				refetch={refetchMonitor}
 				onDelete={handleDeleteClick}
 			/>
-			{/* Monitor Type Selection - only shown for uptime monitors */}
 			{showTypeSelector && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.type.title")}
@@ -362,7 +358,6 @@ const CreateMonitorPage = () => {
 				subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
 				rightContent={
 					<Stack spacing={theme.spacing(LAYOUT.MD)}>
-						{/* URL/Host/Container field - not shown for hardware */}
 						{generalSettingsConfig.showUrl && (
 							<Controller
 								name="url"
@@ -382,7 +377,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Port field - only for port and game types */}
 						{generalSettingsConfig.showPort && (
 							<Controller
 								name="port"
@@ -408,7 +402,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Game select - only for game type */}
 						{generalSettingsConfig.showGameSelect && (
 							<Controller
 								name="gameId"
@@ -437,7 +430,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* gRPC Service Name field - only for grpc type */}
 						{generalSettingsConfig.showGrpcServiceName && (
 							<Controller
 								name="grpcServiceName"
@@ -461,7 +453,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Secret field - only for hardware type */}
 						{generalSettingsConfig.showSecret && (
 							<Controller
 								name="secret"
@@ -574,7 +565,6 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			{/* Alert Thresholds - only for hardware type */}
 			{generalSettingsConfig.showSecret && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.thresholds.title")}
@@ -705,7 +695,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
@@ -762,6 +751,97 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalation.delayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									value={field.value === 0 || field.value === "" ? "" : field.value}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? 0 : Number(val));
+									}}
+									type="number"
+									fieldLabel="Escalate after (minutes)"
+									placeholder="0"
+									inputProps={{ min: 0, max: 1440 }}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={
+										fieldState.error?.message ?? "Set to 0 to disable escalation"
+									}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalation.notificationIds"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 
@@ -941,7 +1021,6 @@ const CreateMonitorPage = () => {
 										name="geoCheckLocations"
 										control={control}
 										render={({ field }) => {
-											// Map continents to have 'name' property for Autocomplete
 											const locationOptions = GeoContinents.map((continent) => ({
 												id: continent,
 												name: t(
