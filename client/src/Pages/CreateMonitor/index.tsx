@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,12 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+
+	const {
+		fields: escalationFields,
+		append: appendEscalation,
+		remove: removeEscalation,
+	} = useFieldArray({ control, name: "escalationRules" });
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +768,128 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => (
+							<Stack
+								key={field.id}
+								spacing={theme.spacing(LAYOUT.MD)}
+							>
+								{index > 0 && <Divider />}
+								<Stack
+									direction="row"
+									alignItems="flex-start"
+									spacing={theme.spacing(LAYOUT.MD)}
+								>
+									<Controller
+										name={`escalationRules.${index}.escalateAfterMinutes`}
+										control={control}
+										render={({ field: f, fieldState }) => (
+											<TextField
+												{...f}
+												value={f.value === 0 ? "" : f.value}
+												onChange={(e) => {
+													const val = e.target.value;
+													f.onChange(val === "" ? 0 : Number(val));
+												}}
+												type="number"
+												fieldLabel={t(
+													"pages.createMonitor.form.escalation.option.escalateAfterMinutes.label"
+												)}
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message ?? ""}
+											/>
+										)}
+									/>
+									<IconButton
+										size="small"
+										sx={{ mt: "28px" }}
+										onClick={() => removeEscalation(index)}
+										aria-label="Remove escalation rule"
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+								<Controller
+									name={`escalationRules.${index}.notificationChannelIds`}
+									control={control}
+									render={({ field: f }) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selected = notificationOptions.filter((n) =>
+											(f.value ?? []).includes(n.id)
+										);
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selected}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: typeof notificationOptions) => {
+														f.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.option.notificationChannels.label"
+													)}
+												/>
+												{selected.length > 0 && (
+													<Stack
+														flex={1}
+														width="100%"
+													>
+														{selected.map((notification, nIdx) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={notification.id}
+																width="100%"
+															>
+																<Typography flexGrow={1}>
+																	{notification.notificationName}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		f.onChange(
+																			(f.value ?? []).filter(
+																				(id: string) => id !== notification.id
+																			)
+																		);
+																	}}
+																	aria-label="Remove notification channel"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{nIdx < selected.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</Stack>
+						))}
+						<Button
+							variant="outlined"
+							onClick={() =>
+								appendEscalation({ escalateAfterMinutes: 30, notificationChannelIds: [] })
+							}
+						>
+							{t("pages.createMonitor.form.escalation.option.addRule")}
+						</Button>
+					</Stack>
 				}
 			/>
 
