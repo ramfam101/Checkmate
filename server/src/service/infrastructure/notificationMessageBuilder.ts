@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalation takes priority when explicitly flagged
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,9 +109,21 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildEscalationContent(monitor: Monitor): NotificationContent {
+		const delayMinutes = monitor.escalationDelay ?? 0;
+		return {
+			title: `Escalation Alert: ${monitor.name}`,
+			summary: `Monitor "${monitor.name}" has been down for over ${delayMinutes} minute${delayMinutes !== 1 ? "s" : ""} and requires immediate attention.`,
+			details: [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`, `Down for: ${delayMinutes}+ minute${delayMinutes !== 1 ? "s" : ""}`],
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {

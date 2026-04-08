@@ -37,8 +37,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -161,6 +162,55 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 6b. Track lastDownAt and reset escalation state on status transitions
+				const updatedMonitor = statusChangeResult.monitor;
+				if (statusChangeResult.statusChanged) {
+					if (updatedMonitor.status === "down") {
+						this.monitorsRepository
+							.updateById(monitorId, teamId, { lastDownAt: new Date().toISOString(), escalationSent: false })
+							.catch((error: unknown) => {
+								this.logger.warn({
+									message: `Failed to set lastDownAt for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+							});
+					} else if (updatedMonitor.status === "up") {
+						this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: false, lastDownAt: undefined }).catch((error: unknown) => {
+							this.logger.warn({
+								message: `Failed to reset escalation state for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+						});
+					}
+				}
+
+				// Step 6c. Check and send escalation notification if delay has elapsed
+				if (this.shouldEscalate(updatedMonitor)) {
+					this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true }).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Failed to set escalationSent for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					});
+					const escalationDecision: MonitorActionDecision = {
+						...decision,
+						shouldSendNotification: false,
+						shouldSendEscalation: true,
+						notificationReason: "escalation",
+					};
+					this.notificationsService.handleNotifications(updatedMonitor, status, escalationDecision).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation notification for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -418,6 +468,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
+	private shouldEscalate(monitor: Monitor): boolean {
+		if (monitor.status !== "down") return false;
+		if (monitor.escalationSent) return false;
+		if (!monitor.escalationDelay || monitor.escalationDelay <= 0) return false;
+		if (!monitor.escalatedNotifications || monitor.escalatedNotifications.length === 0) return false;
+		if (!monitor.lastDownAt) return false;
+		const elapsedMs = Date.now() - new Date(monitor.lastDownAt).getTime();
+		return elapsedMs >= monitor.escalationDelay * 60 * 1000;
+	}
+
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
@@ -426,6 +486,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
