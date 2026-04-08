@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import { EscalationTrackerService } from "./escalationTrackerService.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,7 +15,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	handleEscalatedNotifications: (monitor: Monitor) => Promise<void>; // ADD THIS LINE
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -36,6 +37,7 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationTracker: EscalationTrackerService;
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -49,7 +51,8 @@ export class NotificationsService implements INotificationsService {
 		teamsProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationTracker: EscalationTrackerService // ADD THIS PARAMETER
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -63,6 +66,7 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationTracker = escalationTracker; // ADD THIS LINE
 	}
 
 	private send = async (
@@ -196,5 +200,74 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision): Promise<boolean> => {
+		// TODO: Implement the main notification handling logic
+		// This should send notifications based on the decision
+		this.logger.info({
+			message: `Handling notifications for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "handleNotifications",
+		});
+		return true;
+	};
+
+	handleEscalatedNotifications = async (monitor: Monitor): Promise<void> => {
+		const escalations = monitor.escalatedNotifications ?? [];
+
+		if (escalations.length === 0) {
+			return;
+		}
+
+		for (const escalation of escalations) {
+			// Check if this escalation level should trigger
+			if (this.escalationTracker.shouldSendEscalation(monitor.id, escalation.delayMinutes)) {
+				const notifications = await this.notificationsRepository.findNotificationsByIds(escalation.notificationIds.map((id) => id.toString()));
+
+				if (notifications.length === 0) {
+					continue;
+				}
+
+				// Build escalation notification message
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+				const incidentDuration = this.escalationTracker.getIncidentDuration(monitor.id) || 0;
+
+				// Create a special escalation message
+				const mockMonitorStatusResponse: MonitorStatusResponse = {
+					monitorId: monitor.id,
+					teamId: monitor.teamId,
+					type: monitor.type,
+					status: false,
+					code: 0,
+					message: `Escalated alert: Incident ongoing for ${incidentDuration} minutes`,
+					timestamp: Date.now(),
+				} as MonitorStatusResponse;
+
+				const mockDecision: MonitorActionDecision = {
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: true,
+					incidentReason: null,
+					notificationReason: `Escalated alert: Incident ongoing for ${incidentDuration} minutes`,
+				};
+
+				const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, mockMonitorStatusResponse, mockDecision, clientHost);
+
+				// Send escalated notifications
+				const tasks = notifications.map((notification) =>
+					this.send(notification, monitor, mockMonitorStatusResponse, mockDecision, notificationMessage)
+				);
+
+				await Promise.all(tasks);
+
+				this.logger.info({
+					message: `Sent escalated notifications for monitor ${monitor.id} at ${escalation.delayMinutes} minute mark`,
+					service: SERVICE_NAME,
+					method: "handleEscalatedNotifications",
+				});
+			}
+		}
 	};
 }

@@ -41,6 +41,8 @@ import {
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
 
+import { EscalatedNotificationsBox } from "./components/EscalatedNotificationsBox";
+
 interface GeneralSettingsConfig {
 	urlLabel: string;
 	urlPlaceholder: string;
@@ -763,6 +765,12 @@ const CreateMonitorPage = () => {
 						}}
 					/>
 				}
+			/>
+
+			<EscalatedNotificationsBox
+				control={control}
+				notifications={notifications}
+				watch={watch}
 			/>
 
 			{(watchedType === "http" ||

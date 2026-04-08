@@ -11,6 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
+import { EscalationTrackerService } from "../escalationTrackerService.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
@@ -66,6 +67,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTracker: EscalationTrackerService;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +85,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationTracker: EscalationTrackerService
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +104,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationTracker = escalationTracker;
 	}
 
 	get serviceName() {
@@ -177,6 +181,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Track incidents for escalation
+				if (decision.shouldCreateIncident) {
+					this.escalationTracker.trackIncident(statusChangeResult.monitor.id);
+				} else if (decision.shouldResolveIncident) {
+					this.escalationTracker.resolveIncident(statusChangeResult.monitor.id);
+				}
+
+				// Step 9. Check for escalations if monitor is still down
+				if (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") {
+					this.notificationsService.handleEscalatedNotifications(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalated notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

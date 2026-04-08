@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
 
+const escalatedNotificationSchema = z.object({
+	notificationIds: z
+		.array(z.string().min(1))
+		.min(1, "At least one notification must be selected"),
+	delayMinutes: z
+		.number()
+		.min(1, "Delay must be at least 1 minute")
+		.max(10080, "Delay cannot exceed 7 days"),
+});
+
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
@@ -27,6 +37,7 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalatedNotifications: z.array(escalatedNotificationSchema).optional().default([]),
 });
 
 // HTTP monitor schema

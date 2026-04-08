@@ -3,6 +3,18 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const escalatedNotificationSchema = z.object({
+	notificationIds: z
+		.array(z.string().min(1))
+		.min(1, "At least one notification must be selected")
+		.max(10, "Maximum 10 notifications per escalation level"),
+	delayMinutes: z
+		.number()
+		.int("Delay must be a whole number")
+		.min(1, "Delay must be at least 1 minute")
+		.max(10080, "Delay cannot exceed 7 days (10080 minutes)"),
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -67,6 +79,7 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalatedNotifications: z.array(escalatedNotificationSchema).optional().default([]),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +102,7 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalatedNotifications: z.array(escalatedNotificationSchema).optional().default([]),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),

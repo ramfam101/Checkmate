@@ -8,7 +8,10 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:escalated-screenshots": "node scripts/capture-escalated-notifications-screenshots.js",
+    "test:escalated-feature": "node scripts/test-escalated-notifications.js",
+    "test:browser-support": "node scripts/test-browser-support.js"
   },
   "repository": {
     "type": "git",
@@ -23,6 +26,8 @@
   },
   "homepage": "https://github.com/bluewave-labs/Checkmate#readme",
   "devDependencies": {
-    "husky": "^9.1.7"
+    "@playwright/test": "^1.59.1",
+    "husky": "^9.1.7",
+    "playwright": "^1.59.1"
   }
 }

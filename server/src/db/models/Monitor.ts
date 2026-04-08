@@ -18,11 +18,22 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	| "id"
+	| "userId"
+	| "teamId"
+	| "notifications"
+	| "escalatedNotifications"
+	| "selectedDisks"
+	| "statusWindow"
+	| "recentChecks"
+	| "createdAt"
+	| "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalatedNotifications: { notificationIds: Types.ObjectId[]; delayMinutes: number }[];
+	escalatedNotifications: { notificationIds: Types.ObjectId[]; delayMinutes: number }[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -198,6 +209,27 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalatedNotificationSchema = new Schema<{
+	notificationIds: Types.ObjectId[];
+	delayMinutes: number;
+}>(
+	{
+		notificationIds: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		delayMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+			max: 10080, // Max 1 week in minutes
+		},
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +316,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalatedNotifications: {
+			type: [escalatedNotificationSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

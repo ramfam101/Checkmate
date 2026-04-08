@@ -26,6 +26,7 @@
 			"confirm": "Confirm",
 			"create": "Create",
 			"delete": "Delete",
+			"edit": "Edit",
 			"generateToken": "Generate token",
 			"incidents": "Incidents",
 			"inviteMember": "Invite member",
@@ -542,6 +543,17 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+				},
+				"escalatedNotifications": {
+					"title": "Escalated Notifications",
+					"description": "Define additional notifications to send after a delay if the monitor remains down. This allows you to escalate alerts to other team members or channels as incidents persist.",
+					"empty": "No escalated notifications configured. Add one to send notifications to additional channels after a delay.",
+					"addButton": "Add Escalation Level",
+					"escalationLevel": "Escalation Level {{number}}",
+					"delayMinutes": "Delay (minutes)",
+					"delayHelper": "Time in minutes before sending these notifications (1-10080 minutes, max 7 days)",
+					"selectNotifications": "Select notification channels to trigger at this delay",
+					"notifications": "Notifications"
 				},
 				"type": {
 					"description": "Select the type of check to perform",
