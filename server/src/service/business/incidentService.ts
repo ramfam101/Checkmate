@@ -64,11 +64,36 @@ export class IncidentService implements IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null> => {
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+		// If the monitor is down but there is no open incident, create one. This can happen when a past bug
+		// prevented `statusChanged` from ever becoming true, so `shouldCreateIncident` never fired. Heartbeats
+		// then stay "down" with no incident row, and the Incidents page shows nothing.
+		if (
+			monitor.status === "down" &&
+			!activeIncident &&
+			!decision.shouldCreateIncident &&
+			!decision.shouldResolveIncident
+		) {
+			this.logger.warn({
+				message: "Backfilling active incident for down monitor with no open incident",
+				service: SERVICE_NAME,
+				method: "handleIncident",
+				details: { monitorId: monitor.id, teamId: monitor.teamId },
+			});
+			return await this.incidentsRepository.create({
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				startTime: Date.now().toString(),
+				status: true,
+				statusCode: code,
+				message: undefined,
+			});
+		}
+
 		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident) {
 			return null;
 		}
-
-		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
 
 		if (decision.shouldCreateIncident) {
 			if (activeIncident) {

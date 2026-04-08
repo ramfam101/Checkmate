@@ -18,12 +18,13 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt" | "downtimeStartAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
+	downtimeStartAt?: Date;
 	matchMethod?: MonitorMatchMethod;
 };
 
@@ -350,6 +351,24 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		geoCheckInterval: {
 			type: Number,
 			default: 300000,
+		},
+		escalationAfter: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		downtimeStartAt: {
+			type: Date,
+			default: undefined,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],

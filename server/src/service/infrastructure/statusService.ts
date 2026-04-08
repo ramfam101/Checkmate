@@ -238,7 +238,9 @@ export class StatusService implements IStatusService {
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				// Do not set operational status from a partial window. If we mark "down" here, then when the
+				// window fills the monitor is already "down" and `statusChanged` never becomes true — so
+				// alerts/incidents never fire. Persist checks + window only until the window is full.
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
