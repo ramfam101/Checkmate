@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationSentAt: doc.escalationSentAt ? this.toDateString(doc.escalationSentAt) : null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -269,6 +270,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 				resolutionType: incident.resolutionType ?? null,
 				message: incident.message ?? null,
 				statusCode: incident.statusCode ?? null,
+				escalationSentAt: incident.escalationSentAt ? this.toDateString(incident.escalationSentAt) : null,
 				createdAt: this.toDateString(incident.createdAt),
 			})),
 		};

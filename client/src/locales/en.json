@@ -543,6 +543,23 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Send an email to a second channel if the incident stays unresolved.",
+					"option": {
+						"channel": {
+							"label": "Escalation channel",
+							"placeholder": "Choose an email notification"
+						},
+						"delay": {
+							"label": "Escalation delay (minutes)",
+							"placeholder": "30"
+						},
+						"enable": {
+							"label": "Enable escalation"
+						}
+					},
+					"title": "Escalation"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

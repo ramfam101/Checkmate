@@ -2,6 +2,8 @@ const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
+import type { Incident } from "@/types/index.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import {
 	ICheckService,
 	INetworkService,
@@ -49,6 +51,8 @@ export interface MonitorActionDecision {
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	static SERVICE_NAME = SERVICE_NAME;
+	private escalationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private escalationInFlight = new Set<string>();
 
 	private logger: ILogger;
 	private networkService: INetworkService;
@@ -169,14 +173,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
+				const incident = await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+				if (decision.shouldResolveIncident) {
+					this.clearEscalationTimer(statusChangeResult.monitor.id);
+				}
+				const shouldCheckEscalation = statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached";
+				if (shouldCheckEscalation) {
+					const activeIncident = incident ?? (await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId));
+					if (activeIncident) {
+						await this.scheduleEscalation(statusChangeResult.monitor, status, decision, activeIncident);
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -454,5 +461,81 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private clearEscalationTimer(monitorId: string) {
+		const timer = this.escalationTimers.get(monitorId);
+		if (!timer) {
+			return;
+		}
+		clearTimeout(timer);
+		this.escalationTimers.delete(monitorId);
+	}
+
+	private async scheduleEscalation(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		incident: Incident
+	) {
+		const escalation = monitor.escalation;
+		if (!escalation || !escalation.channelId || escalation.delayMinutes <= 0) {
+			return;
+		}
+
+		if (incident.escalationSentAt) {
+			return;
+		}
+
+		if (this.escalationTimers.has(monitor.id) || this.escalationInFlight.has(monitor.id)) {
+			return;
+		}
+
+		const delayMs = escalation.delayMinutes * 60 * 1000;
+		const timer = setTimeout(() => {
+			void this.runEscalationCheck(monitor, monitorStatusResponse, decision, escalation.channelId, escalation.delayMinutes);
+		}, delayMs);
+
+		this.escalationTimers.set(monitor.id, timer);
+	}
+
+	private async runEscalationCheck(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationNotificationId: string,
+		escalationDelayMinutes: number
+	) {
+		this.escalationTimers.delete(monitor.id);
+		this.escalationInFlight.add(monitor.id);
+		try {
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident || activeIncident.status === false || activeIncident.escalationSentAt) {
+				return;
+			}
+
+			const sent = await this.notificationsService.sendEscalationNotification(
+				monitor,
+				monitorStatusResponse,
+				decision,
+				escalationNotificationId,
+				escalationDelayMinutes
+			);
+
+			if (sent) {
+				await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+					escalationSentAt: new Date().toISOString(),
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.warn({
+				message: error instanceof Error ? error.message : "Unknown error",
+				service: SERVICE_NAME,
+				method: "runEscalationCheck",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		} finally {
+			this.escalationInFlight.delete(monitor.id);
+		}
 	}
 }
