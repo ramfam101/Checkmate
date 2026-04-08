@@ -15,6 +15,7 @@ export interface Incident {
 	resolutionType: IncidentResolutionType;
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
+	escalationNotificationsSent?: string[];
 	comment?: string | null;
 	createdAt: string;
 	updatedAt: string;

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -191,6 +191,10 @@ const CreateMonitorPage = () => {
 	);
 
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
+	const notificationOptions = (notifications ?? []).map((n) => ({
+		...n,
+		name: n.notificationName,
+	}));
 	const { data: games } = useGet<GamesMap>("/monitors/games");
 
 	const { schema, defaults } = useMonitorForm({
@@ -203,6 +207,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields: escalationRuleFields, append, remove } = useFieldArray({
+		control,
+		name: "escalationRules",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -705,11 +713,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -762,6 +765,86 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationRuleFields.map((rule, index) => (
+							<Stack
+								key={rule.id}
+								direction="row"
+								alignItems="center"
+								spacing={theme.spacing(LAYOUT.MD)}
+								width="100%"
+							>
+								<Controller
+									name={`escalationRules.${index}.channelId`}
+									control={control}
+									render={({ field: channelField, fieldState }) => (
+										<Select
+											{...channelField}
+											value={channelField.value ?? ""}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.channel.label"
+											)}
+											error={!!fieldState.error}
+											onChange={(event) => channelField.onChange(event.target.value)}
+										>
+											<MenuItem value="">
+												{t(
+													"pages.createMonitor.form.escalations.option.channel.placeholder"
+												)}
+											</MenuItem>
+											{notificationOptions.map((notification) => (
+												<MenuItem key={notification.id} value={notification.id}>
+													{notification.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+									)}
+								/>
+
+								<Controller
+									name={`escalationRules.${index}.delayMinutes`}
+									control={control}
+									render={({ field: delayField, fieldState }) => (
+										<TextField
+											{...delayField}
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.delay.label"
+											)}
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+											fullWidth
+											inputProps={{ min: 1 }}
+										/>
+									)}
+								/>
+
+								<IconButton
+									size="small"
+									onClick={() => remove(index)}
+									aria-label={t(
+										"pages.createMonitor.form.escalations.removeRule"
+									)}
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						))}
+
+						<Button
+							variant="outlined"
+							onClick={() => append({ channelId: "", delayMinutes: 5 })}
+						>
+							{t("pages.createMonitor.form.escalations.addRule")}
+						</Button>
+					</Stack>
 				}
 			/>
 

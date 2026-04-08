@@ -2,6 +2,8 @@ const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
+import type { MonitorStatusResponse } from "@/types/index.js";
+
 import {
 	ICheckService,
 	INetworkService,
@@ -172,6 +174,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalation notifications for long-running downtime
+				this.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation notifications for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -417,6 +429,64 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async handleEscalationNotifications(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> {
+		if (monitor.status !== "down" || !monitor.escalationRules?.length) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const pendingRules = monitor.escalationRules
+			.filter((rule) => {
+				const ruleIdentifier = rule.id || rule.channelId;
+				return !(activeIncident.escalationNotificationsSent ?? []).includes(ruleIdentifier);
+			})
+			.sort((a, b) => a.delayMinutes - b.delayMinutes);
+
+		if (!pendingRules.length) {
+			return;
+		}
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		const now = Date.now();
+
+		for (const rule of pendingRules) {
+			const ruleIdentifier = rule.id || rule.channelId;
+			const sendAt = incidentStart + rule.delayMinutes * 60 * 1000;
+			if (now < sendAt) {
+				continue;
+			}
+
+			const decision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "escalation",
+			};
+
+			const sent = await this.notificationsService.sendNotificationById(rule.channelId, monitor, monitorStatusResponse, decision);
+			if (!sent) {
+				this.logger.warn({
+					message: `Escalation notification failed for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotifications",
+					details: { channelId: rule.channelId, ruleId: ruleIdentifier },
+				});
+				continue;
+			}
+
+			const escalationNotificationsSent = Array.from(new Set([...(activeIncident.escalationNotificationsSent ?? []), ruleIdentifier]));
+			activeIncident.escalationNotificationsSent = escalationNotificationsSent;
+			await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+				escalationNotificationsSent,
+			});
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
