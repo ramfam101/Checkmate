@@ -72,6 +72,10 @@ export interface Monitor {
 	selectedDisks: string[];
 	gameId?: string;
 	grpcServiceName?: string;
+
+	// Escalation settings
+	escalationDelay?: number;
+	escalationChannels?: string[];
 	group: string | null;
 	geoCheckEnabled?: boolean;
 	geoCheckLocations?: GeoContinent[];

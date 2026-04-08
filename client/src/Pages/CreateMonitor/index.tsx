@@ -355,14 +355,84 @@ const CreateMonitorPage = () => {
 						/>
 					}
 				/>
-			)}
+		)}
 
-			<ConfigBox
-				title={t("pages.createMonitor.form.general.title")}
-				subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
-				rightContent={
-					<Stack spacing={theme.spacing(LAYOUT.MD)}>
-						{/* URL/Host/Container field - not shown for hardware */}
+		{/* Escalation Rules */}
+		<ConfigBox
+			title={"Escalation Rules"}
+			subtitle={"Send escalated alerts after a delay to additional channels."}
+			rightContent={
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="escalationDelay"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								type="number"
+								fieldLabel={"Escalate after (minutes)"}
+								value={field.value === 0 ? "" : field.value}
+								onChange={(e) => {
+									const val = e.target.value;
+									field.onChange(val === "" ? 0 : Number(val));
+								}}
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+							/>
+						)}
+					/>
+					<Controller
+						name="escalationChannels"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const selected = notificationOptions.filter((n) => (field.value ?? []).includes(n.id));
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selected}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={"Escalation notification channels"}
+									/>
+									{selected.length > 0 && (
+										<Stack flex={1} width="100%">
+											{selected.map((notification, index) => (
+												<Stack direction="row" alignItems="center" key={notification.id} width="100%">
+													<Typography flexGrow={1}>{notification.notificationName}</Typography>
+													<IconButton size="small" onClick={() => {
+														field.onChange((field.value ?? []).filter((id: string) => id !== notification.id));
+													}} aria-label="Remove escalation channel">
+														<Trash2 size={16} />
+													</IconButton>
+													{index < selected.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				</Stack>
+			}
+		/>
+
+		<ConfigBox
+			title={t("pages.createMonitor.form.general.title")}
+			subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
+			rightContent={
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					{/* URL/Host/Container field - not shown for hardware */}
 						{generalSettingsConfig.showUrl && (
 							<Controller
 								name="url"
@@ -1070,3 +1140,4 @@ const CreateMonitorPage = () => {
 };
 
 export default CreateMonitorPage;
+
