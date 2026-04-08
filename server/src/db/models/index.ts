@@ -19,6 +19,9 @@ export { default as InviteModel } from "@/db/models/Invite.js";
 export * from "@/db/models/AppSettings.js";
 export { default as AppSettingsModel } from "@/db/models/AppSettings.js";
 
+export * from "@/db/models/Escalation.js";
+export { default as EscalationModel } from "@/db/models/Escalation.js";
+
 export * from "@/db/models/RecoveryToken.js";
 export { default as RecoveryTokenModel } from "@/db/models/RecoveryToken.js";
 

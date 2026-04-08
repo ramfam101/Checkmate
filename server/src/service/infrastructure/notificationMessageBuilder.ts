@@ -7,12 +7,20 @@ import type {
 	ThresholdBreach,
 	NotificationContent,
 } from "@/types/notificationMessage.js";
+import type { Incident } from "@/types/incident.js";
+import type { EscalationDocument } from "@/db/models/Escalation.js";
 
 export interface INotificationMessageBuilder {
 	buildMessage(
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: Incident,
+		escalation: EscalationDocument,
 		clientHost: string
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
@@ -48,6 +56,35 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: Incident,
+		escalation: EscalationDocument,
+		clientHost: string
+	): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Escalations are for ongoing incidents
+		const severity: NotificationSeverity = "critical";
+		const content = this.buildEscalationContent(monitor, incident, escalation);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
 			},
 		};
 	}
@@ -178,6 +215,35 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			title: `Monitor: ${monitor.name}`,
 			summary: `Status update for monitor "${monitor.name}".`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, incident: Incident, escalation: EscalationDocument): NotificationContent {
+		const title = `ESCALATION: Monitor Still Down - ${monitor.name}`;
+		const durationMinutes = Math.floor((Date.now() - new Date(incident.startTime).getTime()) / (1000 * 60));
+		const summary = `Monitor "${monitor.name}" has been down for ${durationMinutes} minutes. This is an escalation notification.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Still Down`,
+			`Type: ${monitor.type}`,
+			`Incident started: ${new Date(incident.startTime).toISOString()}`,
+			`Duration: ${durationMinutes} minutes`,
+			`Escalation level: ${escalation.delayMinutes} minutes`,
+		];
+
+		if (escalation.message) {
+			details.push(`Message: ${escalation.message}`);
+		}
+
+		if (incident.message) {
+			details.push(`Original error: ${incident.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
 			timestamp: new Date(),
 		};
 	}

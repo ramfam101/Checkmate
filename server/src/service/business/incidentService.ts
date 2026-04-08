@@ -3,7 +3,7 @@ import type { Monitor } from "@/types/monitor.js";
 import type { MonitorStatusResponse } from "@/types/network.js";
 import { AppError } from "@/utils/AppError.js";
 import { getDateForRange } from "@/utils/dataUtils.js";
-import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from "@/repositories/index.js";
+import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository, IEscalationsRepository } from "@/repositories/index.js";
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
@@ -39,19 +39,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationsRepository: IEscalationsRepository;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationsRepository: IEscalationsRepository
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationsRepository = escalationsRepository;
 	}
 
 	get serviceName() {
@@ -102,7 +105,12 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			const resolvedIncident = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+
+			// Clean up any pending escalations for this incident
+			await this.escalationsRepository.deleteByIncidentId(activeIncident.id, activeIncident.teamId);
+
+			return resolvedIncident;
 		}
 
 		return null;
@@ -154,6 +162,9 @@ export class IncidentService implements IIncidentService {
 			incident.endTime = Date.now().toString();
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
+
+			// Clean up any pending escalations for this incident
+			await this.escalationsRepository.deleteByIncidentId(incident.id, teamId);
 
 			this.logger.debug({
 				service: SERVICE_NAME,

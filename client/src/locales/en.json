@@ -541,7 +541,15 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"tab": {
+						"notifications": "Notifications",
+						"escalationRules": "Escalation Rules"
+					},
+					"escalationRate": {
+						"label": "Escalation Rate (minutes)",
+						"placeholder": "e.g. 30"
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",
@@ -951,6 +959,33 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"escalations": {
+					"description": "Configure escalation notifications that will be sent at defined intervals during ongoing incidents.",
+					"title": "Escalation notifications",
+					"enable": {
+						"description": "Enable escalation notifications for this channel",
+						"title": "Enable escalations"
+					},
+					"config": {
+						"description": "Configure the escalation delays and messages",
+						"title": "Configure escalations"
+					},
+					"option": {
+						"enabled": {
+							"label": "Enable escalations"
+						},
+						"delayMinutes": {
+							"label": "Delay (minutes)",
+							"placeholder": "e.g. 30"
+						},
+						"message": {
+							"label": "Custom message (optional)",
+							"placeholder": "e.g. Escalation: Incident still active"
+						}
+					},
+					"addEscalation": "Add escalation",
+					"removeEscalation": "Remove escalation"
 				}
 			},
 			"table": {

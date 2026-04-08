@@ -128,14 +128,26 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
-		const emailConfig = {
+		const senderAddress = systemEmailAddress || systemEmailUser;
+		if (!systemEmailHost || !systemEmailPort || !senderAddress) {
+			this.logger.warn({
+				message: "Email transport config is incomplete",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					systemEmailHost,
+					systemEmailPort,
+					systemEmailAddress,
+					systemEmailUser,
+				},
+			});
+			return false;
+		}
+
+		const emailConfig: Record<string, unknown> = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
 			secure: systemEmailSecure,
-			auth: {
-				user: systemEmailUser || systemEmailAddress,
-				pass: systemEmailPassword,
-			},
 			name: systemEmailConnectionHost || "localhost",
 			connectionTimeout: 5000,
 			pool: systemEmailPool,
@@ -146,6 +158,16 @@ export class EmailService implements IEmailService {
 				servername: systemEmailTLSServername,
 			},
 		};
+
+		if (systemEmailUser && typeof systemEmailPassword !== "undefined") {
+			Object.assign(emailConfig, {
+				auth: {
+					user: systemEmailUser,
+					pass: systemEmailPassword,
+				},
+			});
+		}
+
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
 		try {
@@ -156,16 +178,26 @@ export class EmailService implements IEmailService {
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,
+				details: {
+					systemEmailHost,
+					systemEmailPort,
+					systemEmailSecure,
+					systemEmailConnectionHost,
+					systemEmailTLSServername,
+					systemEmailIgnoreTLS,
+					systemEmailRequireTLS,
+					systemEmailRejectUnauthorized,
+				},
 			});
 			return false;
 		}
 
 		try {
 			const info = await this.transporter.sendMail({
-				to: to,
-				from: systemEmailAddress,
-				subject: subject,
-				html: html,
+				to,
+				from: senderAddress,
+				subject,
+				html,
 			});
 			return info?.messageId;
 		} catch (error: unknown) {
@@ -175,6 +207,7 @@ export class EmailService implements IEmailService {
 				method: "sendEmail",
 				stack: error instanceof Error ? error.stack : undefined,
 			});
+			return false;
 		}
 	};
 }

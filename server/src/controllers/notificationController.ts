@@ -35,11 +35,7 @@ class NotificationController implements INotificationController {
 	testNotification = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const notification = testNotificationBodyValidation.parse(req.body);
-			const success = await this.notificationsService.sendTestNotification(notification);
-
-			if (!success) {
-				throw new AppError({ message: "Sending notification failed", status: 500 });
-			}
+			await this.notificationsService.sendTestNotification(notification);
 
 			return res.status(200).json({
 				success: true,
@@ -47,7 +43,15 @@ class NotificationController implements INotificationController {
 				details: { service: SERVICE_NAME },
 			});
 		} catch (error) {
-			next(error);
+			// If it's already an AppError, pass it through
+			if (error instanceof AppError) {
+				next(error);
+				return;
+			}
+
+			// For other errors (like from email provider), create a more specific error
+			const errorMessage = error instanceof Error ? error.message : "Sending notification failed";
+			next(new AppError({ message: errorMessage, status: 500 }));
 		}
 	};
 

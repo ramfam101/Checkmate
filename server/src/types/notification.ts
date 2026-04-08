@@ -1,6 +1,11 @@
 export const NotificationChannels = ["email", "slack", "discord", "webhook", "pager_duty", "matrix", "teams"] as const;
 export type NotificationChannel = (typeof NotificationChannels)[number];
 
+export interface NotificationEscalation {
+	delayMinutes: number;
+	message?: string;
+}
+
 export interface Notification {
 	id: string;
 	userId: string;
@@ -12,6 +17,8 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalationsEnabled?: boolean;
+	escalations?: NotificationEscalation[];
 	createdAt: string;
 	updatedAt: string;
 }

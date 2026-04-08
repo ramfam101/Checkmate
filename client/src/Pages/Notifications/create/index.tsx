@@ -1,8 +1,11 @@
 import { BasePage, ConfigBox } from "@/Components/design-elements";
-import { TextField, Select, Button } from "@/Components/inputs";
+import { TextField, Select, Button, Checkbox } from "@/Components/inputs";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
+import Box from "@mui/material/Box";
+import IconButton from "@mui/material/IconButton";
+import { Plus, Trash2 } from "lucide-react";
 import { useTheme } from "@mui/material/styles";
 
 import { useEffect, useMemo } from "react";
@@ -228,6 +231,110 @@ const NotificationsCreatePage = () => {
 								)}
 							/>
 						</Stack>
+					}
+				/>
+			)}
+			<ConfigBox
+				title={t("pages.notifications.form.escalations.enable.title")}
+				subtitle={t("pages.notifications.form.escalations.enable.description")}
+				rightContent={
+					<Controller
+						name="escalationsEnabled"
+						control={control}
+						defaultValue={defaults.escalationsEnabled}
+						render={({ field }) => (
+							<Checkbox
+								checked={field.value}
+								onChange={(e) => {
+									field.onChange(e);
+									// Clear escalations when disabled
+									if (!e.target.checked) {
+										reset({
+											...getValues(),
+											escalations: [],
+										});
+									}
+								}}
+								label={t("pages.notifications.form.escalations.option.enabled.label")}
+							/>
+						)}
+					/>
+				}
+			/>
+			{watch("escalationsEnabled") && (
+				<ConfigBox
+					title={t("pages.notifications.form.escalations.config.title")}
+					subtitle={t("pages.notifications.form.escalations.config.description")}
+					rightContent={
+						<Controller
+							name="escalations"
+							control={control}
+							defaultValue={defaults.escalations}
+							render={({ field, fieldState }) => (
+								<Stack spacing={theme.spacing(4)}>
+									{field.value?.map((escalation, index) => (
+										<Box
+											key={index}
+											display="flex"
+											alignItems="center"
+											gap={theme.spacing(2)}
+										>
+											<TextField
+												value={escalation.delayMinutes || ""}
+												onChange={(e) => {
+													const newEscalations = [...(field.value || [])];
+													newEscalations[index] = {
+														...newEscalations[index],
+														delayMinutes: parseInt(e.target.value) || 0,
+													};
+													field.onChange(newEscalations);
+												}}
+												type="number"
+												fieldLabel={t("pages.notifications.form.escalations.option.delayMinutes.label")}
+												placeholder={t("pages.notifications.form.escalations.option.delayMinutes.placeholder")}
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message ?? ""}
+												sx={{ minWidth: 120 }}
+											/>
+											<TextField
+												value={escalation.message || ""}
+												onChange={(e) => {
+													const newEscalations = [...(field.value || [])];
+													newEscalations[index] = {
+														...newEscalations[index],
+														message: e.target.value,
+													};
+													field.onChange(newEscalations);
+												}}
+												type="text"
+												fieldLabel={t("pages.notifications.form.escalations.option.message.label")}
+												placeholder={t("pages.notifications.form.escalations.option.message.placeholder")}
+												fullWidth
+											/>
+											<IconButton
+												onClick={() => {
+													const newEscalations = (field.value || []).filter((_, i) => i !== index);
+													field.onChange(newEscalations);
+												}}
+												color="error"
+											>
+												<Trash2 size={20} />
+											</IconButton>
+										</Box>
+									))}
+									<Button
+										variant="outlined"
+										startIcon={<Plus size={20} />}
+										onClick={() => {
+											const newEscalations = [...(field.value || []), { delayMinutes: 30, message: "" }];
+											field.onChange(newEscalations);
+										}}
+									>
+										{t("pages.notifications.form.escalations.addEscalation")}
+									</Button>
+								</Stack>
+							)}
+						/>
 					}
 				/>
 			)}

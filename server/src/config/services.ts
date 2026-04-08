@@ -1,4 +1,5 @@
 import MongoDB from "../db/MongoDB.js";
+import { EscalationModel } from "@/db/models/index.js";
 import { IDb } from "@/db/IDb.js";
 import {
 	// Service classes
@@ -95,6 +96,7 @@ import {
 	MongoIncidentRepository,
 	MongoTeamsRepository,
 	MongoMaintenanceWindowsRepository,
+	MongoEscalationsRepository,
 	IMonitorsRepository,
 	IChecksRepository,
 	IGeoChecksRepository,
@@ -108,6 +110,7 @@ import {
 	IIncidentsRepository,
 	ITeamsRepository,
 	IMaintenanceWindowsRepository,
+	IEscalationsRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 
@@ -146,6 +149,7 @@ export type InitializedServices = {
 	incidentsRepository: IIncidentsRepository;
 	teamsRepository: ITeamsRepository;
 	maintenanceWindowsRepository: IMaintenanceWindowsRepository;
+	escalationsRepository: IEscalationsRepository;
 };
 
 export const initializeServices = async ({
@@ -178,6 +182,7 @@ export const initializeServices = async ({
 	const incidentsRepository = new MongoIncidentRepository();
 	const teamsRepository = new MongoTeamsRepository();
 	const maintenanceWindowsRepository = new MongoMaintenanceWindowsRepository();
+	const escalationsRepository = new MongoEscalationsRepository(EscalationModel);
 
 	// Network providers
 	const pingProvider = new PingProvider(ping);
@@ -205,7 +210,7 @@ export const initializeServices = async ({
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
+	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder, escalationsRepository);
 
 	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
@@ -234,6 +239,8 @@ export const initializeServices = async ({
 	const notificationsService = new NotificationsService(
 		notificationsRepository,
 		monitorsRepository,
+		incidentsRepository,
+		escalationsRepository,
 		webhookProvider,
 		emailProvider,
 		slackProvider,
@@ -262,7 +269,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationsRepository
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
@@ -343,6 +351,7 @@ export const initializeServices = async ({
 		incidentsRepository,
 		teamsRepository,
 		maintenanceWindowsRepository,
+		escalationsRepository,
 	};
 
 	return services;

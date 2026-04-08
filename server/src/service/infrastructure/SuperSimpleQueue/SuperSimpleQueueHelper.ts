@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { Incident } from "@/types/incident.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -20,6 +21,7 @@ import {
 	IChecksRepository,
 	IIncidentsRepository,
 	IGeoChecksRepository,
+	IEscalationsRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
@@ -30,6 +32,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -66,6 +69,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationsRepository: IEscalationsRepository;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +87,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationsRepository: IEscalationsRepository
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +106,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationsRepository = escalationsRepository;
 	}
 
 	get serviceName() {
@@ -156,9 +162,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				// Step 6. Handle incidents first to get incident ID
+				let incident: Incident | null = null;
+				try {
+					incident = await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+
+				// Step 7. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					const incidentId = incident?.id;
+					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision, incidentId).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
@@ -167,16 +187,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						});
 					});
 				}
-
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -455,4 +465,45 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Running escalation check job",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+
+				// Find pending escalations that are due
+				const pendingEscalations = await this.escalationsRepository.findPendingEscalations(new Date());
+
+				for (const escalation of pendingEscalations) {
+					try {
+						await this.notificationsService.sendEscalation(escalation._id.toString());
+					} catch (error: unknown) {
+						this.logger.error({
+							message: `Failed to send escalation ${escalation._id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getEscalationJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
+
+				this.logger.debug({
+					message: `Processed ${pendingEscalations.length} escalations`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error in escalation job: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
 }

@@ -16,11 +16,15 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 						homeserverUrl: data.homeserverUrl || "",
 						roomId: data.roomId || "",
 						accessToken: data.accessToken || "",
+						escalationsEnabled: data.escalationsEnabled || false,
+						escalations: data.escalations || [],
 					}
 				: {
 						type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
 						notificationName: data?.notificationName || "",
 						address: data?.address || "",
+						escalationsEnabled: data?.escalationsEnabled || false,
+						escalations: data?.escalations || [],
 					};
 
 		return { schema: notificationSchema, defaults };

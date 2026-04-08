@@ -24,7 +24,7 @@ export class EmailProvider implements INotificationProvider {
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
-			return false;
+			throw new Error("Notification address is required for email testing");
 		}
 
 		if (!html) {
@@ -33,7 +33,7 @@ export class EmailProvider implements INotificationProvider {
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
-			return false;
+			throw new Error("Failed to build email template");
 		}
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
@@ -43,7 +43,7 @@ export class EmailProvider implements INotificationProvider {
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
 			});
-			return false;
+			throw new Error("Email sending failed - check SMTP configuration in app settings");
 		}
 		return true;
 	}

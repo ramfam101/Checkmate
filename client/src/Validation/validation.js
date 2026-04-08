@@ -468,6 +468,11 @@ const infrastructureMonitorValidation = joi.object({
 		"number.max": "Status window threshold cannot exceed 100%.",
 	}),
 	notifications: joi.array().items(joi.string()),
+	escalationRate: joi.number().min(1).messages({
+		"number.base": "Escalation rate must be a number.",
+		"number.min": "Escalation rate must be at least 1 minute.",
+	}).optional(),
+	escalationNotifications: joi.array().items(joi.string()).optional(),
 	selectedDisks: joi.array().items(joi.string()).optional(),
 });
 
@@ -479,12 +484,12 @@ const notificationValidation = joi.object({
 
 	type: joi
 		.string()
-		.valid("email", "webhook", "slack", "discord", "pager_duty", "matrix")
+		.valid("email", "webhook", "slack", "discord", "pager_duty", "matrix", "teams")
 		.required()
 		.messages({
 			"string.empty": "Notification type is required",
 			"any.required": "Notification type is required",
-			"any.only": "Notification type must be email, webhook, or pager_duty",
+			"any.only": "Notification type must be email, webhook, slack, discord, pager_duty, matrix, or teams",
 		}),
 
 	address: joi.when("type", {
@@ -509,7 +514,7 @@ const notificationValidation = joi.object({
 				}),
 			},
 			{
-				is: joi.valid("webhook", "slack", "discord"),
+				is: joi.valid("webhook", "slack", "discord", "teams"),
 				then: joi.string().uri().required().messages({
 					"string.empty": "Webhook URL cannot be empty",
 					"any.required": "Webhook URL is required",
@@ -549,6 +554,21 @@ const notificationValidation = joi.object({
 			"any.required": "Access Token is required",
 		}),
 		otherwise: joi.string().allow("").optional(),
+	}),
+
+	escalationsEnabled: joi.boolean().optional(),
+	escalations: joi.when("escalationsEnabled", {
+		is: true,
+		then: joi.array().items(joi.object({
+			delayMinutes: joi.number().integer().min(1).required().messages({
+				"number.min": "Delay must be at least 1 minute",
+				"any.required": "Delay is required",
+			}),
+			message: joi.string().allow("").optional(),
+		})).min(1).messages({
+			"array.min": "At least one escalation is required when escalations are enabled",
+		}),
+		otherwise: joi.array().optional(),
 	}),
 });
 
