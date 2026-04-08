@@ -338,63 +338,58 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return documents.map((doc) => this.toEntity(doc));
 	};
 
-	private toEntity = (doc: MonitorDocument): Monitor => {
-		const toStringId = (value: unknown): string => {
-			if (value instanceof mongoose.Types.ObjectId) {
-				return value.toString();
-			}
-			return value?.toString() ?? "";
-		};
+private toEntity = (doc: MonitorDocument): Monitor => {
+    return {
+        id: doc._id.toString(),
+        userId: doc.userId.toString(),
+        teamId: doc.teamId.toString(),
+        name: doc.name,
+        description: doc.description,
+        status: doc.status,
+        statusWindow: doc.statusWindow,
+        statusWindowSize: doc.statusWindowSize,
+        statusWindowThreshold: doc.statusWindowThreshold,
+        type: doc.type,
+        ignoreTlsErrors: doc.ignoreTlsErrors,
+        useAdvancedMatching: doc.useAdvancedMatching,
+        jsonPath: doc.jsonPath,
+        expectedValue: doc.expectedValue,
+        matchMethod: doc.matchMethod,
+        url: doc.url,
+        port: doc.port,
+        isActive: doc.isActive,
+        interval: doc.interval,
+        uptimePercentage: doc.uptimePercentage,
+        notifications: doc.notifications.map((id) => id.toString()),
+        escalationLevels: doc.escalationLevels?.map(el => ({
+            delayMinutes: el.delayMinutes,
+            notificationId: el.notificationId.toString()
+        })) || [],
+        secret: doc.secret,
+        cpuAlertThreshold: doc.cpuAlertThreshold,
+        cpuAlertCounter: doc.cpuAlertCounter,
+        memoryAlertThreshold: doc.memoryAlertThreshold,
+        memoryAlertCounter: doc.memoryAlertCounter,
+        diskAlertThreshold: doc.diskAlertThreshold,
+        diskAlertCounter: doc.diskAlertCounter,
+        tempAlertThreshold: doc.tempAlertThreshold,
+        tempAlertCounter: doc.tempAlertCounter,
+        selectedDisks: doc.selectedDisks,
+        gameId: doc.gameId,
+        grpcServiceName: doc.grpcServiceName,
+        group: doc.group,
+        geoCheckEnabled: doc.geoCheckEnabled,
+        geoCheckLocations: doc.geoCheckLocations as any,
+        geoCheckInterval: doc.geoCheckInterval,
+		recentChecks: doc.recentChecks.map((check) => ({
+			...check,
+			createdAt: check.createdAt.toISOString(),
+		})),        
+        updatedAt: doc.updatedAt.toISOString(),
+        createdAt: doc.createdAt.toISOString(), 
+    };
+};
 
-		const toDateString = (value: Date | string): string => {
-			return value instanceof Date ? value.toISOString() : value;
-		};
-
-		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
-
-		return {
-			id: toStringId(doc._id),
-			userId: toStringId(doc.userId),
-			teamId: toStringId(doc.teamId),
-			name: doc.name,
-			description: doc.description ?? undefined,
-			status: doc.status ?? "initializing",
-			statusWindow: doc.statusWindow ?? [],
-			statusWindowSize: doc.statusWindowSize,
-			statusWindowThreshold: doc.statusWindowThreshold,
-			type: doc.type,
-			ignoreTlsErrors: doc.ignoreTlsErrors,
-			useAdvancedMatching: doc.useAdvancedMatching ?? false,
-			jsonPath: doc.jsonPath ?? undefined,
-			expectedValue: doc.expectedValue ?? undefined,
-			matchMethod: doc.matchMethod ?? undefined,
-			url: doc.url,
-			port: doc.port ?? undefined,
-			isActive: doc.isActive,
-			interval: doc.interval,
-			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
-			secret: doc.secret ?? undefined,
-			cpuAlertThreshold: doc.cpuAlertThreshold,
-			cpuAlertCounter: doc.cpuAlertCounter,
-			memoryAlertThreshold: doc.memoryAlertThreshold,
-			memoryAlertCounter: doc.memoryAlertCounter,
-			diskAlertThreshold: doc.diskAlertThreshold,
-			diskAlertCounter: doc.diskAlertCounter,
-			tempAlertThreshold: doc.tempAlertThreshold,
-			tempAlertCounter: doc.tempAlertCounter,
-			selectedDisks: doc.selectedDisks ?? [],
-			gameId: doc.gameId ?? undefined,
-			grpcServiceName: doc.grpcServiceName ?? undefined,
-			group: doc.group ?? null,
-			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
-			geoCheckEnabled: doc.geoCheckEnabled ?? false,
-			geoCheckLocations: doc.geoCheckLocations ?? [],
-			geoCheckInterval: doc.geoCheckInterval ?? 300000,
-			createdAt: toDateString(doc.createdAt),
-			updatedAt: toDateString(doc.updatedAt),
-		};
-	};
 
 	private toEntityWithChecks = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
@@ -450,8 +445,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
-			createdAt: toDateString(doc.createdAt),
+			escalationLevels: (doc.escalationLevels ?? []).map((level: any) => ({
+				delayMinutes: level.delayMinutes,
+				notificationId: level.notificationId.toString(),
+			})),
 			updatedAt: toDateString(doc.updatedAt),
+			createdAt: toDateString(doc.createdAt),
 		};
 	};
 

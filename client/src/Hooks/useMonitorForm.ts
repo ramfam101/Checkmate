@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { monitorSchema, type MonitorFormData } from "@/Validation/monitor";
-import type { Monitor, MonitorType } from "@/Types/Monitor";
+import type { Monitor, MonitorType, EscalationLevel } from "@/Types/Monitor";
 
 interface UseMonitorFormOptions {
 	data?: Monitor | null;
@@ -12,6 +12,7 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalationLevels: (data?.escalationLevels as EscalationLevel[]) || [],
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
@@ -40,14 +41,14 @@ export const useMonitorForm = ({
 					matchMethod: data?.matchMethod || "",
 					expectedValue: data?.expectedValue || "",
 					jsonPath: data?.jsonPath || "",
-				};
+				} as MonitorFormData;
 				break;
 			case "ping":
 				defaults = {
 					...base,
 					type: "ping",
 					url: data?.url || "",
-				};
+				} as MonitorFormData;
 				break;
 			case "port":
 				defaults = {
@@ -55,14 +56,14 @@ export const useMonitorForm = ({
 					type: "port",
 					url: data?.url || "",
 					port: data?.port || 80,
-				};
+				} as MonitorFormData;
 				break;
 			case "docker":
 				defaults = {
 					...base,
 					type: "docker",
 					url: data?.url || "",
-				};
+				} as MonitorFormData;
 				break;
 			case "game":
 				defaults = {
@@ -71,7 +72,7 @@ export const useMonitorForm = ({
 					url: data?.url || "",
 					port: data?.port || 27015,
 					gameId: data?.gameId || "",
-				};
+				} as MonitorFormData;
 				break;
 			case "grpc":
 				defaults = {
@@ -81,14 +82,14 @@ export const useMonitorForm = ({
 					port: data?.port || 50051,
 					grpcServiceName: data?.grpcServiceName || "",
 					ignoreTlsErrors: data?.ignoreTlsErrors || false,
-				};
+				} as MonitorFormData;
 				break;
 			case "pagespeed":
 				defaults = {
 					...base,
 					type: "pagespeed",
 					url: data?.url || "",
-				};
+				} as MonitorFormData;
 				break;
 			case "hardware":
 				defaults = {
@@ -101,7 +102,7 @@ export const useMonitorForm = ({
 					diskAlertThreshold: data?.diskAlertThreshold ?? 100,
 					tempAlertThreshold: data?.tempAlertThreshold ?? 100,
 					selectedDisks: data?.selectedDisks || [],
-				};
+				} as MonitorFormData;
 				break;
 			case "websocket":
 				defaults = {
@@ -109,7 +110,7 @@ export const useMonitorForm = ({
 					type: "websocket",
 					url: data?.url || "",
 					ignoreTlsErrors: data?.ignoreTlsErrors || false,
-				};
+				} as MonitorFormData;
 				break;
 			default:
 				defaults = {
@@ -121,7 +122,7 @@ export const useMonitorForm = ({
 					matchMethod: "",
 					expectedValue: "",
 					jsonPath: "",
-				};
+				} as MonitorFormData;
 		}
 
 		return { schema: monitorSchema, defaults };

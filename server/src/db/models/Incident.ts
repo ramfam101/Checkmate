@@ -17,6 +17,13 @@ export interface IncidentDocument extends IncidentDocumentBase {
 
 const IncidentSchema = new Schema<IncidentDocument>(
 	{
+		notifiedEscalations: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			}
+		],
+
 		monitorId: {
 			type: Schema.Types.ObjectId,
 			ref: "Monitor",

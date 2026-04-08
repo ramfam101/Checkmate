@@ -8,13 +8,13 @@ import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
 import RadioGroup from "@mui/material/RadioGroup";
 import FormControl from "@mui/material/FormControl";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
-import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import Box from "@mui/material/Box";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -37,6 +37,7 @@ import {
 	type MonitorType,
 	type GamesMap,
 	supportsGeoCheck,
+	type EscalationLevel,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
@@ -169,7 +170,6 @@ const CreateMonitorPage = () => {
 	const navigate = useNavigate();
 	const isEditMode = Boolean(monitorId);
 
-	// Extract page type from URL path (e.g., /pagespeed/create -> pagespeed)
 	const pageType = useMemo(() => {
 		const pathSegments = location.pathname.split("/").filter(Boolean);
 		const firstSegment = pathSegments[0];
@@ -209,7 +209,6 @@ const CreateMonitorPage = () => {
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
-
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
 
@@ -225,7 +224,7 @@ const CreateMonitorPage = () => {
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
 	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
 	const isSubmitting = isCreating || isUpdating;
-	// Delete functionality
+
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
@@ -237,7 +236,6 @@ const CreateMonitorPage = () => {
 		if (!monitorId) return;
 		await deleteFn(`/monitors/${monitorId}`);
 		setIsDeleteDialogOpen(false);
-		// Navigate based on page type
 		if (pageType === "pagespeed") {
 			navigate("/pagespeed");
 		} else if (pageType === "hardware") {
@@ -285,7 +283,7 @@ const CreateMonitorPage = () => {
 				refetch={refetchMonitor}
 				onDelete={handleDeleteClick}
 			/>
-			{/* Monitor Type Selection - only shown for uptime monitors */}
+
 			{showTypeSelector && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.type.title")}
@@ -362,7 +360,6 @@ const CreateMonitorPage = () => {
 				subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
 				rightContent={
 					<Stack spacing={theme.spacing(LAYOUT.MD)}>
-						{/* URL/Host/Container field - not shown for hardware */}
 						{generalSettingsConfig.showUrl && (
 							<Controller
 								name="url"
@@ -382,7 +379,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Port field - only for port and game types */}
 						{generalSettingsConfig.showPort && (
 							<Controller
 								name="port"
@@ -408,7 +404,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Game select - only for game type */}
 						{generalSettingsConfig.showGameSelect && (
 							<Controller
 								name="gameId"
@@ -421,7 +416,7 @@ const CreateMonitorPage = () => {
 										error={!!fieldState.error}
 									>
 										<MenuItem value="">
-											{t("pages.createMonitor.form.general.option.game.placeholder")}{" "}
+											{t("pages.createMonitor.form.general.option.game.placeholder")}
 										</MenuItem>
 										{games &&
 											Object.entries(games).map(([key, game]) => (
@@ -437,7 +432,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* gRPC Service Name field - only for grpc type */}
 						{generalSettingsConfig.showGrpcServiceName && (
 							<Controller
 								name="grpcServiceName"
@@ -461,7 +455,6 @@ const CreateMonitorPage = () => {
 							/>
 						)}
 
-						{/* Secret field - only for hardware type */}
 						{generalSettingsConfig.showSecret && (
 							<Controller
 								name="secret"
@@ -574,7 +567,6 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			{/* Alert Thresholds - only for hardware type */}
 			{generalSettingsConfig.showSecret && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.thresholds.title")}
@@ -690,6 +682,7 @@ const CreateMonitorPage = () => {
 									min={1}
 									max={100}
 									valueLabelDisplay="auto"
+									valueLabelFormat={(value) => `${value}%`}
 								/>
 							)}
 						/>
@@ -705,7 +698,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
@@ -749,7 +741,7 @@ const CreateMonitorPage = () => {
 																)
 															);
 														}}
-														aria-label="Remove notification"
+														aria-label={t("common.buttons.remove")}
 													>
 														<Trash2 size={16} />
 													</IconButton>
@@ -765,6 +757,151 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalationLevels"
+						control={control}
+						render={({ field, fieldState }) => {
+							const escalationLevels = (field.value ?? []) as EscalationLevel[];
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationLevels.length > 0 && (
+										<Stack spacing={theme.spacing(LAYOUT.MD)}>
+											{escalationLevels.map((level, index) => (
+												<Box
+													key={`escalation-level-${index}`}
+													sx={{
+														border: `1px solid ${theme.palette.divider}`,
+														borderRadius: theme.shape.borderRadius,
+														p: theme.spacing(LAYOUT.MD),
+														backgroundColor:
+															theme.palette.mode === "dark"
+																? "rgba(255, 255, 255, 0.05)"
+																: "rgba(0, 0, 0, 0.02)",
+													}}
+												>
+													<Stack
+														direction="row"
+														spacing={theme.spacing(LAYOUT.MD)}
+														alignItems="flex-start"
+													>
+														<Stack
+															flex={1}
+															spacing={theme.spacing(LAYOUT.SM)}
+														>
+															<Select
+																value={level.notificationId ?? ""}
+																onChange={(e) => {
+																	const updated = [...escalationLevels];
+																	updated[index] = {
+																		...updated[index],
+																		notificationId: e.target.value as string,
+																	};
+																	field.onChange(updated);
+																}}
+																fieldLabel={t(
+																	"pages.createMonitor.form.escalations.option.channel.label"
+																)}
+															>
+																<MenuItem value="">
+																	{t(
+																		"pages.createMonitor.form.escalations.option.channel.placeholder"
+																	)}
+																</MenuItem>
+																{notificationOptions.map((option) => (
+																	<MenuItem
+																		key={option.id}
+																		value={option.id}
+																	>
+																		{option.name}
+																	</MenuItem>
+																))}
+															</Select>
+
+															<TextField
+																type="number"
+																value={level.delayMinutes ?? 5}
+																onChange={(e) => {
+																	const value = Number(e.target.value);
+																	const updated = [...escalationLevels];
+																	updated[index] = {
+																		...updated[index],
+																		delayMinutes: Number.isNaN(value)
+																			? 1
+																			: Math.max(1, Math.min(1440, value)),
+																	};
+																	field.onChange(updated);
+																}}
+																fieldLabel={t(
+																	"pages.createMonitor.form.escalations.option.delay.label"
+																)}
+																placeholder={t(
+																	"pages.createMonitor.form.escalations.option.delay.placeholder"
+																)}
+																fullWidth
+																inputProps={{ min: 1, max: 1440 }}
+															/>
+														</Stack>
+
+														<IconButton
+															size="small"
+															onClick={() => {
+																const updated = escalationLevels.filter(
+																	(_, idx) => idx !== index
+																);
+																field.onChange(updated);
+															}}
+															aria-label={t(
+																"pages.createMonitor.form.escalations.button.remove"
+															)}
+															sx={{ mt: 1 }}
+														>
+															<Trash2 size={18} />
+														</IconButton>
+													</Stack>
+												</Box>
+											))}
+										</Stack>
+									)}
+
+									<Button
+										type="button"
+										variant="outlined"
+										startIcon={<Plus size={18} />}
+										onClick={() =>
+											field.onChange([
+												...escalationLevels,
+												{ delayMinutes: 5, notificationId: "" },
+											])
+										}
+										sx={{ alignSelf: "flex-start" }}
+									>
+										{t("pages.createMonitor.form.escalations.button.add")}
+									</Button>
+
+									{fieldState.error?.message && (
+										<Typography
+											color="error"
+											variant="caption"
+										>
+											{fieldState.error.message}
+										</Typography>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -772,25 +909,25 @@ const CreateMonitorPage = () => {
 					title={t("pages.createMonitor.form.ignoreTls.title")}
 					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
 					rightContent={
-						<Controller
-							name="ignoreTlsErrors"
-							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
+						<Stack
+							direction="row"
+							alignItems="center"
+							spacing={theme.spacing(SPACING.LG)}
+						>
+							<Controller
+								name="ignoreTlsErrors"
+								control={control}
+								render={({ field }) => (
 									<Switch
 										checked={field.value ?? false}
 										onChange={(e) => field.onChange(e.target.checked)}
 									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
-								</Stack>
-							)}
-						/>
+								)}
+							/>
+							<Typography>
+								{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
+							</Typography>
+						</Stack>
 					}
 				/>
 			)}
@@ -801,27 +938,25 @@ const CreateMonitorPage = () => {
 					subtitle={t("pages.createMonitor.form.advanced.description")}
 					rightContent={
 						<Stack spacing={theme.spacing(LAYOUT.MD)}>
-							<Controller
-								name="useAdvancedMatching"
-								control={control}
-								render={({ field }) => (
-									<Stack
-										direction="row"
-										alignItems="center"
-										spacing={theme.spacing(SPACING.LG)}
-									>
+							<Stack
+								direction="row"
+								alignItems="center"
+								spacing={theme.spacing(SPACING.LG)}
+							>
+								<Controller
+									name="useAdvancedMatching"
+									control={control}
+									render={({ field }) => (
 										<Switch
 											checked={field.value ?? false}
 											onChange={(e) => field.onChange(e.target.checked)}
 										/>
-										<Typography>
-											{t(
-												"pages.createMonitor.form.advanced.option.advancedMatching.label"
-											)}
-										</Typography>
-									</Stack>
-								)}
-							/>
+									)}
+								/>
+								<Typography>
+									{t("pages.createMonitor.form.advanced.option.advancedMatching.label")}
+								</Typography>
+							</Stack>
 							{watchedUseAdvancedMatching && (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Controller
@@ -887,21 +1022,10 @@ const CreateMonitorPage = () => {
 									/>
 									<Typography
 										component="span"
-										color="text.secondary"
-										sx={{ opacity: 0.8 }}
+										color="textSecondary"
+										variant="caption"
 									>
-										<Trans
-											i18nKey="pages.createMonitor.form.advanced.option.jsonPath.description"
-											components={{
-												jmesLink: (
-													<Link
-														href="https://jmespath.org/"
-														target="_blank"
-														rel="noopener noreferrer"
-													/>
-												),
-											}}
-										/>
+										{t("pages.createMonitor.form.advanced.option.jsonPath.description")}
 									</Typography>
 								</Stack>
 							)}
@@ -916,32 +1040,31 @@ const CreateMonitorPage = () => {
 					subtitle={t("pages.createMonitor.form.geoChecks.description")}
 					rightContent={
 						<Stack spacing={theme.spacing(LAYOUT.MD)}>
-							<Controller
-								name="geoCheckEnabled"
-								control={control}
-								render={({ field }) => (
-									<Stack
-										direction="row"
-										alignItems="center"
-										spacing={theme.spacing(SPACING.LG)}
-									>
+							<Stack
+								direction="row"
+								alignItems="center"
+								spacing={theme.spacing(SPACING.LG)}
+							>
+								<Controller
+									name="geoCheckEnabled"
+									control={control}
+									render={({ field }) => (
 										<Switch
 											checked={field.value ?? false}
 											onChange={(e) => field.onChange(e.target.checked)}
 										/>
-										<Typography>
-											{t("pages.createMonitor.form.geoChecks.option.enabled.label")}
-										</Typography>
-									</Stack>
-								)}
-							/>
+									)}
+								/>
+								<Typography>
+									{t("pages.createMonitor.form.geoChecks.option.enabled.label")}
+								</Typography>
+							</Stack>
 							{watchGeoCheckEnabled && (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Controller
 										name="geoCheckLocations"
 										control={control}
 										render={({ field }) => {
-											// Map continents to have 'name' property for Autocomplete
 											const locationOptions = GeoContinents.map((continent) => ({
 												id: continent,
 												name: t(
@@ -964,9 +1087,6 @@ const CreateMonitorPage = () => {
 														isOptionEqualToValue={(option, value) =>
 															option.id === value.id
 														}
-														fieldLabel={t(
-															"pages.createMonitor.form.geoChecks.option.locations.label"
-														)}
 													/>
 													{selectedLocations.length > 0 && (
 														<Stack
@@ -990,7 +1110,7 @@ const CreateMonitorPage = () => {
 																				)
 																			);
 																		}}
-																		aria-label="Remove location"
+																		aria-label={t("common.buttons.remove")}
 																	>
 																		<Trash2 size={16} />
 																	</IconButton>
@@ -1057,6 +1177,7 @@ const CreateMonitorPage = () => {
 					{t("common.buttons.save")}
 				</Button>
 			</Stack>
+
 			<Dialog
 				open={isDeleteDialogOpen}
 				title={t("common.dialogs.delete.title")}
