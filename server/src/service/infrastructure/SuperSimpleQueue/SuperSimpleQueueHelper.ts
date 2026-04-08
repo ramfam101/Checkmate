@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -166,6 +166,53 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// Step 6b. Check if escalation notification should fire (monitor has been down past threshold)
+				const currentMonitor = statusChangeResult.monitor;
+				if (
+					currentMonitor.status === "down" &&
+					currentMonitor.escalationThreshold &&
+					(currentMonitor.escalationNotifications?.length ?? 0) > 0 &&
+					!currentMonitor.escalationSentAt
+				) {
+					try {
+						const incident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+						if (incident) {
+							const downDurationMs = Date.now() - new Date(incident.startTime).getTime();
+							const thresholdMs = currentMonitor.escalationThreshold * 60 * 1000;
+							if (downDurationMs >= thresholdMs) {
+								// Mark escalation sent before dispatching to prevent double-fire on the next heartbeat
+								await this.monitorsRepository.updateById(monitorId, teamId, { escalationSentAt: new Date() });
+								const escalationDecision: MonitorActionDecision = {
+									shouldCreateIncident: false,
+									shouldResolveIncident: false,
+									shouldSendNotification: true,
+									incidentReason: null,
+									notificationReason: "escalation",
+								};
+								this.notificationsService.handleEscalationNotifications(currentMonitor, status, escalationDecision).catch((error: unknown) => {
+									this.logger.error({
+										message: `Error sending escalation notifications for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: error instanceof Error ? error.stack : undefined,
+									});
+								});
+							}
+						}
+					} catch (error: unknown) {
+						this.logger.warn({
+							message: `Error checking escalation for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					}
+				}
+
+				// Step 6c. Reset escalationSentAt when monitor recovers so the next incident can trigger escalation again
+				if (decision.shouldResolveIncident && currentMonitor.escalationSentAt) {
+					this.monitorsRepository.updateById(monitorId, teamId, { escalationSentAt: null }).catch(() => {});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)

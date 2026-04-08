@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalation check runs first — monitor is still down but threshold elapsed
+		if (decision.notificationReason === "escalation") {
+			return "monitor_escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,9 +109,24 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "monitor_escalation":
+				return this.buildMonitorEscalationContent(monitor);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildMonitorEscalationContent(monitor: Monitor): NotificationContent {
+		const title = `Escalation: ${monitor.name} still down`;
+		const summary = `Monitor "${monitor.name}" has been down longer than the escalation threshold.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
