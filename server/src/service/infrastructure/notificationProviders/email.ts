@@ -78,6 +78,10 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		if (message.metadata.notificationReason === "escalation") {
+			return `Escalation: ${message.monitor.name} still down`;
+		}
+
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
@@ -113,7 +117,8 @@ export class EmailProvider implements INotificationProvider {
 			details: { context },
 		});
 
-		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
+		const template = message.metadata.notificationReason === "escalation" ? "escalationNotificationTemplate" : "unifiedNotificationTemplate";
+		const html = await this.emailService.buildEmail(template, context);
 
 		return html;
 	}

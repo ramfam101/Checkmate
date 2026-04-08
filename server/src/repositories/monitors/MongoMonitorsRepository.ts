@@ -374,6 +374,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalateAfterMinutes: doc.escalateAfterMinutes ?? 0,
+			escalationChannels: doc.escalationChannels ?? [],
+			lastEscalationSentAt: doc.lastEscalationSentAt?.toISOString() ?? null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +436,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalateAfterMinutes: doc.escalateAfterMinutes ?? 0,
+			escalationChannels: doc.escalationChannels ?? [],
+			lastEscalationSentAt: doc.lastEscalationSentAt?.toISOString() ?? null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -492,6 +498,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	findAllMonitorIds = async (): Promise<string[]> => {
 		const monitors = await MonitorModel.find({}, { _id: 1 }).lean();
 		return monitors.map((doc) => doc._id.toString());
+	};
+
+	updateLastEscalationSentAt = async (monitorId: string, lastEscalationSentAt: string | null): Promise<void> => {
+		await MonitorModel.updateOne({ _id: monitorId }, { lastEscalationSentAt: lastEscalationSentAt ? new Date(lastEscalationSentAt) : null });
 	};
 }
 
