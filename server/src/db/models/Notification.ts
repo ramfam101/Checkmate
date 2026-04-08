@@ -37,6 +37,15 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		homeserverUrl: { type: String },
 		roomId: { type: String },
 		accessToken: { type: String },
+		reminderInterval: {
+			type: Number,
+			default: 0, // 0 = disabled, otherwise minutes between reminders
+			min: 0,
+		},
+		lastReminderSent: {
+			type: Date,
+			default: null,
+		},
 	},
 	{
 		timestamps: true,

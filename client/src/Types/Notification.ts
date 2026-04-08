@@ -20,6 +20,8 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	reminderInterval?: number;
+	lastReminderSent?: string;
 	createdAt: string;
 	updatedAt: string;
 }

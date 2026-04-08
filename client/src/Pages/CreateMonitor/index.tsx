@@ -17,7 +17,8 @@ import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
-
+import type { Notification } from "@/Types/Notification";
+import { NotificationChannels } from "@/Types/Notification";
 import { BasePage, ConfigBox } from "@/Components/design-elements";
 import {
 	RadioWithDescription,
@@ -38,7 +39,6 @@ import {
 	type GamesMap,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
-import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
 
 interface GeneralSettingsConfig {
@@ -762,6 +762,215 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationInterval"
+							control={control}
+							defaultValue={defaults.escalationInterval}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									value={field.value || ""}
+									onChange={(e) => {
+										const value = e.target.value ? parseInt(e.target.value, 10) : 0;
+										field.onChange(value);
+									}}
+									fieldLabel={t("pages.createMonitor.form.escalation.optionInterval")}
+									placeholder="0"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={
+										fieldState.error?.message ??
+										t("pages.createMonitor.form.escalation.helperText")
+									}
+									inputProps={{ min: 0 }}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationType"
+							control={control}
+							defaultValue={defaults.escalationType}
+							render={({ field, fieldState }) => (
+								<Select
+									value={field.value || ""}
+									fieldLabel={t("pages.createMonitor.form.escalation.optionType")}
+									error={!!fieldState.error}
+									onChange={field.onChange}
+								>
+									<MenuItem value="">
+										<Typography>
+											{t("pages.createMonitor.form.escalation.none")}
+										</Typography>
+									</MenuItem>
+									{NotificationChannels.map((type: string) => (
+										<MenuItem
+											key={type}
+											value={type}
+										>
+											<Typography textTransform="capitalize">{type}</Typography>
+										</MenuItem>
+									))}
+								</Select>
+							)}
+						/>
+						<Controller
+							name="escalationAddress"
+							control={control}
+							defaultValue={defaults.escalationAddress}
+							render={({ field }) => {
+								const watchedType = watch("escalationType");
+								const filteredNotifications =
+									notifications?.filter(
+										(notif: Notification) => notif.type === watchedType
+									) || [];
+
+								const selectedNotification = notifications?.find(
+									(notif: Notification) => notif.id === field.value
+								);
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										<Autocomplete
+											value={field.value || ""}
+											onChange={(_, value: string | null) => {
+												field.onChange(value || "");
+											}}
+											options={filteredNotifications.map(
+												(notif: Notification) => notif.id
+											)}
+											getOptionLabel={(notifId: string) => {
+												const notif = filteredNotifications.find(
+													(n: Notification) => n.id === notifId
+												);
+												return notif?.notificationName || notifId;
+											}}
+											isOptionEqualToValue={(option: string, value: string) =>
+												option === value
+											}
+											disabled={!watchedType || filteredNotifications.length === 0}
+											noOptionsText={
+												watchedType
+													? t("pages.createMonitor.form.escalation.noNotifications")
+													: t("pages.createMonitor.form.escalation.selectType")
+											}
+											renderOption={(props, option) => {
+												const notif = filteredNotifications.find((n) => n.id === option);
+												return (
+													<li
+														{...props}
+														key={option}
+													>
+														{notif?.notificationName || option}
+													</li>
+												);
+											}}
+											renderInput={(params) => (
+												<TextField
+													{...params}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.optionAddress"
+													)}
+													placeholder={t(
+														"pages.createMonitor.form.escalation.selectNotification"
+													)}
+												/>
+											)}
+										/>
+										{selectedNotification && (
+											<Stack
+												sx={{
+													p: theme.spacing(LAYOUT.MD),
+													border: `1px solid ${theme.palette.divider}`,
+													borderRadius: theme.shape.borderRadius,
+													backgroundColor: theme.palette.action.hover,
+												}}
+												spacing={theme.spacing(LAYOUT.XS)}
+											>
+												<Stack
+													direction="row"
+													justifyContent="space-between"
+													alignItems="center"
+												>
+													<Typography
+														variant="subtitle2"
+														fontWeight={600}
+													>
+														{t(
+															"pages.createMonitor.form.escalation.selectedNotification"
+														)}
+													</Typography>
+													<Typography
+														variant="caption"
+														sx={{
+															backgroundColor:
+																theme.palette.mode === "dark"
+																	? "rgba(255, 255, 255, 0.1)"
+																	: "rgba(0, 0, 0, 0.1)",
+															px: theme.spacing(1),
+															py: theme.spacing(0.5),
+															borderRadius: 1,
+														}}
+													>
+														{selectedNotification.type}
+													</Typography>
+												</Stack>
+												<Stack spacing={theme.spacing(LAYOUT.XS)}>
+													<Stack
+														direction="row"
+														alignItems="flex-start"
+														spacing={1}
+													>
+														<Typography
+															variant="caption"
+															color="textSecondary"
+															sx={{ minWidth: "80px" }}
+														>
+															{t("common.table.headers.name")}:
+														</Typography>
+														<Typography variant="body2">
+															{selectedNotification.notificationName}
+														</Typography>
+													</Stack>
+													{selectedNotification.address && (
+														<Stack
+															direction="row"
+															alignItems="flex-start"
+															spacing={1}
+														>
+															<Typography
+																variant="caption"
+																color="textSecondary"
+																sx={{ minWidth: "80px" }}
+															>
+																{t("pages.notifications.table.headers.destination")}:
+															</Typography>
+															<Typography
+																variant="body2"
+																sx={{
+																	wordBreak: "break-all",
+																}}
+															>
+																{selectedNotification.address}
+															</Typography>
+														</Stack>
+													)}
+												</Stack>
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

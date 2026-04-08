@@ -261,6 +261,7 @@ export const initializeServices = async ({
 		monitorStatsRepository,
 		checksRepository,
 		incidentsRepository,
+		notificationsRepository,
 		geoChecksService,
 		geoChecksRepository
 	);

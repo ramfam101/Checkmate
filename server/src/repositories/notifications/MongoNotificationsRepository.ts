@@ -32,6 +32,8 @@ class MongoNotificationsRepository implements INotificationsRepository {
 			homeserverUrl: doc.homeserverUrl ?? undefined,
 			roomId: doc.roomId ?? undefined,
 			accessToken: doc.accessToken ?? undefined,
+			reminderInterval: doc.reminderInterval ?? undefined,
+			lastReminderSent: doc.lastReminderSent ? toDateString(doc.lastReminderSent) : undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -80,6 +82,19 @@ class MongoNotificationsRepository implements INotificationsRepository {
 			throw new AppError({ message: "Notification not found or could not be updated", status: 404 });
 		}
 		return this.toEntity(notification);
+	};
+
+	updateLastReminderSent = async (id: string, teamId: string, timestamp: string): Promise<void> => {
+		const result = await NotificationModel.updateOne(
+			{
+				_id: new mongoose.Types.ObjectId(id),
+				teamId: new mongoose.Types.ObjectId(teamId),
+			},
+			{ $set: { lastReminderSent: new Date(timestamp) } }
+		);
+		if (result.matchedCount === 0) {
+			throw new AppError({ message: "Notification not found", status: 404 });
+		}
 	};
 
 	deleteById = async (id: string, teamId: string): Promise<Notification> => {

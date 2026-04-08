@@ -15,6 +15,9 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendEscalationNotification: (notification: Partial<Notification>, notificationMessage: NotificationMessage) => Promise<boolean>;
+	buildEscalationMessage: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => NotificationMessage;
+
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +142,49 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (notification: Partial<Notification>, notificationMessage: NotificationMessage): Promise<boolean> => {
+		try {
+			switch (notification.type) {
+				case "webhook":
+					return await this.webhookProvider.sendMessage!(notification as Notification, notificationMessage);
+				case "slack":
+					return await this.slackProvider.sendMessage!(notification as Notification, notificationMessage);
+				case "matrix":
+					return await this.matrixProvider.sendMessage!(notification as Notification, notificationMessage);
+				case "pager_duty":
+					return await this.pagerDutyProvider.sendMessage!(notification as Notification, notificationMessage);
+				case "discord":
+					return await this.discordProvider.sendMessage!(notification as Notification, notificationMessage);
+				case "email":
+					return await this.emailProvider.sendMessage!(notification as Notification, notificationMessage);
+				case "teams":
+					return await this.teamsProvider.sendMessage!(notification as Notification, notificationMessage);
+				default:
+					this.logger.warn({
+						message: `Unknown escalation notification type: ${notification.type}`,
+						service: SERVICE_NAME,
+						method: "sendEscalationNotification",
+					});
+					return false;
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: error instanceof Error ? error.message : "Error sending escalation notification",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				details: { type: notification.type },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
+	};
+
+	buildEscalationMessage = (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision): NotificationMessage => {
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		return this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

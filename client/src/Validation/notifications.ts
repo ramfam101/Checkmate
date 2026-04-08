@@ -5,6 +5,10 @@ const baseSchema = z.object({
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	reminderInterval: z
+		.number()
+		.min(0, "Reminder interval must be 0 or greater")
+		.optional(),
 });
 
 const emailSchema = baseSchema.extend({

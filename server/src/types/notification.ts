@@ -12,6 +12,9 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	// Reminder settings for ongoing incidents
+	reminderInterval?: number; // Interval in minutes between reminders (0 = disabled)
+	lastReminderSent?: string; // ISO timestamp of last reminder
 	createdAt: string;
 	updatedAt: string;
 }

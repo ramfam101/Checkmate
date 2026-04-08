@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Configure escalation notifications that are sent at regular intervals when monitors remain down.",
+					"optionInterval": "Escalation interval (minutes)",
+					"optionType": "Notification type",
+					"optionAddress": "Escalation address",
+					"addressPlaceholder": "Enter email, webhook URL, etc.",
+					"none": "None",
+					"helperText": "Set to 0 to disable escalation notifications",
+					"title": "Escalation notifications",
+					"selectNotification": "Search and select a notification channel",
+					"selectType": "Please select a notification type first",
+					"noNotifications": "No notification channels found for this type. Create one in the Notifications section.",
+					"selectedNotification": "Selected notification"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -951,6 +965,13 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"escalation": {
+					"description": "Send repeated notifications at set intervals when monitors remain down.",
+					"optionInterval": "Reminder interval (minutes)",
+					"placeholder": "0",
+					"helperText": "Set to 0 to disable escalation notifications",
+					"title": "Escalation notifications"
 				}
 			},
 			"table": {

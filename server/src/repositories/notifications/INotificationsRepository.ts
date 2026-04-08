@@ -8,6 +8,7 @@ export interface INotificationsRepository {
 	findByTeamId(teamId: string): Promise<Notification[]>;
 	// update
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
+	updateLastReminderSent(id: string, teamId: string, timestamp: string): Promise<void>;
 	// delete
 	deleteById(id: string, teamId: string): Promise<Notification>;
 }
