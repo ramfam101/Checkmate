@@ -1,10 +1,16 @@
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
 import { initializeServices } from "./config/services.js";
 import { initializeControllers } from "./config/controllers.js";
 import { createApp } from "./app.js";
 import { initShutdownListener } from "./shutdown.js";
 import { validateEnv } from "./validation/envValidation.js";
-import { fileURLToPath } from "url";
-import path from "path";
 import fs from "fs";
 import { runMigrations } from "./db/migration/index.js";
 

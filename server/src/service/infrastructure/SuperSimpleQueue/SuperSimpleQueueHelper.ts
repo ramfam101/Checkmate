@@ -37,6 +37,7 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalationNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -168,25 +169,38 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+			if (decision.shouldSendEscalationNotification) {
+				this.notificationsService
+					.handleEscalationNotifications(statusChangeResult.monitor, status, decision)
+					.catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
-			} catch (error: unknown) {
+			}
+
+			// Step 7. Handle incidents (best effort, don't wait)
+			this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 				this.logger.warn({
-					message: error instanceof Error ? error.message : "Unknown error",
+					message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 					service: SERVICE_NAME,
 					method: "getMonitorJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
-				throw error;
-			}
-		};
+			});
+		} catch (error: unknown) {
+			this.logger.warn({
+				message: error instanceof Error ? error.message : "Unknown error",
+				service: SERVICE_NAME,
+				method: "getMonitorJob",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			throw error;
+		}
+	};
 	};
 
 	getCleanupOrphanedJob = () => {
@@ -426,9 +440,19 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalationNotification: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
+
+		// Check escalation regardless of status change (runs on every check for downtime)
+		if (monitor.status === "down" && monitor.downSince && !monitor.escalationSentAt && monitor.escalationDelay && monitor.escalationNotifications?.length) {
+			const downSince = new Date(monitor.downSince).getTime();
+			const elapsedMinutes = (Date.now() - downSince) / 60000;
+			if (elapsedMinutes >= monitor.escalationDelay) {
+				decision.shouldSendEscalationNotification = true;
+			}
+		}
 
 		if (!statusChanged) {
 			return decision;
