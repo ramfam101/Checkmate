@@ -177,6 +177,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalated notifications when monitor is currently down
+				if (statusChangeResult.monitor.status === "down" && (statusChangeResult.monitor.escalations?.length ?? 0) > 0) {
+					this.handleEscalations(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling escalations for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -417,6 +429,47 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async handleEscalations(monitor: Monitor): Promise<void> {
+		const escalations = monitor.escalations ?? [];
+		if (escalations.length === 0) return;
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) return;
+
+		const startTime = new Date(activeIncident.startTime);
+		const elapsedMs = Date.now() - startTime.getTime();
+		const fired = new Set<number>(activeIncident.firedEscalations ?? []);
+
+		const newlyFired: number[] = [];
+		for (const escalation of escalations) {
+			const requiredMs = escalation.delayMinutes * 60 * 1000;
+			if (elapsedMs >= requiredMs && !fired.has(escalation.delayMinutes)) {
+				try {
+					await this.notificationsService.sendEscalationNotifications(monitor, escalation.delayMinutes, startTime);
+					newlyFired.push(escalation.delayMinutes);
+					fired.add(escalation.delayMinutes);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Failed to send escalation (${escalation.delayMinutes}m) for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+					});
+				}
+			}
+		}
+
+		if (newlyFired.length > 0) {
+			await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+				firedEscalations: Array.from(fired),
+			});
+			this.logger.info({
+				message: `Fired ${newlyFired.length} escalation(s) for monitor ${monitor.id}: ${newlyFired.join(", ")} minute(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, delayMinutes: number, incidentStartTime: Date) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,43 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotifications = async (monitor: Monitor, delayMinutes: number, incidentStartTime: Date): Promise<boolean> => {
+		const notificationIds = monitor.notifications ?? [];
+		if (notificationIds.length === 0) {
+			return false;
+		}
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, delayMinutes, incidentStartTime, clientHost);
+
+		// Reuse the existing send pipeline by constructing a synthetic decision
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		// Use a minimal monitorStatusResponse — providers consume the prebuilt notificationMessage
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, { code: 0 } as MonitorStatusResponse, escalationDecision, notificationMessage)
+		);
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation send completed with ${succeeded} success, ${failed} failure(s) for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+		return succeeded === notifications.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

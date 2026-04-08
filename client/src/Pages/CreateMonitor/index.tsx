@@ -698,6 +698,77 @@ const CreateMonitorPage = () => {
 			/>
 
 			<ConfigBox
+				title="Escalated notifications"
+				subtitle="Send additional alerts to the configured notification channels after the monitor has been down for the specified durations. Useful for ensuring incidents are escalated as they persist."
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field, fieldState }) => {
+							const value: { delayMinutes: number }[] = (field.value as { delayMinutes: number }[] | undefined) ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{value.length === 0 && (
+										<Typography color="text.secondary">
+											No escalations configured. Click &quot;Add escalation&quot; to add one.
+										</Typography>
+									)}
+									{value.map((escalation, index) => (
+										<Stack
+											key={index}
+											direction="row"
+											alignItems="center"
+											spacing={theme.spacing(SPACING.LG)}
+										>
+											<TextField
+												type="number"
+												fieldLabel={`Escalation #${index + 1} delay (minutes)`}
+												value={String(escalation.delayMinutes)}
+												onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+													const next = [...value];
+													const parsed = Number(e.target.value);
+													next[index] = {
+														delayMinutes: Number.isNaN(parsed) ? 0 : parsed,
+													};
+													field.onChange(next);
+												}}
+												fullWidth
+											/>
+											<IconButton
+												size="small"
+												onClick={() => {
+													field.onChange(value.filter((_, i) => i !== index));
+												}}
+												aria-label="Remove escalation"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									{fieldState.error && (
+										<Typography color="error" variant="caption">
+											{Array.isArray(fieldState.error)
+												? "Each escalation must have a valid delay (≥ 1 minute)"
+												: fieldState.error.message}
+										</Typography>
+									)}
+									<Button
+										variant="outlined"
+										color="primary"
+										onClick={() => {
+											field.onChange([...value, { delayMinutes: 5 }]);
+										}}
+									>
+										Add escalation
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
 				title={t("pages.createMonitor.form.notifications.title")}
 				subtitle={t("pages.createMonitor.form.notifications.description")}
 				rightContent={
