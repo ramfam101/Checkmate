@@ -1,0 +1,32 @@
+import { Job } from "bull";
+import { monitorsRepository } from "@/repository/monitorsRepository.js";
+import { notificationsRepository } from "@/repository/notificationsRepository.js";
+import { emailService } from "@/service/emailService.js";
+import { MonitorService } from "@/service/business/monitorService.js"; // Adjust path as needed
+
+export const processJob = async (job: Job) => {
+    if (job.name.startsWith('monitor-check-')) {
+        const monitor = await monitorsRepository.findById(job.data.monitorId, job.data.teamId);
+        const previousStatus = monitor.status;
+        const newStatus = /* calculated status */;
+
+        if (newStatus !== previousStatus) {
+            await monitorsRepository.updateById(monitor.id, monitor.teamId, { status: newStatus });
+            if (newStatus === "down") {
+                await monitorService.scheduleEscalations(monitor); // Assuming monitorService instance is available
+            } else if (newStatus === "up") {
+                await monitorService.cancelEscalations(monitor.id);
+            }
+        }
+    } else if (job.name.startsWith('escalation-')) {
+        const { monitorId, notificationId } = job.data;
+        const monitor = await monitorsRepository.findById(monitorId, /* teamId from context */);
+        if (monitor.status === "down") {
+            const notification = await notificationsRepository.findById(notificationId);
+            await emailService.send(notification, {
+                subject: `Escalation Alert: ${monitor.name} is down`,
+                body: `Monitor ${monitor.name} has been down for ${job.data.delayMinutes} minutes.`,
+            });
+        }
+    }
+};
