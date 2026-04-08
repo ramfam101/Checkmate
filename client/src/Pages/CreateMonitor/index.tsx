@@ -34,6 +34,7 @@ import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
 import { useMonitorForm } from "@/Hooks/useMonitorForm";
 import {
 	type Monitor,
+	type MonitorEscalationStep,
 	type MonitorType,
 	type GamesMap,
 	supportsGeoCheck,
@@ -758,6 +759,114 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalationPolicy"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((notification) => ({
+								id: notification.id,
+								name: notification.notificationName,
+							}));
+
+							const updateEscalation = (
+								index: number,
+								updates: Partial<MonitorEscalationStep>
+							) => {
+								field.onChange(
+									(field.value ?? []).map((entry, entryIndex) =>
+										entryIndex === index ? { ...entry, ...updates } : entry
+									)
+								);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{(field.value ?? []).map((entry, index) => (
+										<Stack
+											key={`${entry.notificationId}-${entry.delayMinutes}-${index}`}
+											direction={{ xs: "column", md: "row" }}
+											spacing={theme.spacing(LAYOUT.MD)}
+											alignItems={{ xs: "stretch", md: "flex-end" }}
+										>
+											<Select
+												value={entry.notificationId}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.channel.label"
+												)}
+												onChange={(event) =>
+													updateEscalation(index, {
+														notificationId: event.target.value as string,
+													})
+												}
+												fullWidth
+											>
+												{notificationOptions.map((option) => (
+													<MenuItem
+														key={option.id}
+														value={option.id}
+													>
+														{option.name}
+													</MenuItem>
+												))}
+											</Select>
+											<TextField
+												type="number"
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.delay.label"
+												)}
+												placeholder={t(
+													"pages.createMonitor.form.escalations.option.delay.placeholder"
+												)}
+												value={entry.delayMinutes}
+												onChange={(event) =>
+													updateEscalation(index, {
+														delayMinutes: Number(event.target.value),
+													})
+												}
+												inputProps={{ min: 1 }}
+												fullWidth
+											/>
+											<IconButton
+												size="small"
+												onClick={() => {
+													field.onChange(
+														(field.value ?? []).filter(
+															(_, entryIndex) => entryIndex !== index
+														)
+													);
+												}}
+												aria-label="Remove escalation"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										onClick={() => {
+											field.onChange([
+												...(field.value ?? []),
+												{
+													notificationId: notificationOptions[0]?.id ?? "",
+													delayMinutes: 5,
+												},
+											]);
+										}}
+										disabled={notificationOptions.length === 0}
+									>
+										{t("pages.createMonitor.form.escalations.addStep")}
+									</Button>
 								</Stack>
 							);
 						}}

@@ -1,4 +1,5 @@
 import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { Incident } from "@/types/incident.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -13,7 +14,9 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		incident?: Incident | null,
+		escalationDelayMinutes?: number
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -27,11 +30,13 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		incident?: Incident | null,
+		escalationDelayMinutes?: number
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, clientHost, incident, escalationDelayMinutes);
 
 		return {
 			type,
@@ -93,14 +98,27 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		clientHost: string,
+		incident?: Incident | null,
+		escalationDelayMinutes?: number
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, clientHost, incident, escalationDelayMinutes);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
-				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
+				return this.buildThresholdBreachContent(
+					monitor,
+					monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>,
+					clientHost,
+					incident,
+					escalationDelayMinutes
+				);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
 			default:
@@ -108,7 +126,13 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildMonitorDownContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		clientHost: string,
+		incident?: Incident | null,
+		escalationDelayMinutes?: number
+	): NotificationContent {
 		const title = `Monitor Down: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
@@ -123,10 +147,14 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			details.push(`Error: ${monitorStatusResponse.message}`);
 		}
 
+		const incidentInfo = this.buildIncidentInfo(clientHost, incident);
+		this.addEscalationDetails(details, incidentInfo?.duration, escalationDelayMinutes);
+
 		return {
 			title,
 			summary,
 			details,
+			incident: incidentInfo,
 			timestamp: new Date(),
 		};
 	}
@@ -144,20 +172,72 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildThresholdBreachContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): NotificationContent {
+	private buildThresholdBreachContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>,
+		clientHost: string,
+		incident?: Incident | null,
+		escalationDelayMinutes?: number
+	): NotificationContent {
 		const title = `Threshold Exceeded: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" has exceeded one or more thresholds.`;
 		const details = [`URL: ${monitor.url}`, `Status: Threshold exceeded`, `Type: ${monitor.type}`];
 
 		const thresholds = this.extractThresholdBreaches(monitor, monitorStatusResponse);
+		const incidentInfo = this.buildIncidentInfo(clientHost, incident);
+		this.addEscalationDetails(details, incidentInfo?.duration, escalationDelayMinutes);
 
 		return {
 			title,
 			summary,
 			details,
 			thresholds,
+			incident: incidentInfo,
 			timestamp: new Date(),
 		};
+	}
+
+	private buildIncidentInfo(clientHost: string, incident?: Incident | null): NotificationContent["incident"] | undefined {
+		if (!incident) {
+			return undefined;
+		}
+
+		return {
+			id: incident.id,
+			url: `${clientHost}/incidents/${incident.id}`,
+			createdAt: new Date(incident.startTime),
+			resolvedAt: incident.endTime ? new Date(incident.endTime) : undefined,
+			duration: this.formatDuration(Date.now() - new Date(incident.startTime).getTime()),
+		};
+	}
+
+	private addEscalationDetails(details: string[], incidentDuration?: string, escalationDelayMinutes?: number): void {
+		if (incidentDuration) {
+			details.push(`Incident duration: ${incidentDuration}`);
+		}
+		if (escalationDelayMinutes) {
+			details.push(`Escalation delay reached: ${escalationDelayMinutes} minute${escalationDelayMinutes === 1 ? "" : "s"}`);
+		}
+	}
+
+	private formatDuration(durationMs: number): string {
+		if (durationMs <= 0) {
+			return "0 minutes";
+		}
+
+		const totalMinutes = Math.floor(durationMs / 60000);
+		const hours = Math.floor(totalMinutes / 60);
+		const minutes = totalMinutes % 60;
+
+		if (hours === 0) {
+			return `${totalMinutes} minute${totalMinutes === 1 ? "" : "s"}`;
+		}
+
+		if (minutes === 0) {
+			return `${hours} hour${hours === 1 ? "" : "s"}`;
+		}
+
+		return `${hours} hour${hours === 1 ? "" : "s"} ${minutes} minute${minutes === 1 ? "" : "s"}`;
 	}
 
 	private buildThresholdResolvedContent(monitor: Monitor): NotificationContent {
