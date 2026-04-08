@@ -13,7 +13,12 @@ export interface INotificationsService {
 	findNotificationsByTeamId: (teamId: string) => Promise<Notification[]>;
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
-	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds?: string[]
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,9 +112,23 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds?: string[]
+	) => {
+		const idsToSend = notificationIds && notificationIds.length > 0 ? notificationIds : (monitor.notifications ?? []);
+		if (!idsToSend.length) {
+			this.logger.debug({
+				message: "No notification IDs provided for sendNotifications",
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+			});
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(idsToSend);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -132,13 +151,18 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	handleNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds?: string[]
+	) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		// Send notifications based on decision. Escalation notification IDs override monitor-level notification associations.
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, notificationIds);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

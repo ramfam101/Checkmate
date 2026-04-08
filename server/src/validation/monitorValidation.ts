@@ -66,6 +66,14 @@ export const createMonitorBodyValidation = z.object({
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
+	escalations: z
+		.array(
+			z.object({
+				delayMinutes: z.number().int().min(1),
+				notificationIds: z.array(z.string()).min(1),
+			})
+		)
+		.optional(),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
@@ -100,6 +108,14 @@ export const editMonitorBodyValidation = z.object({
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
+	escalations: z
+		.array(
+			z.object({
+				delayMinutes: z.number().int().min(1),
+				notificationIds: z.array(z.string()).min(1),
+			})
+		)
+		.optional(),
 	gameId: z.union([z.string(), z.literal("")]).optional(),
 	grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
 	selectedDisks: z.array(z.string()).optional(),
@@ -144,6 +160,14 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalations: z
+		.array(
+			z.object({
+				delayMinutes: z.number().int().min(1),
+				notificationIds: z.array(z.string()).min(1),
+			})
+		)
+		.default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

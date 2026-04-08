@@ -7,6 +7,7 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	escalationsSent: number[];
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -63,6 +64,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: Schema.Types.ObjectId,
 			ref: "User",
 			default: null,
+		},
+		escalationsSent: {
+			type: [Number],
+			default: [],
 		},
 		resolvedByEmail: {
 			type: String,

@@ -98,4 +98,34 @@ describe("SuperSimpleQueueHelper", () => {
 			await expect(helper.isInMaintenanceWindow("m1", "team")).resolves.toBe(false);
 		});
 	});
+
+	describe("evaluateMonitorAction", () => {
+		it("returns escalation notification decision when incident is active and status unchanged", () => {
+			const { helper } = createHelper();
+			const decision = helper["evaluateMonitorAction"](
+				{
+					monitor: { id: "m1", status: "down", escalations: [{ delayMinutes: 10, notificationIds: ["n1"] }] } as Monitor,
+					statusChanged: false,
+					prevStatus: "down",
+				},
+				{
+					id: "i1",
+					monitorId: "m1",
+					teamId: "team",
+					status: true,
+					startTime: new Date(Date.now() - 11 * 60000).toISOString(),
+					endTime: null,
+					resolutionType: null,
+					escalationsSent: [],
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				}
+			);
+
+			expect(decision.shouldSendNotification).toBe(true);
+			expect(decision.notificationReason).toBe("escalation");
+			expect(decision.escalationNotificationIds).toEqual(["n1"]);
+			expect(decision.escalationMinutes).toEqual([10]);
+		});
+	});
 });
