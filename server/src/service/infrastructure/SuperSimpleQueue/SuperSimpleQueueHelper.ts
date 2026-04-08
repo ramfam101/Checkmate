@@ -177,6 +177,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation: if monitor is down longer than escalationDelay, send escalation once per incident
+				try {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+					if (activeIncident && monitor.escalationDelay && monitor.escalationDelay > 0 && monitor.escalationChannels && monitor.escalationChannels.length > 0 && !activeIncident.escalationSent) {
+						const start = new Date(activeIncident.startTime).getTime();
+						const elapsedMs = Date.now() - start;
+						if (elapsedMs >= monitor.escalationDelay * 60 * 1000) {
+							// Send escalation notifications to configured channels
+							await this.notificationsService.sendEscalationNotifications(statusChangeResult.monitor, status, monitor.escalationChannels).catch((err: unknown) => {
+								this.logger.warn({ message: `Failed to send escalation for monitor ${monitorId}`, service: SERVICE_NAME, method: "getMonitorJob", stack: err instanceof Error ? err.stack : undefined });
+							});
+							// Mark incident as escalated to avoid duplicate escalations
+							await this.incidentsRepository.updateById(activeIncident.id, teamId, { escalationSent: true }).catch(() => {});
+						}
+					}
+				} catch (err: unknown) {
+					this.logger.warn({ message: `Error checking/sending escalation for monitor ${monitorId}`, service: SERVICE_NAME, method: "getMonitorJob", stack: err instanceof Error ? (err as Error).stack : undefined });
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, channelIds: string[]) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -129,6 +130,37 @@ export class NotificationsService implements INotificationsService {
 			});
 		}
 		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
+	};
+
+	/**
+	 * Send notifications to a specific set of notification channel IDs (used for escalations)
+	 */
+	public sendEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, channelIds: string[]) => {
+		if (!channelIds || channelIds.length === 0) return false;
+		const notifications = await this.notificationsRepository.findNotificationsByIds(channelIds);
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		// Build base message and override title/summary for escalation
+		const baseMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, { shouldCreateIncident: false, shouldResolveIncident: false, shouldSendNotification: true, incidentReason: null, notificationReason: "escalation" }, clientHost);
+		if (baseMessage && baseMessage.content) {
+			baseMessage.content.title = `Escalation: Monitor ${monitor.name} still down`;
+			baseMessage.content.summary = `Monitor "${monitor.name}" remains down beyond configured escalation delay.`;
+		}
+
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, { shouldCreateIncident: false, shouldResolveIncident: false, shouldSendNotification: true, incidentReason: null, notificationReason: "escalation" }, baseMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
 		return succeeded === notifications.length;
 	};
 
