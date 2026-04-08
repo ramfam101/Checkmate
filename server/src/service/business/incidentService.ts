@@ -86,7 +86,7 @@ export class IncidentService implements IIncidentService {
 				const incident = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
+					startTime: new Date().toISOString(),
 					status: true,
 					statusCode,
 					message,

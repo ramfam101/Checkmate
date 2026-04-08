@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -761,6 +761,60 @@ const CreateMonitorPage = () => {
 								</Stack>
 							);
 						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatedNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+				rightContent={
+					<Controller
+						name="escalatedRules"
+						control={control}
+						render={({ field }) => (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								{(field.value ?? []).map((rule: { delayMinutes: number }, index: number) => (
+									<Stack key={index} direction="row" alignItems="center" spacing={theme.spacing(LAYOUT.SM)}>
+										<TextField
+											value={rule.delayMinutes}
+											onChange={(e) => {
+												const newValue = Number(e.target.value);
+												const newRules = [...(field.value ?? [])];
+												newRules[index] = { delayMinutes: newValue };
+												field.onChange(newRules);
+											}}
+											type="number"
+											fieldLabel={index === 0 ? t("pages.createMonitor.form.escalatedNotifications.delayLabel") : ""}
+											placeholder={t("pages.createMonitor.form.escalatedNotifications.delayPlaceholder")}
+											fullWidth
+											inputProps={{ min: 0 }}
+										/>
+										<IconButton
+											size="small"
+											onClick={() => {
+												const newRules = (field.value ?? []).filter((_: any, i: number) => i !== index);
+												field.onChange(newRules);
+											}}
+											aria-label="Remove escalation rule"
+											disabled={(field.value ?? []).length === 1}
+										>
+											<Trash2 size={16} />
+										</IconButton>
+									</Stack>
+								))}
+								<Button
+									variant="outlined"
+									onClick={() => {
+										const newRules = [...(field.value ?? []), { delayMinutes: 30 }];
+										field.onChange(newRules);
+									}}
+									startIcon={<Plus size={16} />}
+								>
+									{t("pages.createMonitor.form.escalatedNotifications.addRule")}
+								</Button>
+							</Stack>
+						)}
 					/>
 				}
 			/>
