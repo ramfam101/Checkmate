@@ -15,6 +15,35 @@ export interface IncidentDocument extends IncidentDocumentBase {
 	_id: Types.ObjectId;
 }
 
+const IncidentEscalationSchema = new Schema(
+	{
+		escalatedAt: {
+			type: Date,
+			default: null,
+		},
+		escalateAfterMinutes: {
+			type: Number,
+			default: null,
+		},
+		notificationIds: {
+			type: [String],
+			default: [],
+		},
+		channels: {
+			type: [String],
+			default: [],
+		},
+		monitor: {
+			id: { type: String, default: "" },
+			name: { type: String, default: "" },
+			url: { type: String, default: "" },
+			type: { type: String, default: "" },
+			status: { type: String, default: "" },
+		},
+	},
+	{ _id: false }
+);
+
 const IncidentSchema = new Schema<IncidentDocument>(
 	{
 		monitorId: {
@@ -53,6 +82,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: Number,
 			default: null,
 			index: true,
+		},
+		escalation: {
+			type: IncidentEscalationSchema,
+			default: null,
 		},
 		resolutionType: {
 			type: String,

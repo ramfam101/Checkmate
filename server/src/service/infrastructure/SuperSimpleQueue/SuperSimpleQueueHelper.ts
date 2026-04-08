@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -167,6 +167,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						});
 					});
 				}
+
+				this.handleEscalatedNotification(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalated notifications for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
@@ -455,4 +464,75 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private handleEscalatedNotification = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> => {
+		const escalationConfig = monitor.escalatedNotification;
+		const escalateAfterMinutes = escalationConfig?.escalateAfterMinutes ?? 30;
+		const escalationNotificationIds = escalationConfig?.notificationIds ?? [];
+		if (!escalationConfig?.enabled) {
+			return;
+		}
+
+		if (!escalationNotificationIds.length) {
+			return;
+		}
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		if (activeIncident.escalation?.escalatedAt) {
+			return;
+		}
+
+		const elapsedMs = Date.now() - new Date(activeIncident.startTime).getTime();
+		const escalationDelayMs = escalateAfterMinutes * 60 * 1000;
+		if (!Number.isFinite(elapsedMs) || elapsedMs < escalationDelayMs) {
+			return;
+		}
+
+		const escalationResult = await this.notificationsService.sendEscalatedNotifications({
+			monitor,
+			monitorStatusResponse,
+			incident: activeIncident,
+			notificationIds: escalationNotificationIds,
+			escalateAfterMinutes,
+		});
+
+		if (!escalationResult.sent) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, {
+			escalation: {
+				escalatedAt: new Date().toISOString(),
+				escalateAfterMinutes,
+				notificationIds: escalationNotificationIds,
+				channels: escalationResult.channels,
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: monitor.url,
+					type: monitor.type,
+					status: monitor.status,
+				},
+			},
+		});
+
+		this.logger.info({
+			message: `Escalated notification sent for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "handleEscalatedNotification",
+			details: {
+				incidentId: activeIncident.id,
+				escalateAfterMinutes,
+				notificationCount: escalationNotificationIds.length,
+			},
+		});
+	};
 }

@@ -56,6 +56,21 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			status: doc.status,
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
+			escalation: doc.escalation
+				? {
+						escalatedAt: this.toDateString(doc.escalation.escalatedAt),
+						escalateAfterMinutes: Number(doc.escalation.escalateAfterMinutes ?? 0),
+						notificationIds: Array.isArray(doc.escalation.notificationIds) ? doc.escalation.notificationIds : [],
+						channels: Array.isArray(doc.escalation.channels) ? doc.escalation.channels : [],
+						monitor: {
+							id: doc.escalation.monitor?.id ?? "",
+							name: doc.escalation.monitor?.name ?? "",
+							url: doc.escalation.monitor?.url ?? "",
+							type: doc.escalation.monitor?.type ?? "",
+							status: doc.escalation.monitor?.status ?? "",
+						},
+				  }
+				: null,
 			resolutionType: doc.resolutionType ?? null,
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,

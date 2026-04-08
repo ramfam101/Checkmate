@@ -1,5 +1,6 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Incident, Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
+import type { NotificationChannel } from "@/types/notification.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
@@ -14,6 +15,13 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalatedNotifications: (args: {
+		monitor: Monitor;
+		monitorStatusResponse: MonitorStatusResponse;
+		incident: Incident;
+		notificationIds: string[];
+		escalateAfterMinutes: number;
+	}) => Promise<{ sent: boolean; channels: NotificationChannel[] }>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,16 +115,32 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotificationsToIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage?: NotificationMessage
+	): Promise<{ sent: boolean; channels: NotificationChannel[] }> => {
+		if (!notificationIds.length) {
+			return { sent: false, channels: [] };
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (!notifications.length) {
+			return { sent: false, channels: [] };
+		}
 
-		// Build notification message once for all notifications
-		const settings = this.settingsService.getSettings();
-		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const resolvedMessage =
+			notificationMessage ??
+			this.notificationMessageBuilder.buildMessage(
+				monitor,
+				monitorStatusResponse,
+				decision,
+				this.settingsService.getSettings().clientHost || "Host not defined"
+			);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, resolvedMessage));
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
@@ -128,8 +152,60 @@ export class NotificationsService implements INotificationsService {
 				method: "sendNotifications",
 			});
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+		return {
+			sent: succeeded === notifications.length,
+			channels: notifications.map((notification) => notification.type),
+		};
+	};
+
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const result = await this.sendNotificationsToIds(monitor.notifications ?? [], monitor, monitorStatusResponse, decision);
+		return result.sent;
+	};
+
+	private buildEscalationMessage = (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident,
+		escalateAfterMinutes: number
+	): NotificationMessage => {
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: ${monitor.status}`,
+			`Escalated after: ${escalateAfterMinutes} minute(s)`,
+			`Incident started at: ${incident.startTime}`,
+		];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalated: Monitor Down: ${monitor.name}`,
+				summary: `Monitor "${monitor.name}" is still in an incident state and has been escalated.`,
+				details,
+				timestamp: new Date(),
+			},
+			clientHost: this.settingsService.getSettings().clientHost || "Host not defined",
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalated_notification",
+			},
+		};
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
@@ -139,6 +215,32 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalatedNotifications = async ({
+		monitor,
+		monitorStatusResponse,
+		incident,
+		notificationIds,
+		escalateAfterMinutes,
+	}: {
+		monitor: Monitor;
+		monitorStatusResponse: MonitorStatusResponse;
+		incident: Incident;
+		notificationIds: string[];
+		escalateAfterMinutes: number;
+	}) => {
+		const escalationMessage = this.buildEscalationMessage(monitor, monitorStatusResponse, incident, escalateAfterMinutes);
+
+		const noopDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		return this.sendNotificationsToIds(notificationIds, monitor, monitorStatusResponse, noopDecision, escalationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

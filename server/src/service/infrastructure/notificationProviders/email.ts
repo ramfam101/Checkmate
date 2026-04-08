@@ -78,17 +78,22 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		const isEscalated = message.metadata?.notificationReason === "escalated_notification";
 		switch (message.type) {
 			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
+				return isEscalated
+					? `Escalated: Monitor ${message.monitor.name} is down`
+					: `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
+				return isEscalated
+					? `Escalated: Monitor ${message.monitor.name} threshold exceeded`
+					: `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
 			default:
-				return `Alert: ${message.monitor.name}`;
+				return isEscalated ? `Escalated: Alert: ${message.monitor.name}` : `Alert: ${message.monitor.name}`;
 		}
 	}
 
