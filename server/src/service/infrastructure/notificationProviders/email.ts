@@ -78,6 +78,10 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		if (message.metadata.notificationReason === "escalation" && message.type === "monitor_down") {
+			return `Escalation: the server is still down - ${message.monitor.name}`;
+		}
+
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
