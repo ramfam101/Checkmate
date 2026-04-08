@@ -543,6 +543,18 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalationRules": {
+					"description": "Define escalation rules to notify different channels as incidents persist over time",
+					"title": "Escalation Rules",
+					"option": {
+						"escalateAfter": {
+							"label": "Escalate after (minutes)"
+						},
+						"escalationChannels": {
+							"label": "Escalation notification channels"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

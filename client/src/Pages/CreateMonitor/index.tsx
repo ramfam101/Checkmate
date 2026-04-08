@@ -765,6 +765,125 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field, fieldState }) => {
+							const escalationRules = field.value || [];
+							// Map notifications once to have 'name' property for Autocomplete
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationRules.map((rule: any, index: number) => {
+										const selectedChannels = notificationOptions.filter((n) => rule.notificationIds?.includes(n.id)) || [];
+										return (
+											<Stack key={index} spacing={theme.spacing(LAYOUT.SM)}>
+												<Stack direction="row" alignItems="center" spacing={theme.spacing(LAYOUT.SM)}>
+													<TextField
+														type="number"
+														fieldLabel={t("pages.createMonitor.form.escalationRules.option.escalateAfter.label")}
+														value={rule.minutes || ""}
+														onChange={(e) => {
+															const newRules = [...escalationRules];
+															newRules[index] = { ...newRules[index], minutes: parseInt(e.target.value) || 0 };
+															field.onChange(newRules);
+														}}
+														error={!!fieldState.error}
+														helperText={fieldState.error?.message}
+														sx={{ minWidth: 120 }}
+													/>
+													<Autocomplete
+														options={notificationOptions}
+														getOptionLabel={(option) => option.name}
+														value={selectedChannels}
+														onChange={(_: unknown, newValue: typeof notificationOptions) => {
+															const newRules = [...escalationRules];
+															newRules[index] = { ...newRules[index], notificationIds: newValue.map((n) => n.id) };
+															field.onChange(newRules);
+														}}
+														isOptionEqualToValue={(option, value) => option.id === value.id}
+														multiple
+														renderInput={(params) => (
+															<TextField
+																{...params}
+																fieldLabel={t("pages.createMonitor.form.escalationRules.option.escalationChannels.label")}
+																error={!!fieldState.error}
+																helperText={fieldState.error?.message}
+															/>
+														)}
+														sx={{ flex: 1 }}
+													/>
+													<IconButton
+														onClick={() => {
+															const newRules = escalationRules.filter((_: any, i: number) => i !== index);
+															field.onChange(newRules);
+														}}
+														aria-label="Remove escalation rule"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+												</Stack>
+												{selectedChannels.length > 0 && (
+													<Stack
+														flex={1}
+														width="100%"
+														sx={{ pl: theme.spacing(LAYOUT.MD) }}
+													>
+														{selectedChannels.map((channel, channelIndex) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={channel.id}
+																width="100%"
+															>
+																<Typography flexGrow={1} variant="body2">
+																	{channel.notificationName}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		const newRules = [...escalationRules];
+																		newRules[index] = {
+																			...newRules[index],
+																			notificationIds: rule.notificationIds.filter((id: string) => id !== channel.id),
+																		};
+																		field.onChange(newRules);
+																	}}
+																	aria-label="Remove channel"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{channelIndex < selectedChannels.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									})}
+									<Button
+										variant="outlined"
+										onClick={() => {
+											const newRules = [...escalationRules, { minutes: 0, notificationIds: [] }];
+											field.onChange(newRules);
+										}}
+									>
+										Add Escalation Rule
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

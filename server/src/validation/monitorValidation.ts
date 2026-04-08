@@ -67,6 +67,10 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationRules: z.array(z.object({
+		minutes: z.number().min(1, "Minutes must be at least 1"),
+		notificationIds: z.array(z.string()).min(1, "At least one notification channel is required"),
+	})).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +93,10 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationRules: z.array(z.object({
+		minutes: z.number().min(1, "Minutes must be at least 1"),
+		notificationIds: z.array(z.string()).min(1, "At least one notification channel is required"),
+	})).optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -144,6 +152,10 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationRules: z.array(z.object({
+		minutes: z.number().min(1),
+		notificationIds: z.array(z.string()).min(1),
+	})).default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),
