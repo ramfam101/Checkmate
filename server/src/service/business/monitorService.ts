@@ -140,6 +140,26 @@ export class MonitorService implements IMonitorService {
 		return MonitorService.SERVICE_NAME;
 	}
 
+	private normalizeEscalation = (monitor: Partial<Monitor>): Partial<Monitor> => {
+		const escalation = monitor.escalation;
+		if (escalation === undefined) {
+			return monitor;
+		}
+		if (!escalation || escalation.delayMinutes <= 0 || escalation.channelIds.length === 0) {
+			return {
+				...monitor,
+				escalation: null,
+			};
+		}
+		return {
+			...monitor,
+			escalation: {
+				delayMinutes: escalation.delayMinutes,
+				channelIds: escalation.channelIds,
+			},
+		};
+	};
+
 	private getDateRange = (dateRange: DateRangeKey) => {
 		const startDates = {
 			recent: new Date(new Date().setHours(new Date().getHours() - 2)),
@@ -166,7 +186,7 @@ export class MonitorService implements IMonitorService {
 	};
 
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
-		const monitor = await this.monitorsRepository.create(body, teamId, userId);
+		const monitor = await this.monitorsRepository.create(this.normalizeEscalation(body) as Monitor, teamId, userId);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
 		}
@@ -175,7 +195,7 @@ export class MonitorService implements IMonitorService {
 	};
 
 	createMonitors = async (monitors: Array<Monitor>): Promise<Monitor[] | null> => {
-		const createdMonitors = await this.monitorsRepository.createMonitors(monitors);
+		const createdMonitors = await this.monitorsRepository.createMonitors(monitors.map((monitor) => this.normalizeEscalation(monitor) as Monitor));
 		if (!monitors || monitors.length === 0) {
 			throw new AppError({ message: "Failed to create monitors", status: 500, service: SERVICE_NAME, method: "createMonitors" });
 		}
@@ -437,7 +457,7 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
-		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
+		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, this.normalizeEscalation(body));
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;
 	};

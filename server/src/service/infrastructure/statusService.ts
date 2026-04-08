@@ -258,8 +258,8 @@ export class StatusService implements IStatusService {
 				newStatus = "down";
 				statusChanged = true;
 			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			// If the failure rate is below the threshold and the latest check is up, recover:
+			else if (status === true && failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
 			}

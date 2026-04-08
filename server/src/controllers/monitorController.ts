@@ -59,6 +59,23 @@ class MonitorController implements IMonitorController {
 		return MonitorController.SERVICE_NAME;
 	}
 
+	private validateNotificationIds = async (teamId: string, notificationIds: string[]) => {
+		if (notificationIds.length === 0) {
+			return;
+		}
+
+		const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+		const validNotificationIds = new Set(teamNotifications.map((notification) => notification.id));
+		const invalidIds = notificationIds.filter((id) => !validNotificationIds.has(id));
+
+		if (invalidIds.length > 0) {
+			throw new AppError({
+				message: `The following notification IDs are invalid or do not belong to your team: ${invalidIds.join(", ")}`,
+				status: 403,
+			});
+		}
+	};
+
 	getMonitorCertificate = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const validatedParams = getCertificateParamValidation.parse(req.params);
@@ -205,6 +222,10 @@ class MonitorController implements IMonitorController {
 
 			const userId = requireUserId(req.user?.id);
 			const teamId = requireTeamId(req.user?.teamId);
+			await this.validateNotificationIds(teamId, [
+				...(validatedBody.notifications ?? []),
+				...(validatedBody.escalation?.channelIds ?? []),
+			]);
 
 			const monitor = await this.monitorService.createMonitor(teamId, userId, validatedBody);
 
@@ -275,6 +296,10 @@ class MonitorController implements IMonitorController {
 			const validatedBody = editMonitorBodyValidation.parse(req.body);
 			const monitorId = validatedParams.monitorId;
 			const teamId = requireTeamId(req.user?.teamId);
+			await this.validateNotificationIds(teamId, [
+				...(validatedBody.notifications ?? []),
+				...(validatedBody.escalation?.channelIds ?? []),
+			]);
 
 			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: validatedBody });
 
