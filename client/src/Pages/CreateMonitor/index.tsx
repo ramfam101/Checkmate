@@ -765,6 +765,59 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationTimeLimit"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalationRules.timeLimit.label")}
+									placeholder={t("pages.createMonitor.form.escalationRules.timeLimit.placeholder")}
+									value={field.value ?? ""}
+									onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? t("pages.createMonitor.form.escalationRules.timeLimit.helper")}
+									InputProps={{
+										endAdornment: <Typography variant="body2">minutes</Typography>,
+									}}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationChannel"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Select
+									{...field}
+									value={field.value ?? ""}
+									fieldLabel={t("pages.createMonitor.form.escalationRules.notificationChannel.label")}
+									error={!!fieldState.error}
+									placeholder={t("pages.createMonitor.form.escalationRules.notificationChannel.placeholder")}
+								>
+									<MenuItem value="">
+										{t("pages.createMonitor.form.escalationRules.notificationChannel.placeholder")}
+									</MenuItem>
+									{(notifications ?? []).map((notification) => (
+										<MenuItem
+											key={notification.id}
+											value={notification.id}
+										>
+											{notification.notificationName}
+										</MenuItem>
+									))}
+								</Select>
+							)}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

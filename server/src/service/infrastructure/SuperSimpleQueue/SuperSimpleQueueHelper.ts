@@ -20,6 +20,7 @@ import {
 	IChecksRepository,
 	IIncidentsRepository,
 	IGeoChecksRepository,
+	INotificationsRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
@@ -30,6 +31,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationCheckJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -64,6 +66,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private checksRepository: IChecksRepository;
 	private incidentsRepository: IIncidentsRepository;
+	private notificationsRepository: INotificationsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
 
@@ -78,6 +81,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		incidentService: IncidentService,
 		maintenanceWindowsRepository: IMaintenanceWindowsRepository,
 		monitorsRepository: IMonitorsRepository,
+		notificationsRepository: INotificationsRepository,
 		teamsRepository: ITeamsRepository,
 		monitorStatsRepository: IMonitorStatsRepository,
 		checksRepository: IChecksRepository,
@@ -95,6 +99,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentService = incidentService;
 		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.notificationsRepository = notificationsRepository;
 		this.teamsRepository = teamsRepository;
 		this.monitorStatsRepository = monitorStatsRepository;
 		this.checksRepository = checksRepository;
@@ -455,4 +460,121 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationCheckJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Starting escalation check job",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+
+				// Find all monitors that are currently down and have escalation settings
+				const downMonitors = await this.monitorsRepository.findByStatus("down");
+
+				for (const monitor of downMonitors) {
+					if (!monitor.escalationTimeLimit || !monitor.escalationNotificationChannel) {
+						// Skip monitors without escalation settings
+						continue;
+					}
+
+					// Check if monitor is in maintenance window
+					const maintenanceWindowActive = await this.isInMaintenanceWindow(monitor.id, monitor.teamId);
+					if (maintenanceWindowActive) {
+						continue;
+					}
+
+					// Find the most recent incident for this monitor
+					const recentIncidents = await this.incidentsRepository.findByMonitorId(monitor.id, monitor.teamId, 1, 1);
+					if (!recentIncidents.incidents.length) {
+						// No incident found, skip
+						continue;
+					}
+
+					const currentIncident = recentIncidents.incidents[0];
+					const incidentStartTime = new Date(currentIncident.createdAt);
+					const now = new Date();
+					const downtimeMinutes = (now.getTime() - incidentStartTime.getTime()) / (1000 * 60);
+
+					// Check if we've exceeded the escalation time limit
+					if (downtimeMinutes >= monitor.escalationTimeLimit) {
+						// Check if we already sent an escalation notification recently (within the last hour)
+						const lastEscalationCheck = currentIncident.lastEscalationNotificationAt
+							? new Date(currentIncident.lastEscalationNotificationAt)
+							: null;
+
+						const shouldSendEscalation = !lastEscalationCheck ||
+							(now.getTime() - lastEscalationCheck.getTime()) > (60 * 60 * 1000); // 1 hour cooldown
+
+						if (shouldSendEscalation) {
+							this.logger.info({
+								message: `Sending escalation notification for monitor ${monitor.id}`,
+								service: SERVICE_NAME,
+								method: "getEscalationCheckJob",
+								details: {
+									monitorId: monitor.id,
+									downtimeMinutes,
+									escalationTimeLimit: monitor.escalationTimeLimit
+								},
+							});
+
+							// Send escalation notification
+							await this.sendEscalationNotification(monitor, currentIncident, downtimeMinutes);
+
+							// Update the incident with the last escalation notification time
+							await this.incidentsRepository.updateById(currentIncident.id, monitor.teamId, {
+								lastEscalationNotificationAt: now.toISOString()
+							});
+						}
+					}
+				}
+
+				this.logger.debug({
+					message: "Escalation check job completed",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error in escalation check job: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
+
+	private sendEscalationNotification = async (monitor: Monitor, incident: any, downtimeMinutes: number) => {
+		try {
+			// Use the notifications service to send escalation notification
+			const success = await this.notificationsService.sendEscalationNotification(
+				monitor,
+				monitor.escalationNotificationChannel!,
+				downtimeMinutes
+			);
+
+			if (success) {
+				this.logger.info({
+					message: `Escalation notification sent successfully for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			} else {
+				this.logger.warn({
+					message: `Failed to send escalation notification for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
 }

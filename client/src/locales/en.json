@@ -543,6 +543,19 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalationRules": {
+					"description": "Configure escalation rules for prolonged downtime",
+					"title": "Escalation Rules",
+					"timeLimit": {
+						"label": "Escalation time limit",
+						"placeholder": "e.g. 30",
+						"helper": "Time in minutes before escalation notifications start"
+					},
+					"notificationChannel": {
+						"label": "Escalation notification channel",
+						"placeholder": "Select a notification channel"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotification: (monitor: Monitor, escalationNotificationId: string, downtimeMinutes: number) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -196,5 +197,66 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	sendEscalationNotification = async (monitor: Monitor, escalationNotificationId: string, downtimeMinutes: number): Promise<boolean> => {
+		try {
+			// Get the escalation notification channel
+			const escalationNotification = await this.notificationsRepository.findById(escalationNotificationId, monitor.teamId);
+
+			if (!escalationNotification) {
+				this.logger.warn({
+					message: `Escalation notification channel not found: ${escalationNotificationId}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+
+			// Build escalation notification message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+
+			const escalationMessage: NotificationMessage = {
+				type: "monitor_down", // Using monitor_down as the closest type
+				severity: "critical",
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: monitor.url,
+					type: monitor.type,
+					status: "escalation"
+				},
+				content: {
+					title: `🚨 ESCALATION: ${monitor.name} is still DOWN`,
+					summary: `Monitor "${monitor.name}" has been down for ${Math.floor(downtimeMinutes)} minutes (escalation limit: ${monitor.escalationTimeLimit} minutes). Immediate attention required!`,
+					details: [
+						`Monitor URL: ${monitor.url}`,
+						`Monitor Type: ${monitor.type}`,
+						`Downtime: ${Math.floor(downtimeMinutes)} minutes`,
+						`Escalation Threshold: ${monitor.escalationTimeLimit} minutes`
+					],
+					timestamp: new Date()
+				},
+				clientHost,
+				metadata: {
+					teamId: monitor.teamId,
+					monitorId: monitor.id,
+					incidentId: null,
+					userId: null
+				}
+			};
+
+			// Send the escalation notification using the appropriate provider
+			return await this.send(escalationNotification, monitor, null as any, null as any, escalationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 }
