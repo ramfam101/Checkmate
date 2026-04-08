@@ -72,6 +72,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		lastEscalatedTier: {
+			type: Number,
+			default: -1,
+		},
 	},
 	{ timestamps: true }
 );

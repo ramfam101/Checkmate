@@ -284,6 +284,16 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationPolicy: {
+			type: [
+				{
+					delayMinutes: { type: Number, required: true },
+					notificationId: { type: String, required: true },
+					_id: false,
+				},
+			],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

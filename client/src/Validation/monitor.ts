@@ -4,6 +4,21 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
+const escalationTierSchema = z.object({
+	delayMinutes: z.number().min(0, "Delay must be 0 or more"),
+	notificationId: z.string().min(1, "Notification channel is required"),
+});
+
+const escalationPolicySchema = z
+	.array(escalationTierSchema)
+	.refine(
+		(tiers) => {
+			const delays = tiers.map((t) => t.delayMinutes);
+			return new Set(delays).size === delays.length;
+		},
+		{ message: "Each escalation tier must have a unique delay" }
+	);
+
 // Common base schema for all monitor types
 const baseSchema = z.object({
 	name: z
@@ -27,6 +42,7 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationPolicy: escalationPolicySchema.optional(),
 });
 
 // HTTP monitor schema

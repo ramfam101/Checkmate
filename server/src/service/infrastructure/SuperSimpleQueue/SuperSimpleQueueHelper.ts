@@ -1,5 +1,5 @@
 const SERVICE_NAME = "JobQueueHelper";
-import type { Monitor } from "@/types/monitor.js";
+import type { Monitor, EscalationTier } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +177,32 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications (best effort, don't wait)
+				const updatedMonitor = statusChangeResult.monitor;
+				const escalationPolicy = updatedMonitor.escalationPolicy ?? [];
+				if (escalationPolicy.length > 0 && !decision.shouldResolveIncident) {
+					this.handleEscalation(updatedMonitor, escalationPolicy, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 8b. On resolution, send resolution to previously-escalated channels
+				if (escalationPolicy.length > 0 && decision.shouldResolveIncident) {
+					this.handleEscalationResolution(updatedMonitor, escalationPolicy, status, decision).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error sending escalation resolution for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -416,6 +442,67 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private handleEscalation = async (
+		monitor: Monitor,
+		escalationPolicy: EscalationTier[],
+		monitorStatusResponse: MonitorStatusResponse
+	): Promise<void> => {
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || !activeIncident.status) return;
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		const elapsedMinutes = (Date.now() - incidentStart) / 60000;
+		const lastTier = activeIncident.lastEscalatedTier ?? -1;
+
+		// Find tiers that are due but haven't been sent yet
+		const sortedTiers = [...escalationPolicy].sort((a, b) => a.delayMinutes - b.delayMinutes);
+		const dueTiers = sortedTiers.filter((t) => t.delayMinutes > lastTier && t.delayMinutes <= elapsedMinutes);
+
+		if (dueTiers.length === 0) return;
+
+		const notificationIds = dueTiers.map((t) => t.notificationId);
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: "status_down",
+			notificationReason: "escalation",
+		};
+
+		await this.notificationsService.sendToNotificationIds(notificationIds, monitor, monitorStatusResponse, escalationDecision);
+
+		const highestTier = Math.max(...dueTiers.map((t) => t.delayMinutes));
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			lastEscalatedTier: highestTier,
+		});
+
+		this.logger.info({
+			message: `Sent escalation notifications for monitor ${monitor.id}: tiers [${dueTiers.map((t) => `${t.delayMinutes}min`).join(", ")}]`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+	};
+
+	private handleEscalationResolution = async (
+		monitor: Monitor,
+		escalationPolicy: EscalationTier[],
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> => {
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) return;
+
+		const lastTier = activeIncident.lastEscalatedTier ?? -1;
+		if (lastTier < 0) return; // No escalation tiers were ever sent
+
+		// Send resolution to all previously-escalated channels
+		const notifiedTiers = escalationPolicy.filter((t) => t.delayMinutes <= lastTier);
+		if (notifiedTiers.length === 0) return;
+
+		const notificationIds = [...new Set(notifiedTiers.map((t) => t.notificationId))];
+		await this.notificationsService.sendToNotificationIds(notificationIds, monitor, monitorStatusResponse, decision);
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
