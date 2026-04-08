@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalation must be checked before generic "down" so it gets its own label
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,9 +109,31 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Escalation: ${monitor.name} is still down`;
+		const summary = `Monitor "${monitor.name}" remains unreachable and requires immediate attention.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {

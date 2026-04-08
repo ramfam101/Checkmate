@@ -89,7 +89,6 @@ class SettingsController implements ISettingsController {
 				systemEmailHost,
 				systemEmailPort,
 				systemEmailAddress,
-				systemEmailPassword,
 				systemEmailUser,
 				systemEmailConnectionHost,
 				systemEmailSecure,
@@ -99,6 +98,13 @@ class SettingsController implements ISettingsController {
 				systemEmailRejectUnauthorized,
 				systemEmailTLSServername,
 			} = req.body;
+
+			// If password not provided in request, fall back to the stored DB password
+			let { systemEmailPassword } = req.body;
+			if (!systemEmailPassword) {
+				const dbSettings = await this.settingsService.getDBSettings();
+				systemEmailPassword = dbSettings.systemEmailPassword;
+			}
 
 			const subject = "This is a test email from Checkmate";
 			const context = { testName: "Monitoring System" };

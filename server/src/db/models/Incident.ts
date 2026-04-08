@@ -4,6 +4,7 @@ import { IncidentResolutionTypes, type Incident } from "@/types/incident.js";
 type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt"> & {
 	monitorId: Types.ObjectId;
 	teamId: Types.ObjectId;
+	escalationSentAt?: Date | null;
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
@@ -70,6 +71,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 		},
 		comment: {
 			type: String,
+			default: null,
+		},
+		escalationSentAt: {
+			type: Date,
 			default: null,
 		},
 	},

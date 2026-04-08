@@ -139,10 +139,10 @@ export class EmailService implements IEmailService {
 			name: systemEmailConnectionHost || "localhost",
 			connectionTimeout: 5000,
 			pool: systemEmailPool,
+			ignoreTLS: systemEmailIgnoreTLS,
+			requireTLS: systemEmailRequireTLS,
 			tls: {
 				rejectUnauthorized: systemEmailRejectUnauthorized,
-				ignoreTLS: systemEmailIgnoreTLS,
-				requireTLS: systemEmailRequireTLS,
 				servername: systemEmailTLSServername,
 			},
 		};

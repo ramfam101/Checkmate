@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -28,6 +29,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -38,7 +40,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -350,6 +352,89 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				// Don't throw - geo check failures shouldn't crash the job scheduler
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+				if (!activeIncidents.length) {
+					return;
+				}
+
+				for (const incident of activeIncidents) {
+					if (incident.escalationSentAt) {
+						continue;
+					}
+
+					let monitor: Monitor;
+					try {
+						monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+					} catch (error: unknown) {
+						this.logger.warn({
+							message: `Failed to load monitor ${incident.monitorId} for escalation`,
+							service: SERVICE_NAME,
+							method: "getEscalationJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						continue;
+					}
+
+					const escalation = monitor.escalation;
+					if (!escalation?.channelId || escalation.delayMinutes <= 0) {
+						continue;
+					}
+
+					const startTime = new Date(incident.startTime).getTime();
+					const elapsedMinutes = (Date.now() - startTime) / (1000 * 60);
+					if (elapsedMinutes < escalation.delayMinutes) {
+						continue;
+					}
+
+					if (monitor.status === "up") {
+						continue;
+					}
+
+					const decision: MonitorActionDecision = {
+						shouldCreateIncident: false,
+						shouldResolveIncident: false,
+						shouldSendNotification: true,
+						incidentReason: monitor.status === "breached" ? "threshold_breach" : "status_down",
+						notificationReason: monitor.status === "breached" ? "threshold_breach" : "escalation",
+					};
+
+					const monitorStatusResponse: MonitorStatusResponse = {
+						monitorId: monitor.id,
+						teamId: monitor.teamId,
+						type: monitor.type,
+						status: false,
+						code: 503,
+						message: `Incident still open for monitor ${monitor.name}`,
+					};
+
+					const sent = await this.notificationsService.sendEscalationNotification(
+						escalation.channelId,
+						monitor.teamId,
+						monitor,
+						monitorStatusResponse,
+						decision
+					);
+
+					if (sent) {
+						await this.incidentsRepository.updateById(incident.id, incident.teamId, {
+							escalationSentAt: new Date().toISOString(),
+						});
+					}
+				}
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
 			}
 		};
 	};
