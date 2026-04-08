@@ -124,4 +124,34 @@ describe("NotificationsService escalations", () => {
 			expect.objectContaining({ sentEscalations: ["notification-1:5"] })
 		);
 	});
+
+	it("removes deleted notification channels from monitor references", async () => {
+		const monitorsRepository = {
+			removeNotificationFromMonitors: jest.fn().mockResolvedValue(undefined),
+		};
+		const notificationsRepository = {
+			deleteById: jest.fn().mockResolvedValue(createNotification()),
+		};
+
+		const service = new NotificationsService(
+			notificationsRepository as never,
+			monitorsRepository as never,
+			{} as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ sendMessage: jest.fn(), sendTestAlert: jest.fn() } as never,
+			{ getSettings: jest.fn().mockReturnValue({ clientHost: "http://localhost:3000" }) } as never,
+			{ warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() } as never,
+			new NotificationMessageBuilder()
+		);
+
+		await service.deleteById("notification-1", "team-1");
+
+		expect(notificationsRepository.deleteById).toHaveBeenCalledWith("notification-1", "team-1");
+		expect(monitorsRepository.removeNotificationFromMonitors).toHaveBeenCalledWith("notification-1");
+	});
 });
