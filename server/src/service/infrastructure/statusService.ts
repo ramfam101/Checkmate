@@ -236,9 +236,24 @@ export class StatusService implements IStatusService {
 			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
+			const applyEscalationState = (finalStatus: MonitorStatus) => {
+				if (finalStatus === "down") {
+					if (!monitor.lastDownAt) {
+						monitor.lastDownAt = new Date().toISOString();
+					}
+					if (statusChanged) {
+						monitor.escalationNotificationSent = false;
+					}
+				} else {
+					monitor.lastDownAt = undefined;
+					monitor.escalationNotificationSent = false;
+				}
+			};
+
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
 				monitor.status = newStatus;
+				applyEscalationState(newStatus);
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -347,6 +362,7 @@ export class StatusService implements IStatusService {
 
 			// Apply the final status
 			monitor.status = newStatus;
+			applyEscalationState(newStatus);
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 

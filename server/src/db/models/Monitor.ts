@@ -355,6 +355,27 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		lastDownAt: {
+			type: Date,
+		},
+		escalationNotificationSent: {
+			type: Boolean,
+			default: false,
+		},
+		escalationInterval: {
+			type: Number,
+			default: 60000,
+			set: (value: unknown) => {
+				const parsed = Number(value);
+				return Number.isFinite(parsed) ? parsed : 60000;
+			},
+		},
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
 	},
 	{
 		timestamps: true,

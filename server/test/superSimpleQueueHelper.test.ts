@@ -64,6 +64,40 @@ describe("SuperSimpleQueueHelper", () => {
 		});
 	});
 
+	describe("evaluateMonitorAction", () => {
+		it("returns escalation notifications when down time exceeds escalation interval", () => {
+			const { helper } = createHelper();
+			const monitor = {
+				status: "down",
+				escalationInterval: 60000,
+				escalationNotifications: ["n1"],
+				escalationNotificationSent: false,
+				lastDownAt: new Date(Date.now() - 60000).toISOString(),
+			} as Monitor;
+
+			const decision = (helper as any).evaluateMonitorAction({ monitor, statusChanged: false, prevStatus: "down" });
+
+			expect(decision.shouldSendNotification).toBe(true);
+			expect(decision.notificationReason).toBe("escalation");
+		});
+
+		it("does not send escalation notifications again after escalation has already been sent", () => {
+			const { helper } = createHelper();
+			const monitor = {
+				status: "down",
+				escalationInterval: 60000,
+				escalationNotifications: ["n1"],
+				escalationNotificationSent: true,
+				lastDownAt: new Date(Date.now() - 60000).toISOString(),
+			} as Monitor;
+
+			const decision = (helper as any).evaluateMonitorAction({ monitor, statusChanged: false, prevStatus: "down" });
+
+			expect(decision.shouldSendNotification).toBe(false);
+			expect(decision.notificationReason).toBeNull();
+		});
+	});
+
 	describe("isInMaintenanceWindow", () => {
 		it("returns true when an active window spans now", async () => {
 			const now = new Date();

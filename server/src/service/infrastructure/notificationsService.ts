@@ -108,7 +108,16 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = decision.notificationReason === "escalation" ? (monitor.escalationNotifications ?? []) : (monitor.notifications ?? []);
+		if (!notificationIds.length) {
+			this.logger.warn({
+				message: `No notification targets configured for ${decision.notificationReason || "notification"}`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+			});
+			return false;
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -137,8 +146,12 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const sentSuccessfully = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		if (sentSuccessfully && decision.notificationReason === "escalation") {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, { escalationNotificationSent: true });
+		}
+
+		return sentSuccessfully;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

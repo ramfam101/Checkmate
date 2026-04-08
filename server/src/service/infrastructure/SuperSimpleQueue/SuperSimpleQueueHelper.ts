@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -431,6 +431,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			const downSince = monitor.lastDownAt ? new Date(monitor.lastDownAt).getTime() : 0;
+			const now = Date.now();
+			const interval = monitor.escalationInterval ?? 60000;
+
+			if (
+				monitor.status === "down" &&
+				Array.isArray(monitor.escalationNotifications) &&
+				monitor.escalationNotifications.length > 0 &&
+				!monitor.escalationNotificationSent &&
+				downSince > 0 &&
+				now - downSince >= interval
+			) {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+			}
 			return decision;
 		}
 
