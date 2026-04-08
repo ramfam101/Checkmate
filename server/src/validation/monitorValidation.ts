@@ -78,9 +78,17 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationNotificationId: z.string().nullable().optional(),
+	escalationIntervals: z.array(z.number().min(1)).optional(),
+	maxEscalationAlerts: z.number().min(1).max(10).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
+	escalationEnabled: z.boolean().optional(),
+	escalationNotificationId: z.string().nullable().optional(),
+	escalationIntervals: z.array(z.number().min(1)).optional(),
+	maxEscalationAlerts: z.number().min(1).max(10).optional(),
 	name: z.string().optional(),
 	type: z.enum(MonitorTypes).optional(),
 	url: z.string().optional(),
@@ -123,6 +131,10 @@ export const getUptimeDetailsByIdQueryValidation = z.object({
 });
 
 const importedMonitorSchema = z.object({
+	escalationEnabled: z.boolean().default(false),
+	escalationNotificationId: z.string().nullable().default(null),
+	escalationIntervals: z.array(z.number().min(1)).default([]),
+	maxEscalationAlerts: z.number().min(1).max(10).default(1),
 	id: z.string().optional(),
 	userId: z.string().optional(),
 	teamId: z.string().optional(),

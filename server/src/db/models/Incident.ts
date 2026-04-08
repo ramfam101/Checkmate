@@ -36,6 +36,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			immutable: true,
 			required: true,
 		},
+		escalationNotificationsSent: {
+			type: [Number],
+			default: [],
+		},
 		endTime: {
 			type: Date,
 			default: null,

@@ -541,6 +541,27 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
+					"escalation": {
+						"option": {
+							"enabled": {
+								"label": "Enable escalated notifications"
+							},
+							"channel": {
+								"label": "Escalation channel",
+								"placeholder": "Select a notification channel"
+							},
+							"intervals": {
+								"label": "Escalation delays (minutes)",
+								"placeholder": "15, 30, 60",
+								"helper": "Enter one or more delay values in minutes, separated by commas."
+							},
+							"maxAlerts": {
+								"label": "Maximum escalation alerts",
+								"placeholder": "1",
+								"helper": "Limits how many escalation alerts are sent for a single incident."
+							}
+						}
+					},
 					"title": "Notifications"
 				},
 				"type": {

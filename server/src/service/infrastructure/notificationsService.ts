@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IIncidentsRepository, IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -25,6 +25,7 @@ export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
 
 	private notificationsRepository: INotificationsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
@@ -39,6 +40,7 @@ export class NotificationsService implements INotificationsService {
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
+		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
@@ -52,6 +54,7 @@ export class NotificationsService implements INotificationsService {
 		notificationMessageBuilder: INotificationMessageBuilder
 	) {
 		this.notificationsRepository = notificationsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
@@ -132,13 +135,121 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+	private buildEscalationMessage = (
+		notificationMessage: NotificationMessage,
+		monitor: Monitor,
+		delayMinutes: number
+	): NotificationMessage => {
+		const escalationLabel = `Escalation after ${delayMinutes} minute${delayMinutes === 1 ? "" : "s"}`;
+		const titlePrefix =
+			notificationMessage.type === "threshold_breach" ? "Threshold escalation" : "Monitor down escalation";
+		const title = `${titlePrefix}: ${monitor.name}`;
+		const summary =
+			notificationMessage.type === "threshold_breach"
+				? `Monitor "${monitor.name}" is still breaching thresholds after ${delayMinutes} minute${delayMinutes === 1 ? "" : "s"}.`
+				: `Monitor "${monitor.name}" is still down after ${delayMinutes} minute${delayMinutes === 1 ? "" : "s"}.`;
+
+		return {
+			...notificationMessage,
+			content: {
+				...notificationMessage.content,
+				title,
+				summary,
+				details: [escalationLabel, ...(notificationMessage.content.details ?? [])],
+			},
+			metadata: {
+				...notificationMessage.metadata,
+				notificationReason: "escalation",
+			},
+		};
+	};
+
+	private sendEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<boolean> => {
+		if (!monitor.escalationEnabled || !monitor.escalationNotificationId) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const intervals = [...(monitor.escalationIntervals ?? [])]
+			.filter((value) => Number.isFinite(value) && value > 0)
+			.filter((value, index, array) => array.indexOf(value) === index)
+			.sort((a, b) => a - b);
+		if (intervals.length === 0) {
+			return false;
+		}
+
+		const maxEscalationAlerts = Math.max(1, Math.min(monitor.maxEscalationAlerts ?? 1, intervals.length));
+		const limitedIntervals = intervals.slice(0, maxEscalationAlerts);
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident?.startTime) {
+			return false;
+		}
+
+		const elapsedMs = Date.now() - new Date(activeIncident.startTime).getTime();
+		if (elapsedMs < 0) {
+			return false;
+		}
+
+		const alreadySent = new Set(activeIncident.escalationNotificationsSent ?? []);
+		const dueIntervals = limitedIntervals.filter(
+			(intervalMinutes) => elapsedMs >= intervalMinutes * 60 * 1000 && !alreadySent.has(intervalMinutes)
+		);
+		if (dueIntervals.length === 0) {
+			return false;
+		}
+
+		const escalationNotification = await this.notificationsRepository.findById(
+			monitor.escalationNotificationId,
+			monitor.teamId
+		);
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const baseMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const outcomes = await Promise.all(
+			dueIntervals.map((intervalMinutes) =>
+				this.send(
+					escalationNotification,
+					monitor,
+					monitorStatusResponse,
+					decision,
+					this.buildEscalationMessage(baseMessage, monitor, intervalMinutes)
+				)
+			)
+		);
+
+		const sentIntervals = dueIntervals.filter((_: number, index: number) => outcomes[index]);
+		if (sentIntervals.length === 0) {
+			return false;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalationNotificationsSent: [...alreadySent, ...sentIntervals].sort((a, b) => a - b),
+		});
+
+		return outcomes.every(Boolean);
+	};
+
+	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		let sentPrimaryNotification = false;
+		if (decision.shouldSendNotification) {
+			sentPrimaryNotification = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		}
+
+		const shouldCheckEscalation = monitor.status === "down" || monitor.status === "breached";
+		if (!shouldCheckEscalation) {
+			return sentPrimaryNotification;
+		}
+
+		const sentEscalationNotification = await this.sendEscalationNotifications(
+			monitor,
+			monitorStatusResponse,
+			decision
+		);
+
+		return sentPrimaryNotification || sentEscalationNotification;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

@@ -16,6 +16,10 @@ export const MonitorMatchMethods = ["equal", "include", "regex"] as const;
 export type MonitorMatchMethod = (typeof MonitorMatchMethods)[number] | "";
 
 export interface Monitor {
+	escalationEnabled?: boolean;
+	escalationNotificationId?: string | null;
+	escalationIntervals?: number[];
+	maxEscalationAlerts?: number;
 	id: string;
 	userId: string;
 	teamId: string;
