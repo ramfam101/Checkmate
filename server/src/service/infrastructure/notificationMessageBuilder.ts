@@ -15,6 +15,10 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -50,6 +54,50 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				notificationReason: decision.notificationReason || "status_change",
 			},
 		};
+	}
+
+	buildEscalationMessage(
+    monitor: Monitor,
+    clientHost: string
+	): NotificationMessage {
+    const type: NotificationType = "escalation";
+    const severity: NotificationSeverity = "critical";
+    const content = this.buildEscalationContent(monitor);
+
+    return {
+        type,
+        severity,
+        monitor: {
+            id: monitor.id,
+            name: monitor.name,
+            url: monitor.url,
+            type: monitor.type,
+            status: monitor.status,
+        },
+        content,
+        clientHost,
+        metadata: {
+            teamId: monitor.teamId,
+            notificationReason: "escalation",
+        },
+    };
+	}
+
+	private buildEscalationContent(monitor: Monitor): NotificationContent {
+    const title = `Escalation: Monitor ${monitor.name} still down`;
+    const summary = `Monitor "${monitor.name}" is still down after the escalation threshold was reached.`;
+    const details = [
+        `URL: ${monitor.url}`,
+        `Status: ${monitor.status}`,
+        `Type: ${monitor.type}`,
+    ];
+
+    return {
+        title,
+        summary,
+        details,
+        timestamp: new Date(),
+    };
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
@@ -88,6 +136,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "success";
 			case "test":
 				return "info";
+			case "escalation":
+				return "critical";
 			default:
 				return "info";
 		}
@@ -103,6 +153,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor);
 			default:
 				return this.buildDefaultContent(monitor);
 		}

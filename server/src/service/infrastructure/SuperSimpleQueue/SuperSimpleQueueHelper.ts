@@ -50,6 +50,7 @@ export interface MonitorActionDecision {
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	static SERVICE_NAME = SERVICE_NAME;
 
+	private escalationTimers: Map<string, NodeJS.Timeout> = new Map();
 	private logger: ILogger;
 	private networkService: INetworkService;
 	private statusService: IStatusService;
@@ -177,6 +178,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation timer
+				if (decision.shouldCreateIncident) {
+					// New incident — schedule escalation
+					this.scheduleEscalation(statusChangeResult.monitor);
+				} else if (decision.shouldResolveIncident) {
+					// Incident resolved — cancel any pending escalation
+					this.clearEscalation(statusChangeResult.monitor.id);
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -417,6 +427,74 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private scheduleEscalation(monitor: Monitor): void {
+    // Clear any existing timer for this monitor
+    this.clearEscalation(monitor.id);
+
+    const delayMinutes = monitor.escalateAfterMinutes;
+    if (!delayMinutes || delayMinutes <= 0) {
+        return;
+    }
+
+    const escalationIds = monitor.escalationNotifications ?? [];
+    if (escalationIds.length === 0) {
+        return;
+    }
+
+    const delayMs = delayMinutes * 60 * 1000;
+
+    const timer = setTimeout(async () => {
+			try {
+				// Re-check that the incident is still active
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+				if (!activeIncident) {
+					this.logger.debug({
+						message: `Escalation timer fired for monitor ${monitor.id} but incident already resolved, skipping`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalation",
+					});
+					this.escalationTimers.delete(monitor.id);
+					return;
+				}
+
+				// Re-fetch the monitor to get the latest data
+				const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+				this.logger.info({
+					message: `Escalation timer fired for monitor ${currentMonitor.id}, sending escalation notifications`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+				});
+
+				await this.notificationsService.handleEscalationNotifications(currentMonitor);
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error in escalation timer for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			} finally {
+				this.escalationTimers.delete(monitor.id);
+			}
+		}, delayMs);
+
+    this.escalationTimers.set(monitor.id, timer);
+	}
+	
+	private clearEscalation(monitorId: string): void {
+    const existing = this.escalationTimers.get(monitorId);
+    if (existing) {
+        clearTimeout(existing);
+        this.escalationTimers.delete(monitorId);
+        this.logger.debug({
+            message: `Cleared escalation timer for monitor ${monitorId}`,
+            service: SERVICE_NAME,
+            method: "clearEscalation",
+        });
+    }
+}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

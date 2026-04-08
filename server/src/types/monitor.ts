@@ -56,6 +56,8 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalationNotifications?: string[]; // IDs of notification channels for escalation
+	escalateAfterMinutes?: number | null; // Minutes after incident start before escalation fires
 }
 
 export interface MonitorsSummary {

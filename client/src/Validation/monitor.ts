@@ -27,6 +27,16 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalateAfterMinutes: z
+		.union([
+			z.number().min(1, "Escalation time must be at least 1 minute"),
+			z.nan(),
+			z.null(),
+		])
+		.optional()
+		.nullable()
+		.transform((val) => (val === undefined || Number.isNaN(val) ? null : val)),
 });
 
 // HTTP monitor schema
