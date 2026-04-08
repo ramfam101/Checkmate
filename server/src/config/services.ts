@@ -234,6 +234,7 @@ export const initializeServices = async ({
 	const notificationsService = new NotificationsService(
 		notificationsRepository,
 		monitorsRepository,
+		incidentsRepository,
 		webhookProvider,
 		emailProvider,
 		slackProvider,
@@ -243,7 +244,8 @@ export const initializeServices = async ({
 		teamsProvider,
 		settingsService,
 		logger,
-		notificationMessageBuilder
+		notificationMessageBuilder,
+		emailService
 	);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
