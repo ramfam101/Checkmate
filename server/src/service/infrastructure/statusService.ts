@@ -233,12 +233,14 @@ export class StatusService implements IStatusService {
 			}
 
 			const prevStatus = monitor.status;
-			let newStatus: MonitorStatus = status === true ? "up" : "down";
+			// Keep current status by default when the status window is full.
+			// Status should only change when threshold logic below determines it.
+			let newStatus: MonitorStatus = monitor.status;
 			let statusChanged = false;
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				monitor.status = status === true ? "up" : "down";
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -253,15 +255,46 @@ export class StatusService implements IStatusService {
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 
+			// Require sustained success before recovery to avoid brief up/down flapping.
+			const recoverySuccessChecksRequired = Math.min(3, monitor.statusWindow.length);
+			const recentChecks = monitor.statusWindow.slice(-recoverySuccessChecksRequired);
+			const hasSustainedSuccess =
+				recentChecks.length === recoverySuccessChecksRequired && recentChecks.every((checkResult) => checkResult === true);
+
+			this.logger.debug({
+				message: `Status window evaluation for monitor ${monitor.id}: prevStatus=${prevStatus}, currentStatus=${monitor.status}, failureRate=${failureRate.toFixed(1)}%, threshold=${monitor.statusWindowThreshold}, failures=${failures}/${monitor.statusWindow.length}, sustainedSuccess=${hasSustainedSuccess}`,
+				service: SERVICE_NAME,
+				method: "updateMonitorStatus",
+				details: {
+					statusWindow: monitor.statusWindow,
+					recentChecks,
+					recoverySuccessChecksRequired,
+				},
+			});
+
 			// If threshold has been met and the monitor is not already down, mark down:
 			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
 			}
 			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down" && hasSustainedSuccess) {
 				newStatus = "up";
 				statusChanged = true;
+			}
+
+			if (statusChanged) {
+				this.logger.info({
+					message: `Status transition for monitor ${monitor.id}: ${prevStatus} -> ${newStatus}`,
+					service: SERVICE_NAME,
+					method: "updateMonitorStatus",
+					details: {
+						statusWindow: monitor.statusWindow,
+						failureRate,
+						threshold: monitor.statusWindowThreshold,
+						hasSustainedSuccess,
+					},
+				});
 			}
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)

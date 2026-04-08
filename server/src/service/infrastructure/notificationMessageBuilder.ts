@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, reason: string, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +49,35 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(monitor: Monitor, reason: string, clientHost: string): NotificationMessage {
+		return {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: ${monitor.name} is still down`,
+				summary: `Monitor "${monitor.name}" has remained down for an extended period and is being escalated to a higher priority team. Please investigate immediately.`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: ${monitor.status}`,
+					`Escalation reason: ${reason}`,
+				],
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
 			},
 		};
 	}
@@ -109,7 +139,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
+		const title = `${monitor.name} is down`;
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
 

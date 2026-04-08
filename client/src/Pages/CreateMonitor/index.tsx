@@ -251,6 +251,17 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
+	const handleCancel = () => {
+		form.reset(defaults);
+		if (pageType === "pagespeed") {
+			navigate("/pagespeed");
+		} else if (pageType === "hardware") {
+			navigate("/infrastructure");
+		} else {
+			navigate("/uptime");
+		}
+	};
+
 	const onSubmit = async (data: MonitorFormData) => {
 		let result;
 		if (isEditMode && monitorId) {
@@ -765,6 +776,93 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalateAfterMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalation.option.after.label")}
+									placeholder="0"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+									onChange={(e) => field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationChannels"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedChannels = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedChannels}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t("pages.createMonitor.form.escalation.option.channels.label")}
+										/>
+										{selectedChannels.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedChannels.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+															<Typography flexGrow={1}>
+																{notification.notificationName}
+															</Typography>
+															<IconButton
+																size="small"
+																onClick={() => {
+																field.onChange(
+																		(field.value ?? []).filter(
+																				(id: string) => id !== notification.id
+																			)
+																		);
+																}}
+																aria-label="Remove escalation channel"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+															{index < selectedChannels.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+							/>
+						</Stack>
+					}
+				/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1047,7 +1145,16 @@ const CreateMonitorPage = () => {
 			<Stack
 				direction="row"
 				justifyContent="flex-end"
+				spacing={theme.spacing(SPACING.MD)}
 			>
+				<Button
+					type="button"
+					variant="outlined"
+					color="inherit"
+					onClick={handleCancel}
+				>
+					{t("common.buttons.cancel")}
+				</Button>
 				<Button
 					loading={isSubmitting}
 					type="submit"

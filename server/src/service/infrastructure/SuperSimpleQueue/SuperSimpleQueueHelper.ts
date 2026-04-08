@@ -158,6 +158,11 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
+					this.logger.info({
+						message: `Triggering notifications for monitor ${monitor.id}: status=${statusChangeResult.monitor.status}, prevStatus=${statusChangeResult.prevStatus}, decision=${decision.notificationReason}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -172,6 +177,27 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Reset escalation timestamp on recovery (best effort, don't wait)
+			if (statusChangeResult.monitor.status === "up" && (statusChangeResult.prevStatus === "down" || statusChangeResult.prevStatus === "breached")) {
+				this.monitorsRepository.updateLastEscalationSentAt(statusChangeResult.monitor.id, null).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error resetting escalation timestamp for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 9. Handle escalation notifications (best effort, don't wait)
+				this.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -430,6 +456,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			notificationReason: null,
 		};
 
+		this.logger.debug({
+			message: `Evaluating action for monitor ${monitor.id}: status=${monitor.status}, prevStatus=${prevStatus}, statusChanged=${statusChanged}`,
+			service: SERVICE_NAME,
+			method: "evaluateMonitorAction",
+		});
+
 		if (!statusChanged) {
 			return decision;
 		}
@@ -440,6 +472,11 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+			this.logger.debug({
+				message: `Monitor ${monitor.id} went down - sending notification`,
+				service: SERVICE_NAME,
+				method: "evaluateMonitorAction",
+			});
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
@@ -451,8 +488,59 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+			this.logger.debug({
+				message: `Monitor ${monitor.id} recovered from ${prevStatus} - sending notification`,
+				service: SERVICE_NAME,
+				method: "evaluateMonitorAction",
+			});
 		}
 
 		return decision;
+	}
+
+	private async handleEscalationNotifications(monitor: Monitor, status: Status): Promise<void> {
+		// Only send escalation if the monitor is currently down and escalation is configured
+		if (monitor.status !== "down" || !monitor.escalateAfterMinutes || !monitor.escalationChannels || monitor.escalationChannels.length === 0) {
+			return;
+		}
+
+		const now = new Date();
+		const lastEscalationSentAt = monitor.lastEscalationSentAt ? new Date(monitor.lastEscalationSentAt) : null;
+		const escalationDelayMs = monitor.escalateAfterMinutes * 60 * 1000;
+
+		this.logger.debug({
+			message: `Escalation check for monitor ${monitor.id}: status=${status}, escalateAfterMinutes=${monitor.escalateAfterMinutes}, channels=${monitor.escalationChannels.length}, lastSent=${lastEscalationSentAt}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
+
+		if (!lastEscalationSentAt) {
+			// First down check after the monitor entered the down state: start the escalation timer.
+			await this.monitorsRepository.updateLastEscalationSentAt(monitor.id, now.toISOString());
+			this.logger.debug({
+				message: `Started escalation timer for monitor ${monitor.id} at ${now.toISOString()}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+			return;
+		}
+
+		// Check if enough time has passed since the last escalation timer mark
+		const shouldSendEscalation = (now.getTime() - lastEscalationSentAt.getTime()) >= escalationDelayMs;
+		if (!shouldSendEscalation) {
+			return;
+		}
+
+		// Send escalation notifications
+		await this.notificationsService.sendNotificationsToChannels(monitor, "escalation", monitor.escalationChannels);
+
+		// Update last escalation sent time
+		await this.monitorsRepository.updateLastEscalationSentAt(monitor.id, now.toISOString());
+
+		this.logger.info({
+			message: `Sent escalation notification for monitor ${monitor.id} to channels: ${monitor.escalationChannels.join(", ")}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
 	}
 }

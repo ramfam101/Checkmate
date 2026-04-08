@@ -15,6 +15,8 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendNotificationsToChannels: (monitor: Monitor, reason: string, channels: string[]) => Promise<void>;
+
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -109,7 +111,17 @@ export class NotificationsService implements INotificationsService {
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
+		this.logger.debug({
+			message: `Sending notifications for monitor ${monitor.id}, notificationIds: ${notificationIds.join(', ')}`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+		});
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		this.logger.debug({
+			message: `Found ${notifications.length} notifications for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+		});
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -134,11 +146,70 @@ export class NotificationsService implements INotificationsService {
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
+			this.logger.debug({
+				message: `Not sending notifications for monitor ${monitor.id} - shouldSendNotification is false`,
+				service: SERVICE_NAME,
+				method: "handleNotifications",
+			});
 			return false;
 		}
 
+		this.logger.debug({
+			message: `Sending notifications for monitor ${monitor.id} (status: ${monitor.status}, decision: ${decision.notificationReason})`,
+			service: SERVICE_NAME,
+			method: "handleNotifications",
+		});
+
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const regularResult = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		return regularResult;
+	};
+
+	sendNotificationsToChannels = async (monitor: Monitor, reason: string, channels: string[]) => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(channels);
+
+		// Build notification message based on reason
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		let notificationMessage: NotificationMessage;
+
+		if (reason === "escalation") {
+			notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, reason, clientHost);
+		} else if (reason === "recovery") {
+			// For recovery, build a regular monitor_up message
+			const mockDecision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: true,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "status_change",
+			};
+			const mockStatusResponse: MonitorStatusResponse = {
+				status: "up",
+				responseTime: 0,
+				statusCode: 200,
+				message: "Monitor recovered",
+				timestamp: new Date().toISOString(),
+			};
+			notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, mockStatusResponse, mockDecision, clientHost);
+		} else {
+			// Default to escalation message for other reasons
+			notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, reason, clientHost);
+		}
+
+		const tasks = notifications.map((notification) => this.send(notification, monitor, null, null, notificationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `${reason} notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+			});
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
