@@ -37,6 +37,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationRules?: EscalationRule[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
@@ -56,6 +57,11 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+}
+
+export interface EscalationRule {
+	minutes: number;
+	notificationIds: string[];
 }
 
 export interface MonitorsSummary {

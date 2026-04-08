@@ -108,7 +108,12 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		let notificationIds: string[];
+		if (decision.shouldSendEscalationNotification && decision.escalationNotificationIds) {
+			notificationIds = decision.escalationNotificationIds;
+		} else {
+			notificationIds = monitor.notifications ?? [];
+		}
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -133,7 +138,7 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+		if (!decision.shouldSendNotification && !decision.shouldSendEscalationNotification) {
 			return false;
 		}
 
