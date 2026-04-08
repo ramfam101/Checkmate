@@ -17,7 +17,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined, escalatedNotifications: undefined }));
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -351,6 +351,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalatedNotificationIds = (doc.escalatedNotifications ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +375,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalatedNotifications: escalatedNotificationIds,
+			escalationDelaySeconds: doc.escalationDelaySeconds ?? 0,
+			downSince: doc.downSince ? toDateString(doc.downSince) : undefined,
+			downAlertSent: doc.downAlertSent ?? false,
+			escalatedAlertSent: doc.escalatedAlertSent ?? false,
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +417,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalatedNotificationIds = (doc.escalatedNotifications ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +441,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalatedNotifications: escalatedNotificationIds,
+			escalationDelaySeconds: doc.escalationDelaySeconds ?? 0,
+			downSince: doc.downSince ? toDateString(doc.downSince) : undefined,
+			downAlertSent: doc.downAlertSent ?? false,
+			escalatedAlertSent: doc.escalatedAlertSent ?? false,
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
