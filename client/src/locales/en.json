@@ -541,7 +541,22 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"option": {
+						"escalationAfterMinutes": {
+							"label": "Escalate after (minutes)",
+							"placeholder": "0",
+							"helpText": "Set to 0 to disable escalation emails"
+						},
+						"escalationChannel": {
+							"label": "Escalation email channel",
+							"none": "None"
+						}
+					}
+				},
+				"escalation": {
+					"title": "Escalation rules",
+					"description": "Send a follow-up escalation email if the monitor remains down for a specified time."
 				},
 				"type": {
 					"description": "Select the type of check to perform",

@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision.escalationDurationMinutes);
 
 		return {
 			type,
@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "monitor_escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +84,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -93,10 +98,17 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		escalationDurationMinutes?: number
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_escalation":
+				return this.buildMonitorEscalationContent(monitor, escalationDurationMinutes);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -135,6 +147,25 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorEscalationContent(monitor: Monitor, escalationDurationMinutes?: number): NotificationContent {
+		const downtimeMinutes = Math.max(1, escalationDurationMinutes ?? 0);
+		const title = `Escalation: ${monitor.name} is still down`;
+		const summary = `Monitor "${monitor.name}" has been down for ${downtimeMinutes} minute${downtimeMinutes === 1 ? "" : "s"}.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Downtime: ${downtimeMinutes} minute${downtimeMinutes === 1 ? "" : "s"}`,
+		];
 
 		return {
 			title,
