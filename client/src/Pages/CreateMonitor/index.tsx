@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,12 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalation = watch("escalation");
+	const emailNotifications = useMemo(
+		() => (notifications ?? []).filter((notification) => notification.type === "email"),
+		[notifications]
+	);
+	const isEscalationEnabled = Boolean(watchedEscalation);
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +768,86 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Stack
+							direction="row"
+							alignItems="center"
+							spacing={theme.spacing(SPACING.LG)}
+						>
+							<Switch
+								checked={isEscalationEnabled}
+								onChange={(event) => {
+									if (event.target.checked) {
+										setValue(
+											"escalation",
+											{
+												delayMinutes: watchedEscalation?.delayMinutes ?? 30,
+												channelId: watchedEscalation?.channelId ?? emailNotifications[0]?.id ?? "",
+											},
+											{ shouldDirty: true, shouldValidate: true }
+										);
+										return;
+									}
+									setValue("escalation", undefined, { shouldDirty: true, shouldValidate: true });
+								}}
+							/>
+							<Typography>{t("pages.createMonitor.form.escalation.option.enable.label")}</Typography>
+						</Stack>
+						{isEscalationEnabled && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Controller
+									name="escalation.delayMinutes"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											value={field.value ?? 30}
+											onChange={(event) => field.onChange(Number(event.target.value))}
+											type="number"
+											fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+											placeholder={t(
+												"pages.createMonitor.form.escalation.option.delay.placeholder"
+											)}
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+								<Controller
+									name="escalation.channelId"
+									control={control}
+									render={({ field, fieldState }) => (
+										<Select
+											{...field}
+											value={field.value ?? ""}
+											fieldLabel={t("pages.createMonitor.form.escalation.option.channel.label")}
+											error={!!fieldState.error}
+										>
+											<MenuItem value="">
+												{t("pages.createMonitor.form.escalation.option.channel.placeholder")}
+											</MenuItem>
+											{emailNotifications.map((notification) => (
+												<MenuItem
+													key={notification.id}
+													value={notification.id}
+												>
+													{notification.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+									)}
+								/>
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 

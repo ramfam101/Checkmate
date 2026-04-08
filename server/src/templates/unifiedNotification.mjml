@@ -47,6 +47,9 @@
 		<mj-section>
 			<mj-column width="100%">
 				<mj-text>
+					{{#if isEscalated}}
+					<p><b>Escalation notification</b>{{#if escalationDelayMinutes}} after {{escalationDelayMinutes}} minute(s){{/if}}</p>
+					{{/if}}
 					<p>Hello!</p>
 					<p>{{ summary }}</p>
 					<p><b>Monitor name:</b> {{ monitorName }}</p>

@@ -125,6 +125,22 @@ const snapshotErrorSchema = new Schema<CheckErrorInfo>(
 	{ _id: false }
 );
 
+const monitorEscalationSchema = new Schema(
+	{
+		delayMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+		},
+		channelId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+			required: true,
+		},
+	},
+	{ _id: false }
+);
+
 const snapshotCaptureSchema = new Schema<CheckCaptureInfo>(
 	{
 		version: { type: String },
@@ -284,6 +300,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalation: {
+			type: monitorEscalationSchema,
+			required: false,
+		},
 		secret: {
 			type: String,
 		},
