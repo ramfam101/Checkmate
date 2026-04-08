@@ -16,15 +16,21 @@ import type {
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
+type EscalationRuleDocument = {
+	afterMinutes: number;
+	notificationIds: string[];
+};
+
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt" | "escalationRules"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+	escalationRules?: EscalationRuleDocument;
 };
 
 interface MonitorDocument extends MonitorDocumentBase {
@@ -45,6 +51,14 @@ const snapshotTimingPhasesSchema = new Schema<GotTimings["phases"]>(
 		firstByte: { type: Number },
 		download: { type: Number },
 		total: { type: Number },
+	},
+	{ _id: false }
+);
+
+const escalationRuleSchema = new Schema<EscalationRuleDocument>(
+	{
+		afterMinutes: { type: Number, required: true },
+		notificationIds: { type: [String], default: [] },
 	},
 	{ _id: false }
 );
@@ -354,6 +368,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],
+		},
+		escalationRules: {
+			type: escalationRuleSchema,
+			default: undefined,
 		},
 	},
 	{

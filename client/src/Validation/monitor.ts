@@ -27,6 +27,14 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationRules: z
+		.object({
+			afterMinutes: z.number().min(0, "Escalation threshold must be at least 0 minutes"),
+			notificationIds: z
+				.array(z.string())
+				.min(1, "At least one notification channel is required"),
+		})
+		.optional(),
 });
 
 // HTTP monitor schema

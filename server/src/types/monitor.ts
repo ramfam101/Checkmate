@@ -56,6 +56,7 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalationRules?: EscalationRule;
 }
 
 export interface MonitorsSummary {
@@ -157,6 +158,11 @@ export interface Game {
 	extra?: {
 		old_id?: string;
 	};
+}
+
+export interface EscalationRule {
+	afterMinutes: number;
+	notificationIds: string[];
 }
 
 export type GamesMap = Record<string, Game>;
