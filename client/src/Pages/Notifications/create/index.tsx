@@ -51,6 +51,8 @@ const NotificationsCreatePage = () => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
 
+	console.log("form errors", form.formState.errors);
+
 	const addressConfig = useMemo(() => {
 		if (watchedType === "pager_duty") {
 			return {
@@ -77,6 +79,7 @@ const NotificationsCreatePage = () => {
 	}, [watchedType, t]);
 
 	const onSubmit = async (data: NotificationFormData) => {
+		console.log("submitting", data);
 		const result = isEditMode
 			? await patch(`/notifications/${notificationId}`, data)
 			: await post("/notifications", data);

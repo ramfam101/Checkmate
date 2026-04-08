@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotification: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,63 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotification = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		// Check if monitor has escalation configured
+		if (!monitor.escalationChannelId) {
+			return false;
+		}
+
+		try {
+			// Look up the escalation notification channel
+			const notification = await this.notificationsRepository.findById(monitor.escalationChannelId, monitor.teamId);
+			if (!notification) {
+				this.logger.warn({
+					message: `Escalation channel not found for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotification",
+				});
+				return false;
+			}
+
+			// Build escalation notification message
+			const decision: MonitorActionDecision = {
+				shouldSendNotification: false,
+				shouldSendEscalation: true,
+				notificationReason: "escalation",
+				statusChanged: false,
+				shouldCreateIncident: false,
+			};
+
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(
+				monitor,
+				monitorStatusResponse,
+				decision,
+				notification
+			);
+
+			if (!notificationMessage) {
+				this.logger.warn({
+					message: `Failed to build escalation message for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotification",
+				});
+				return false;
+			}
+
+			// Send escalation notification through the designated channel
+			const result = await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+			return result;
+		} catch (error) {
+			this.logger.error({
+				message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

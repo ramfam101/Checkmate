@@ -1044,6 +1044,89 @@ const CreateMonitorPage = () => {
 				/>
 			)}
 
+			<ConfigBox
+				title="Escalation Settings"
+				subtitle="Configure escalation to another notification channel after downtime threshold"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationThreshold"
+							control={control}
+							render={({ field }) => {
+								const escalationEnabled = field.value !== undefined;
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Stack
+											direction="row"
+											alignItems="center"
+											spacing={theme.spacing(SPACING.LG)}
+										>
+											<Switch
+												checked={escalationEnabled}
+												onChange={(e) => {
+													if (e.target.checked) {
+														field.onChange(30);
+														// Also initialize the channel ID field
+														form.setValue("escalationChannelId", "");
+													} else {
+														field.onChange(undefined);
+														form.setValue("escalationChannelId", undefined);
+													}
+												}}
+											/>
+											<Typography>Enable Escalation</Typography>
+										</Stack>
+										{escalationEnabled && (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<TextField
+													{...field}
+													type="number"
+													fieldLabel="Escalation Threshold (minutes)"
+													placeholder="30"
+													fullWidth
+													onChange={(e) => {
+														const value = e.target.valueAsNumber;
+														field.onChange(isNaN(value) ? undefined : value);
+													}}
+												/>
+												<Controller
+													name="escalationChannelId"
+													control={control}
+													render={({ field: channelField, fieldState }) => {
+														const notificationOptions = (notifications ?? []).map((n) => ({
+															id: n.id,
+															name: n.notificationName,
+														}));
+														return (
+															<Select
+																{...channelField}
+																value={channelField.value ?? ""}
+																fieldLabel="Escalation Channel"
+																error={!!fieldState.error}
+																onChange={channelField.onChange}
+															>
+																<MenuItem value="">
+																	<Typography>Select a notification channel...</Typography>
+																</MenuItem>
+																{notificationOptions.map((option) => (
+																	<MenuItem key={option.id} value={option.id}>
+																		<Typography>{option.name}</Typography>
+																	</MenuItem>
+																))}
+															</Select>
+														);
+													}}
+												/>
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			<Stack
 				direction="row"
 				justifyContent="flex-end"

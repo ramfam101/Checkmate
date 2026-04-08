@@ -355,6 +355,22 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		escalationThreshold: {
+			type: Number,
+			required: false,
+		},
+		escalationChannelId: {
+			type: String,
+			required: false,
+		},
+		downtimeStartAt: {
+			type: Date,
+			default: undefined,
+		},
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	{
 		timestamps: true,
