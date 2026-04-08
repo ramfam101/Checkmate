@@ -30,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -37,8 +38,8 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
-	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	incidentReason: "status_down" | "threshold_breach" | "escalation" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -412,6 +413,31 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
 					method: "getCleanupRetentionJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async () => {
+			this.logger.info({
+				message: "⏰ ESCALATION JOB RUNNING - checking for escalations...",
+				service: SERVICE_NAME,
+				method: "getEscalationJob",
+			});
+			try {
+				await this.incidentService.checkAndHandleEscalations();
+				this.logger.info({
+					message: "✅ Escalation job completed successfully",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `❌ ESCALATION JOB FAILED: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 			}
