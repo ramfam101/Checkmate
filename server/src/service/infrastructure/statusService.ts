@@ -257,11 +257,21 @@ export class StatusService implements IStatusService {
 			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
+				// Track when monitor went down for escalation and reset alert flags
+				monitor.downSince = new Date().toISOString();
+				monitor.downAlertSent = true;
+				monitor.escalatedAlertSent = false;
+				monitor.escalationSentAt = undefined;
 			}
 			// If the failure rate is below the threshold and the monitor is down, recover:
 			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
+				// Clear down tracking when monitor recovers
+				monitor.downSince = undefined;
+				monitor.downAlertSent = false;
+				monitor.escalatedAlertSent = false;
+				monitor.escalationSentAt = undefined;
 			}
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)

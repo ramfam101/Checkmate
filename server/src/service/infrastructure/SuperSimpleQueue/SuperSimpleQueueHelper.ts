@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -155,6 +155,14 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
+
+				// Step 5.5. Persist escalation state when escalation is triggered
+				if (decision.notificationReason === "escalation" && statusChangeResult.monitor.status === "down") {
+					await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, {
+						escalatedAlertSent: statusChangeResult.monitor.escalatedAlertSent,
+						escalationSentAt: statusChangeResult.monitor.escalationSentAt,
+					});
+				}
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
@@ -431,11 +439,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			// Check for escalation even if status didn't change
+			const escalationDecision = this.checkForEscalation(monitor);
+			if (escalationDecision.shouldSendNotification) {
+				return escalationDecision;
+			}
 			return decision;
 		}
 
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
+		if (monitor.status === "down" && prevStatus !== "down") {
+			// Monitor went down (unreachable) - normal down alert
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
@@ -447,10 +460,54 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
+			// Monitor recovered from down or breached state - normal up alert
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+		}
+
+		return decision;
+	}
+
+	private checkForEscalation(monitor: Monitor): MonitorActionDecision {
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: false,
+			incidentReason: null,
+			notificationReason: null,
+		};
+
+		// Check if escalation is configured
+		if (!monitor.escalatedNotifications || monitor.escalatedNotifications.length === 0 || monitor.escalationDelaySeconds <= 0) {
+			return decision;
+		}
+
+		if (monitor.status !== "down") {
+			return decision;
+		}
+
+		// Check if escalation has already been sent for this incident
+		if (monitor.escalatedAlertSent) {
+			return decision;
+		}
+
+		// Check if enough time has passed since monitor went down
+		if (!monitor.downSince) {
+			return decision;
+		}
+
+		const downSince = new Date(monitor.downSince);
+		const now = new Date();
+		const timeDownMs = now.getTime() - downSince.getTime();
+		const escalationDelayMs = monitor.escalationDelaySeconds * 1000;
+
+		if (timeDownMs >= escalationDelayMs) {
+			decision.shouldSendNotification = true;
+			decision.notificationReason = "escalation";
+			// Mark escalation as sent for this incident
+			monitor.escalatedAlertSent = true;
+			monitor.escalationSentAt = new Date().toISOString();
 		}
 
 		return decision;

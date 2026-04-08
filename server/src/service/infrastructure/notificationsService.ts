@@ -132,13 +132,42 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	private sendEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const notificationIds = monitor.escalatedNotifications ?? [];
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		// Build notification message once for all notifications
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
+	};
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		if (decision.notificationReason === "escalation") {
+			return await this.sendEscalationNotifications(monitor, monitorStatusResponse, decision);
+		} else {
+			return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

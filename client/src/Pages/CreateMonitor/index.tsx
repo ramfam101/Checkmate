@@ -765,6 +765,95 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatedNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+				rightContent={
+					<Controller
+						name="escalatedNotifications"
+						control={control}
+						render={({ field }) => {
+							// Map notifications to have 'name' property for Autocomplete
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const selectedNotifications = notificationOptions.filter((n) =>
+								(field.value ?? []).includes(n.id)
+							);
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+									{selectedNotifications.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedNotifications.map((notification, index) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={notification.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{notification.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															field.onChange(
+																(field.value ?? []).filter(
+																	(id: string) => id !== notification.id
+																)
+															);
+														}}
+														aria-label="Remove notification"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{index < selectedNotifications.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<Controller
+				name="escalationDelaySeconds"
+				control={control}
+				render={({ field }) => (
+					<ConfigBox
+						title={t("pages.createMonitor.form.escalationDelay.title")}
+						subtitle={t("pages.createMonitor.form.escalationDelay.description")}
+						rightContent={
+							<TextField
+								{...field}
+								type="number"
+								fieldLabel={t("pages.createMonitor.form.escalationDelay.option.seconds")}
+								placeholder="300"
+								value={field.value || ""}
+								onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+							/>
+						}
+					/>
+				)}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
