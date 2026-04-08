@@ -7,9 +7,14 @@ import { LAYOUT } from "@/Utils/Theme/constants";
 export const SplitBox = ({
 	left,
 	right,
+	leftFlex = 0.7,
+	rightFlex = 1,
 }: {
 	left: React.ReactNode;
 	right: React.ReactNode;
+	/** Flex grow weight for the left column (e.g. 1 with rightFlex 2 ≈ one-third / two-thirds). */
+	leftFlex?: number;
+	rightFlex?: number;
 }) => {
 	const theme = useTheme();
 	const isSmall = useMediaQuery(theme.breakpoints.down("md"));
@@ -26,7 +31,7 @@ export const SplitBox = ({
 				borderRight={isSmall ? 0 : 1}
 				borderBottom={isSmall ? 1 : 0}
 				borderColor={theme.palette.divider}
-				flex={0.7}
+				flex={leftFlex}
 				sx={{
 					background:
 						theme.palette.mode === "dark"
@@ -37,7 +42,7 @@ export const SplitBox = ({
 				{left}
 			</Box>
 			<Box
-				flex={1}
+				flex={rightFlex}
 				padding={theme.spacing(LAYOUT.XXL)}
 			>
 				{right}
@@ -51,15 +56,21 @@ export const ConfigBox = ({
 	subtitle,
 	leftContent,
 	rightContent,
+	leftColumnFlex,
+	rightColumnFlex,
 }: {
 	title: string;
 	subtitle: string;
 	leftContent?: React.ReactNode;
 	rightContent: React.ReactNode;
+	leftColumnFlex?: number;
+	rightColumnFlex?: number;
 }) => {
 	const theme = useTheme();
 	return (
 		<SplitBox
+			leftFlex={leftColumnFlex}
+			rightFlex={rightColumnFlex}
 			left={
 				<Stack spacing={theme.spacing(LAYOUT.XS)}>
 					<Typography

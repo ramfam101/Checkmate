@@ -10,6 +10,8 @@ export interface Incident {
 	startTime: string;
 	endTime: string | null;
 	status: boolean;
+	/** Indices into monitor.escalationSteps that have already triggered for this incident. */
+	firedEscalationStepIndices?: number[];
 	message?: string | null;
 	statusCode?: number | null;
 	resolutionType: IncidentResolutionType;

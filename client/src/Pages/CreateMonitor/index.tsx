@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -25,6 +25,7 @@ import {
 	TextField,
 	Select,
 	Autocomplete,
+	FieldLabel,
 	SwitchComponent as Switch,
 	SliderWithLabel,
 	Dialog,
@@ -193,13 +194,22 @@ const CreateMonitorPage = () => {
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
 	const { data: games } = useGet<GamesMap>("/monitors/games");
 
+	const escalationNotificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((n) => ({
+				...n,
+				name: n.notificationName,
+			})),
+		[notifications]
+	);
+
 	const { schema, defaults } = useMonitorForm({
 		data: existingMonitor ?? null,
 		defaultType,
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema) as Resolver<MonitorFormData>,
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
@@ -252,11 +262,18 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const firstStep = data.escalationSteps[0];
+		const escalationSteps =
+			firstStep?.notificationId?.trim().length > 0 && typeof firstStep.delayMinutes === "number"
+				? [{ delayMinutes: firstStep.delayMinutes, notificationId: firstStep.notificationId.trim() }]
+				: [];
+		const payload = { ...data, escalationSteps };
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -762,6 +779,113 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				leftColumnFlex={1}
+				rightColumnFlex={2}
+				rightContent={
+					<Stack
+						spacing={theme.spacing(LAYOUT.MD)}
+						sx={{ width: "100%" }}
+					>
+						<Controller
+							name="escalationSteps.0.delayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalations.delayLabel")}
+									placeholder={t("pages.createMonitor.form.escalations.delayPlaceholder")}
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message}
+									value={field.value === "" ? "" : field.value}
+									onChange={(e) => {
+										const raw = e.target.value;
+										if (raw === "") {
+											field.onChange("");
+										} else {
+											const n = Number.parseInt(raw, 10);
+											field.onChange(Number.isNaN(n) ? "" : n);
+										}
+									}}
+									onBlur={field.onBlur}
+									name={field.name}
+									ref={field.ref}
+									inputProps={{ min: 1, max: 10080 }}
+									sx={{ width: "100%" }}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationSteps.0.notificationId"
+							control={control}
+							render={({ field, fieldState }) => {
+								const selectedEscalationChannels = escalationNotificationOptions.filter((n) =>
+									field.value ? n.id === field.value : false
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<FieldLabel>{t("pages.createMonitor.form.escalations.channelLabel")}</FieldLabel>
+										<Autocomplete
+											multiple
+											options={escalationNotificationOptions}
+											value={selectedEscalationChannels}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof escalationNotificationOptions) => {
+												const last = newValue[newValue.length - 1];
+												field.onChange(last?.id ?? "");
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											sx={{ width: "100%" }}
+										/>
+										{selectedEscalationChannels.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationChannels.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => field.onChange("")}
+															aria-label={t(
+																"pages.createMonitor.form.escalations.removeChannel"
+															)}
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationChannels.length - 1 && (
+															<Divider />
+														)}
+													</Stack>
+												))}
+											</Stack>
+										)}
+										{fieldState.error?.message ? (
+											<Typography
+												variant="caption"
+												color="error"
+											>
+												{fieldState.error.message}
+											</Typography>
+										) : null}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 
