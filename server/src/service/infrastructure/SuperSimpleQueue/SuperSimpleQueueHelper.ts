@@ -38,7 +38,9 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	escalationThresholdMinutes?: number;
+	escalationLevelsToAdvance?: number;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,18 +156,38 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+					this.notificationsService
+						.handleNotifications(statusChangeResult.monitor, status, decision)
+						.then(async (sent) => {
+							if (
+								sent &&
+								decision.notificationReason === "escalation" &&
+								decision.escalationLevelsToAdvance &&
+								decision.escalationLevelsToAdvance > 0
+							) {
+								const activeIncident = await this.incidentsRepository.findActiveByMonitorId(
+									statusChangeResult.monitor.id,
+									statusChangeResult.monitor.teamId
+								);
+								if (activeIncident) {
+									await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+										escalationLevel: (activeIncident.escalationLevel ?? 0) + decision.escalationLevelsToAdvance,
+									});
+								}
+							}
+						})
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -418,7 +440,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -430,27 +452,51 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			notificationReason: null,
 		};
 
-		if (!statusChanged) {
+		if (statusChanged) {
+			if (monitor.status === "down") {
+				// Monitor went down (unreachable)
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "status_down";
+				decision.notificationReason = "status_change";
+			} else if (monitor.status === "breached") {
+				// Hardware monitor exceeded thresholds
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "threshold_breach";
+				decision.notificationReason = "threshold_breach";
+			} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
+				// Monitor recovered from down or breached state
+				decision.shouldResolveIncident = true;
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "status_change";
+			}
 			return decision;
 		}
 
-		if (monitor.status === "down") {
-			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
-		} else if (monitor.status === "breached") {
-			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
-		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
+		if (monitor.status === "down" || monitor.status === "breached") {
+			const escalationSchedule = Array.isArray(monitor.escalationMinutes)
+				? monitor.escalationMinutes.filter((value) => Number.isInteger(value) && value > 0)
+				: [];
+			if (escalationSchedule.length === 0) {
+				return decision;
+			}
+
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident) {
+				return decision;
+			}
+
+			const elapsedMinutes = Math.floor((Date.now() - new Date(activeIncident.startTime).getTime()) / 60000);
+			const sortedSchedule = escalationSchedule.sort((a, b) => a - b);
+			const currentLevel = activeIncident.escalationLevel ?? 0;
+			const dueThresholds = sortedSchedule.slice(currentLevel).filter((threshold) => elapsedMinutes >= threshold);
+			if (dueThresholds.length > 0) {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+				decision.escalationLevelsToAdvance = dueThresholds.length;
+				decision.escalationThresholdMinutes = dueThresholds[dueThresholds.length - 1];
+			}
 		}
 
 		return decision;

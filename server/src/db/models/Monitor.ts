@@ -284,6 +284,16 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		escalationMinutes: {
+			type: [Number],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},
@@ -345,6 +355,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		geoCheckLocations: {
 			type: [String],
+			default: [],
+		},
+		escalationMinutes: {
+			type: [Number],
 			default: [],
 		},
 		geoCheckInterval: {

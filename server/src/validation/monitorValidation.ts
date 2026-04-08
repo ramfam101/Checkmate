@@ -62,11 +62,31 @@ export const createMonitorBodyValidation = z.object({
 	port: z.number().optional(),
 	isActive: z.boolean().optional(),
 	interval: z.number().optional(),
+	escalationMinutes: z
+		.array(z.number().int().min(1))
+		.optional()
+		.refine((values) => values === undefined || new Set(values).size === values.length, {
+			message: "Escalation minutes must be unique",
+		})
+		.refine(
+			(values) => {
+				if (!Array.isArray(values)) {
+					return true;
+				}
+				const minutes = values as number[];
+				return minutes.every((value, index) => index === 0 || value > minutes[index - 1]!);
+			},
+			{
+				message: "Escalation minutes must be sorted in ascending order",
+			}
+		),
 	cpuAlertThreshold: z.number().optional(),
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -88,6 +108,24 @@ export const editMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
+	escalationMinutes: z
+		.array(z.number().int().min(1))
+		.optional()
+		.refine((values) => values === undefined || new Set(values).size === values.length, {
+			message: "Escalation minutes must be unique",
+		})
+		.refine(
+			(values) => {
+				if (!Array.isArray(values)) {
+					return true;
+				}
+				const minutes = values as number[];
+				return minutes.every((value, index) => index === 0 || value > minutes[index - 1]!);
+			},
+			{
+				message: "Escalation minutes must be sorted in ascending order",
+			}
+		),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
@@ -142,8 +180,27 @@ const importedMonitorSchema = z.object({
 	port: z.number().optional(),
 	isActive: z.boolean().default(true),
 	interval: z.number().default(60000),
+	escalationMinutes: z
+		.array(z.number().int().min(1))
+		.default([])
+		.refine((values) => new Set(values).size === values.length, {
+			message: "Escalation minutes must be unique",
+		})
+		.refine(
+			(values) => {
+				if (!Array.isArray(values)) {
+					return true;
+				}
+				const minutes = values as number[];
+				return minutes.every((value, index) => index === 0 || value > minutes[index - 1]!);
+			},
+			{
+				message: "Escalation minutes must be sorted in ascending order",
+			}
+		),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationNotifications: z.array(z.string()).default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

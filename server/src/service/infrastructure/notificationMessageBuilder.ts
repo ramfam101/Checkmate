@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision);
 
 		return {
 			type,
@@ -93,9 +93,17 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
+				if (decision.notificationReason === "escalation") {
+					return this.buildEscalationContent(monitor, monitorStatusResponse, decision);
+				}
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
@@ -135,6 +143,26 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const title = `Incident Escalation: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" is still ${monitor.status} after ${decision.escalationThresholdMinutes ?? "some"} minutes.`;
+		const details = [`URL: ${monitor.url}`, `Status: ${monitor.status === "down" ? "Down" : "Breached"}`, `Type: ${monitor.type}`];
+		if (decision.escalationThresholdMinutes) {
+			details.push(`Escalation threshold: ${decision.escalationThresholdMinutes} minute(s)`);
+		}
 
 		return {
 			title,

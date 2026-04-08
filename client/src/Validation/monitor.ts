@@ -23,6 +23,27 @@ const baseSchema = z.object({
 		.max(100, "Incident percentage must be at most 100"),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+	escalationMinutes: z
+		.array(z.number().min(1, "Escalation minutes must be at least 1"))
+		.optional()
+		.refine((values) => values === undefined || new Set(values).size === values.length, {
+			message: "Escalation minutes must be unique",
+		})
+		.refine(
+			(values) => {
+				if (!Array.isArray(values)) {
+					return true;
+				}
+				const minutes = values as number[];
+				return minutes.every(
+					(value, index) => index === 0 || value > minutes[index - 1]!
+				);
+			},
+			{
+				message: "Escalation minutes must be sorted in ascending order",
+			}
+		),
+	escalationNotifications: z.array(z.string()).optional(),
 	geoCheckInterval: z
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
