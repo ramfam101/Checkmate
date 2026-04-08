@@ -23,16 +23,18 @@ type MonitorDocumentBase = Omit<
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalationNotifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+	downSince?: Date | null;
 };
-
 interface MonitorDocument extends MonitorDocumentBase {
 	_id: Types.ObjectId;
 	userId: Types.ObjectId;
 	teamId: Types.ObjectId;
 	createdAt: Date;
 	updatedAt: Date;
+	downSince?: Date | null;
 }
 
 const snapshotTimingPhasesSchema = new Schema<GotTimings["phases"]>(
@@ -350,6 +352,24 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		geoCheckInterval: {
 			type: Number,
 			default: 300000,
+		},
+		escalationDelay: {
+            type: Number,
+            default: 0,
+        },
+		escalationNotifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
+		downSince: {
+			type: Date,
+			default: null,
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],

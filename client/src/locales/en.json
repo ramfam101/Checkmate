@@ -445,6 +445,19 @@
 					},
 					"title": "Advanced settings"
 				},
+				"escalation": {
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"option": {
+						"delay": {
+							"label": "Escalate after (minutes)",
+							"placeholder": "0"
+						},
+						"channels": {
+							"label": "Escalation notification channels"
+						}
+					},
+					"title": "Escalation Rules"
+				},
 				"frequency": {
 					"description": "How often do you want to check the status of this monitor?",
 					"option": {
