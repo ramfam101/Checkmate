@@ -277,7 +277,10 @@ const CreateMonitorPage = () => {
 		);
 	};
 
-	const updateEscalation = (index: number, patch: Partial<{ delayMinutes: number; channelId: string }>) => {
+	const updateEscalation = (
+		index: number,
+		patch: Partial<{ delayMinutes: number; channelId: string }>
+	) => {
 		const next = [...watchedEscalation];
 		next[index] = { ...next[index], ...patch };
 		setValue("escalation", next, { shouldDirty: true, shouldValidate: true });
@@ -812,7 +815,8 @@ const CreateMonitorPage = () => {
 
 						{watchedEscalation.map((entry, index) => {
 							const selectedChannel =
-								notificationOptions.find((option) => option.id === entry.channelId) ?? null;
+								notificationOptions.find((option) => option.id === entry.channelId) ??
+								null;
 
 							return (
 								<Stack
@@ -837,7 +841,9 @@ const CreateMonitorPage = () => {
 										<IconButton
 											size="small"
 											onClick={() => removeEscalation(index)}
-											aria-label={t("pages.createMonitor.form.escalation.option.removeRule")}
+											aria-label={t(
+												"pages.createMonitor.form.escalation.option.removeRule"
+											)}
 										>
 											<Trash2 size={16} />
 										</IconButton>
@@ -870,7 +876,7 @@ const CreateMonitorPage = () => {
 											});
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
-					/>
+									/>
 								</Stack>
 							);
 						})}

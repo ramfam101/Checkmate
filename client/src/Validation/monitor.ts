@@ -30,7 +30,10 @@ const baseSchema = z.object({
 	escalation: z
 		.array(
 			z.object({
-				delayMinutes: z.number().int().min(1, "Escalation time must be at least 1 minute"),
+				delayMinutes: z
+					.number()
+					.int()
+					.min(1, "Escalation time must be at least 1 minute"),
 				channelId: z.string().min(1, "Select an escalation channel"),
 			})
 		)
