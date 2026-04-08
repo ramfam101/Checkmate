@@ -1,8 +1,15 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
 
-// URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
+
+const escalationLevelSchema = z.object({
+	waitTime: z
+		.number()
+		.min(1, "Wait time must be at least 1 minute")
+		.max(1440, "Wait time must be at most 1440 minutes (24 hours)"),
+	notificationId: z.string().min(1, "Notification channel is required"),
+});
 
 // Common base schema for all monitor types
 const baseSchema = z.object({
@@ -13,6 +20,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationPolicy: z.array(escalationLevelSchema).max(10).optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

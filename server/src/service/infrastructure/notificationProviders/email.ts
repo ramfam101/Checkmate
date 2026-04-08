@@ -87,6 +87,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
+			case "escalation":
+				return `ESCALATION: Monitor ${message.monitor.name} is still down`;
 			default:
 				return `Alert: ${message.monitor.name}`;
 		}
@@ -105,13 +107,6 @@ export class EmailProvider implements INotificationProvider {
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
 		};
-
-		this.logger.info({
-			message: "[DEBUG] Building email from message",
-			service: SERVICE_NAME,
-			method: "buildEmailFromMessage",
-			details: { context },
-		});
 
 		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
 

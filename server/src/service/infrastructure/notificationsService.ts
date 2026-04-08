@@ -14,6 +14,13 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotification: (
+		monitor: Monitor,
+		notificationId: string,
+		escalationLevel: number,
+		waitTime: number,
+		incidentDurationMinutes: number
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +146,45 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (
+		monitor: Monitor,
+		notificationId: string,
+		escalationLevel: number,
+		waitTime: number,
+		incidentDurationMinutes: number
+	): Promise<boolean> => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds([notificationId]);
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: `Escalation notification not found: ${notificationId}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+
+		const notification = notifications[0];
+		if (!notification) {
+			this.logger.warn({
+				message: `Escalation notification lookup returned empty for: ${notificationId}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(
+			monitor,
+			escalationLevel,
+			waitTime,
+			incidentDurationMinutes,
+			clientHost
+		);
+
+		return await this.send(notification, monitor, {} as MonitorStatusResponse, {} as MonitorActionDecision, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
