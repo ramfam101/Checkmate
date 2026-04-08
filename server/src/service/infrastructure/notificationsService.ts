@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalation: (monitor: Monitor) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -196,5 +197,46 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	handleEscalation = async (monitor: Monitor) => {
+		const escalationIds = monitor.escalationNotifications ?? [];
+		if (escalationIds.length === 0) return false;
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escalationIds);
+
+		// We cast this as a NotificationMessage to satisfy the builder types
+		const message: any = {
+			type: "monitor_escalation",
+			monitor: monitor,
+			severity: "critical",
+			content: {
+				title: `CRITICAL: ${monitor.name} is still down`,
+				summary: `Monitor "${monitor.name}" has exceeded its ${monitor.escalationAfterMinutes}m escalation threshold.`,
+				details: [`Down since: ${new Date(monitor.downtimeStartAt!).toLocaleString()}`],
+			},
+		};
+
+		// Note: we pass null/dummy values for statusResponse and decision
+		// because those objects aren't strictly needed for a time-based escalation alert
+		const tasks = notifications.map((n) =>
+			this.send(
+				n,
+				monitor,
+				{} as any, // monitorStatusResponse placeholder
+				{} as any, // decision placeholder
+				message
+			)
+		);
+
+		const results = await Promise.all(tasks);
+
+		this.logger.info({
+			message: `Escalation sent to ${results.filter(Boolean).length} channels for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+
+		return results.every(Boolean);
 	};
 }
