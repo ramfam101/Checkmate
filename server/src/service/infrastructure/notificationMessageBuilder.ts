@@ -13,9 +13,10 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+    isEscalation?: boolean
 	): NotificationMessage;
-	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
+	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[];
 }
 
 const SERVICE_NAME = "NotificationMessageBuilder";
@@ -27,11 +28,17 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+    isEscalation: boolean = false
 	): NotificationMessage {
-		const type = this.determineNotificationType(decision, monitor);
+		let type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
+
+		if (isEscalation) {
+			content.title = `[ESCALATION] ${content.title}`;
+			content.summary = `ESCALATION: ${content.summary}`;
+		}
 
 		return {
 			type,
@@ -45,6 +52,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			},
 			content,
 			clientHost,
+			isEscalation,
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",

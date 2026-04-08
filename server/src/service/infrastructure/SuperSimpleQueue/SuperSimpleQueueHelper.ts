@@ -177,6 +177,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Check for escalation notifications (best effort, don't wait)
+				this.checkAndSendEscalationNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error checking escalation notifications for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -455,4 +465,67 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private checkAndSendEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> => {
+		// Check if escalation is configured
+		const hasEscalationMins = monitor.escalationMins && monitor.escalationMins > 0;
+		const hasEscalationNotifications = monitor.escalationNotifications && monitor.escalationNotifications.length > 0;
+
+		if (!hasEscalationMins || !hasEscalationNotifications) {
+			return;
+		}
+
+		// Find active incident for this monitor
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		// Check if escalation has already been sent
+		if (activeIncident.escalationSent) {
+			return;
+		}
+
+		// Calculate how long the incident has been active
+		const incidentStartTime = new Date(activeIncident.startTime).getTime();
+		const now = Date.now();
+		const incidentDurationMs = now - incidentStartTime;
+		const incidentDurationMinutes = incidentDurationMs / (1000 * 60);
+
+		// Check if threshold has been reached
+		if (incidentDurationMinutes >= monitor.escalationMins) {
+			try {
+				// Send escalation notifications
+				const escalationSent = await this.notificationsService.handleEscalationNotifications(monitor, monitorStatusResponse, decision);
+
+				if (escalationSent) {
+					// Mark escalation as sent in the incident
+					await this.incidentsRepository.setEscalationSent(activeIncident.id);
+
+					this.logger.info({
+						message: `Escalation notifications sent successfully for monitor ${monitor.name}`,
+						service: SERVICE_NAME,
+						method: "checkAndSendEscalationNotifications",
+					});
+				} else {
+					this.logger.warn({
+						message: `Failed to send all escalation notifications for monitor ${monitor.name}`,
+						service: SERVICE_NAME,
+						method: "checkAndSendEscalationNotifications",
+					});
+				}
+			} catch (error) {
+				this.logger.error({
+					message: `Error sending escalation notifications for monitor ${monitor.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "checkAndSendEscalationNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}
+	};
 }

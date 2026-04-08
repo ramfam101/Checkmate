@@ -20,6 +20,7 @@ import type {
 import { AppError } from "@/utils/AppError.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "./bufferService.js";
+import type { INotificationsService } from "./notificationsService.js";
 const SERVICE_NAME = "StatusService";
 
 export interface IStatusService {
@@ -47,19 +48,22 @@ export class StatusService implements IStatusService {
 	private monitorsRepository: IMonitorsRepository;
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private checksRepository: IChecksRepository;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		buffer: IBufferService,
 		monitorsRepository: IMonitorsRepository,
 		monitorStatsRepository: IMonitorStatsRepository,
-		checksRepository: IChecksRepository
+		checkRepository: IChecksRepository,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.buffer = buffer;
 		this.monitorsRepository = monitorsRepository;
 		this.monitorStatsRepository = monitorStatsRepository;
-		this.checksRepository = checksRepository;
+		this.checksRepository = checkRepository;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {

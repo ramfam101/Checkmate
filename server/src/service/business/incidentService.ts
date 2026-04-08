@@ -6,8 +6,8 @@ import { getDateForRange } from "@/utils/dataUtils.js";
 import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from "@/repositories/index.js";
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
-import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -86,7 +86,7 @@ export class IncidentService implements IIncidentService {
 				const incident = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
+					startTime: new Date().toISOString(),
 					status: true,
 					statusCode,
 					message,
@@ -100,7 +100,7 @@ export class IncidentService implements IIncidentService {
 				return null;
 			}
 			activeIncident.status = false;
-			activeIncident.endTime = Date.now().toString();
+			activeIncident.endTime = new Date().toISOString();
 			activeIncident.resolutionType = "automatic";
 			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 		}
