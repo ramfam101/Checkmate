@@ -114,7 +114,8 @@ export class NotificationsService implements INotificationsService {
 		notificationIds: string[],
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision
+		decision: MonitorActionDecision,
+		extraDetails?: string[]
 	) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 		if (notifications.length === 0) {
@@ -125,6 +126,10 @@ export class NotificationsService implements INotificationsService {
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		if (extraDetails && extraDetails.length > 0) {
+			notificationMessage.content.details = [...(notificationMessage.content.details ?? []), ...extraDetails];
+		}
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -180,18 +185,21 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
+		const elapsedMinutes = Math.floor(elapsedMs / 60000);
+		const escalationDetail = `Monitor has been down for ${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}.`;
+
 		this.logger.info({
 			message: `Escalation threshold met for monitor ${monitor.id}; sending escalation notifications`,
 			service: SERVICE_NAME,
 			method: "handleEscalationNotifications",
 			details: {
 				escalateAfterMinutes,
-				elapsedMinutes: Math.floor(elapsedMs / 60000),
+				elapsedMinutes,
 				escalationChannelCount: escalationChannels.length,
 			},
 		});
 
-		const escalationSent = await this.sendNotificationsToIds(escalationChannels, monitor, monitorStatusResponse, decision);
+		const escalationSent = await this.sendNotificationsToIds(escalationChannels, monitor, monitorStatusResponse, decision, [escalationDetail]);
 
 		if (escalationSent) {
 			await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, {
