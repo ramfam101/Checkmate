@@ -543,6 +543,17 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalationNotifications": {
+					"description": "Configure escalation notifications to send additional alerts after a delay if the service remains down",
+					"title": "Escalation Notifications",
+					"enable": {
+						"label": "Enable escalation notifications"
+					},
+					"delay": {
+						"label": "Escalation delay (minutes)",
+						"description": "Send additional notifications after this many minutes if the service is still down"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
