@@ -5,6 +5,7 @@ import { INotificationProvider } from "./notificationProviders/INotificationProv
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
+import { AppError } from "@/utils/AppError.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 
 export interface INotificationsService {
@@ -14,6 +15,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotification: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -164,14 +166,106 @@ export class NotificationsService implements INotificationsService {
 
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
+		const foundNotificationIds = new Set(notifications.map((notification) => notification.id));
+		const missingNotificationIds = notificationIds.filter((id) => !foundNotificationIds.has(id));
+
+		if (missingNotificationIds.length > 0) {
+			this.logger.warn({
+				message: `Some notifications could not be found for test`,
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+				details: { missingNotificationIds },
+			});
+			throw new AppError({
+				message: `Notifications not found for IDs: ${missingNotificationIds.join(", ")}`,
+				status: 500,
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+			});
+		}
+
+		const results = await Promise.all(
+			notifications.map(async (notification) => ({
+				notification,
+				success: await this.sendTestNotification(notification),
+			}))
+		);
+
+		const failedNotifications = results.filter((result) => !result.success).map((result) => ({
+			id: result.notification.id,
+			name: result.notification.notificationName,
+			type: result.notification.type,
+		}));
+
+		if (failedNotifications.length > 0) {
+			this.logger.warn({
+				message: "Failed to send some test notifications",
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+				details: { failedNotifications },
+			});
+			throw new AppError({
+				message: `Failed to send test notifications for: ${failedNotifications.map((n) => n.name).join(", ")}`,
+				status: 500,
+				service: SERVICE_NAME,
+				method: "testAllNotifications",
+				details: { failedNotifications },
+			});
+		}
+
+		return true;
+	};
+
+	private sendEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const notificationIds = monitor.escalationTargets ?? [];
+		if (notificationIds.length === 0) {
+			this.logger.debug({
+				message: "No escalation targets configured for monitor escalation",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+				details: { monitorId: monitor.id },
+			});
+			return true;
+		}
+
+		const escalationNotifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		const tasks = escalationNotifications.map((notification) =>
+			this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage)
+		);
+
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
 		const failed = outcomes.length - succeeded;
+
 		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+
+		return succeeded === escalationNotifications.length;
+	};
+
+	handleEscalationNotification = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		// Only send escalation if monitor is currently down
+		if (monitor.status !== "down") {
+			this.logger.debug({
+				message: "Monitor is not in down state, skipping escalation notification",
+				service: SERVICE_NAME,
+				method: "handleEscalationNotification",
+				details: { monitorId: monitor.id, status: monitor.status },
+			});
 			return false;
 		}
-		return true;
+
+		return await this.sendEscalationNotifications(monitor, monitorStatusResponse, decision);
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {
