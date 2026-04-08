@@ -168,6 +168,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				// Step 6.5: Handle escalation notifications for ongoing incidents
+				if (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") {
+					this.handleEscalationNotifications(statusChangeResult.monitor, check).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
@@ -455,4 +467,43 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private handleEscalationNotifications = async (monitor: Monitor, _check: unknown): Promise<void> => {
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return; // No active incident, nothing to escalate
+		}
+
+		const incidentDurationMinutes = Math.floor((Date.now() - new Date(activeIncident.startTime).getTime()) / (1000 * 60));
+
+		// Check if there are escalation rules
+		const escalationRules = monitor.escalationRules || [];
+		if (escalationRules.length === 0) {
+			return; // No escalation rules configured
+		}
+
+		// Get the most recent check for this monitor to know which escalations have fired
+		const recentChecks = await this.checksRepository.getByMonitorId(monitor.id, 1);
+		const latestCheck = recentChecks.at(0);
+		const firedThresholds = latestCheck?.firedEscalationThresholds ?? [];
+
+		// Evaluate each escalation rule
+		for (const rule of escalationRules) {
+			// Skip if this threshold has already fired
+			if (rule && firedThresholds.includes(rule.minutesAfterStart)) {
+				continue;
+			}
+
+			// Check if incident duration exceeds the threshold
+			if (rule && incidentDurationMinutes >= rule.minutesAfterStart) {
+				// Send escalation notifications
+				await this.notificationsService.handleEscalationNotification(monitor, rule);
+
+				// Mark this threshold as fired
+				firedThresholds.push(rule.minutesAfterStart);
+				// Update the check document with fired thresholds
+				await this.checksRepository.updateFiredEscalations(monitor.id, firedThresholds);
+			}
+		}
+	};
 }

@@ -113,6 +113,7 @@ export interface Check {
 	seo?: number;
 	performance?: number;
 	audits?: CheckAudits;
+	firedEscalationThresholds?: number[]; // Track which escalation thresholds have fired
 	createdAt: string;
 	updatedAt: string;
 }

@@ -765,6 +765,157 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			{/* Escalation Rules */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const rules = field.value || [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{rules.map((rule, ruleIndex) => (
+										<Stack
+											key={ruleIndex}
+											spacing={theme.spacing(LAYOUT.SM)}
+										>
+											<Stack
+												direction="row"
+												spacing={theme.spacing(LAYOUT.SM)}
+												alignItems="center"
+											>
+												<TextField
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.option.minutesAfterStart.label"
+													)}
+													type="number"
+													inputProps={{ min: 1 }}
+													value={rule.minutesAfterStart}
+													onChange={(e) => {
+														const newRules = [...rules];
+														newRules[ruleIndex].minutesAfterStart = parseInt(
+															e.target.value,
+															10
+														);
+														field.onChange(newRules);
+													}}
+												/>
+												<IconButton
+													size="small"
+													type="button"
+													onClick={() => {
+														field.onChange(rules.filter((_, i) => i !== ruleIndex));
+													}}
+													aria-label="Remove escalation rule"
+												>
+													<Trash2 size={16} />
+												</IconButton>
+											</Stack>
+											<Typography variant="subtitle2">
+												{t(
+													"pages.createMonitor.form.escalation.option.notificationChannels.label"
+												)}
+											</Typography>
+											{(() => {
+												const notificationOptions = (notifications ?? []).map((n) => ({
+													...n,
+													name: n.notificationName,
+												}));
+												const selectedNotifications = notificationOptions.filter((n) =>
+													(rule.notificationIds ?? []).includes(n.id)
+												);
+
+												return (
+													<Stack spacing={theme.spacing(LAYOUT.MD)}>
+														<Autocomplete
+															multiple
+															options={notificationOptions}
+															value={selectedNotifications}
+															getOptionLabel={(option) => option.name}
+															onChange={(
+																_: unknown,
+																newValue: typeof notificationOptions
+															) => {
+																const newRules = [...rules];
+																newRules[ruleIndex] = {
+																	...newRules[ruleIndex],
+																	notificationIds: newValue.map((n) => n.id),
+																};
+																field.onChange(newRules);
+															}}
+															isOptionEqualToValue={(option, value) =>
+																option.id === value.id
+															}
+														/>
+														{selectedNotifications.length > 0 && (
+															<Stack
+																flex={1}
+																width="100%"
+															>
+																{selectedNotifications.map((notification, index) => (
+																	<Stack
+																		direction="row"
+																		alignItems="center"
+																		key={notification.id}
+																		width="100%"
+																	>
+																		<Typography flexGrow={1}>
+																			{notification.notificationName}
+																		</Typography>
+																		<IconButton
+																			size="small"
+																			type="button"
+																			onClick={() => {
+																				const newRules = [...rules];
+																				newRules[ruleIndex] = {
+																					...newRules[ruleIndex],
+																					notificationIds: (
+																						rule.notificationIds ?? []
+																					).filter(
+																						(id: string) => id !== notification.id
+																					),
+																				};
+																				field.onChange(newRules);
+																			}}
+																			aria-label="Remove escalation notification"
+																		>
+																			<Trash2 size={16} />
+																		</IconButton>
+																		{index < selectedNotifications.length - 1 && (
+																			<Divider />
+																		)}
+																	</Stack>
+																))}
+															</Stack>
+														)}
+													</Stack>
+												);
+											})()}
+											{ruleIndex < rules.length - 1 && <Divider />}
+										</Stack>
+									))}
+									<Button
+										type="button"
+										onClick={() => {
+											field.onChange([
+												...rules,
+												{ minutesAfterStart: 5, notificationIds: [] },
+											]);
+										}}
+										variant="outlined"
+									>
+										{t("pages.createMonitor.form.escalation.option.addRule")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

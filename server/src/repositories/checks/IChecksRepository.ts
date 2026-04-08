@@ -43,6 +43,8 @@ export interface IChecksRepository {
 	): Promise<UptimeChecksResult | HardwareChecksResult | PageSpeedChecksResult>;
 	findSummaryByTeamId(teamId: string, dateRange: string): Promise<ChecksSummary>;
 	// update
+	updateFiredEscalations(monitorId: string, firedThresholds: number[]): Promise<void>;
+	getByMonitorId(monitorId: string, limit?: number): Promise<Check[]>;
 	//delete
 	deleteByMonitorId(monitorId: string): Promise<number>;
 	deleteByTeamId(teamId: string): Promise<number>;

@@ -37,6 +37,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationRules?: EscalationRule[]; // Time-based escalation rules
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
@@ -160,3 +161,9 @@ export interface Game {
 }
 
 export type GamesMap = Record<string, Game>;
+
+// Escalation rule: trigger notification after N minutes of incident
+export interface EscalationRule {
+	minutesAfterStart: number; // How many minutes into the incident to trigger
+	notificationIds: string[]; // Which notification channels to send to
+}

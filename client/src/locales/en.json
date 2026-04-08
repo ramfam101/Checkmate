@@ -543,6 +543,19 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalated Notifications",
+					"description": "Trigger additional alerts if an incident persists beyond specified durations",
+					"option": {
+						"minutesAfterStart": {
+							"label": "Minutes After Incident Start"
+						},
+						"notificationChannels": {
+							"label": "Select notification channels:"
+						},
+						"addRule": "+ Add Escalation Rule"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

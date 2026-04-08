@@ -786,6 +786,42 @@ class MongoChecksRepository implements IChecksRepository {
 			{ $sort: { _id: 1 } },
 		]);
 	};
+
+	getByMonitorId = async (monitorId: string, limit: number = 10): Promise<Check[]> => {
+		try {
+			const checks = await CheckModel.find({ "metadata.monitorId": new mongoose.Types.ObjectId(monitorId) })
+				.sort({ createdAt: -1 })
+				.limit(limit)
+				.exec();
+			return checks.map(this.toEntity);
+		} catch (error) {
+			this.logger.error({
+				message: `Error fetching checks for monitor: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "getByMonitorId",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return [];
+		}
+	};
+
+	updateFiredEscalations = async (monitorId: string, firedThresholds: number[]): Promise<void> => {
+		try {
+			// Update the most recent check for this monitor
+			await CheckModel.findOneAndUpdate(
+				{ "metadata.monitorId": new mongoose.Types.ObjectId(monitorId) },
+				{ firedEscalationThresholds: firedThresholds },
+				{ sort: { createdAt: -1 }, new: true }
+			).exec();
+		} catch (error) {
+			this.logger.error({
+				message: `Error updating fired escalations: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "updateFiredEscalations",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
 }
 
 export default MongoChecksRepository;

@@ -222,6 +222,10 @@ const CheckSchema = new Schema<CheckDocument>(
 		message: {
 			type: String,
 		},
+		firedEscalationThresholds: {
+			type: [Number],
+			default: [],
+		},
 
 		cpu: {
 			type: cpuSchema,
