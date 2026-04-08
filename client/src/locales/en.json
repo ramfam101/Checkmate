@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation rules",
+					"description": "Send a one-time escalation email if an outage continues past the configured delay.",
+					"baseRequired": "Select at least one base notification channel to enable escalation.",
+					"option": {
+						"delayMinutes": {
+							"label": "Escalate after (minutes)",
+							"placeholder": "e.g. 15"
+						},
+						"channels": {
+							"label": "Escalation notification channels (email only)"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalation takes priority when explicitly flagged
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,6 +109,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
@@ -164,6 +172,26 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Thresholds Resolved: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" thresholds have returned to normal.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Escalation: ${monitor.name} still ${monitor.status === "breached" ? "breached" : "down"}`;
+		const summary = `Monitor "${monitor.name}" remains ${monitor.status === "breached" ? "in a breached state" : "down"} past the configured escalation delay.`;
+		const details = [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
 
 		return {
 			title,
