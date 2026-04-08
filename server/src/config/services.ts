@@ -205,8 +205,6 @@ export const initializeServices = async ({
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
-
 	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
 	const globalPingService = new GlobalPingService(logger);
@@ -220,9 +218,7 @@ export const initializeServices = async ({
 
 	const bufferService = new BufferService(logger, checkService, geoChecksService, settingsService);
 
-	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
-
-	// Notification providers
+	// Notification providers (create before notificationsService)
 	const webhookProvider = new WebhookProvider(logger);
 	const slackProvider = new SlackProvider(logger);
 	const emailProvider = new EmailProvider(emailService, logger);
@@ -245,6 +241,11 @@ export const initializeServices = async ({
 		logger,
 		notificationMessageBuilder
 	);
+
+	// Create incidentService with notificationsService
+	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
+
+	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository, notificationsService);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,

@@ -199,24 +199,45 @@ class MonitorController implements IMonitorController {
 		}
 	};
 
-	createMonitor = async (req: Request, res: Response, next: NextFunction) => {
-		try {
-			const validatedBody = createMonitorBodyValidation.parse(req.body);
+createMonitor = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const validatedBody = createMonitorBodyValidation.parse(req.body);
 
-			const userId = requireUserId(req.user?.id);
-			const teamId = requireTeamId(req.user?.teamId);
+        const userId = requireUserId(req.user?.id);
+        const teamId = requireTeamId(req.user?.teamId);
 
-			const monitor = await this.monitorService.createMonitor(teamId, userId, validatedBody);
+        const monitor = await this.monitorService.createMonitor(teamId, userId, validatedBody);
 
-			return res.status(200).json({
-				success: true,
-				msg: "Monitor created successfully",
-				data: monitor,
-			});
-		} catch (error) {
-			next(error);
-		}
-	};
+        return res.status(200).json({
+            success: true,
+            msg: "Monitor created successfully",
+            data: monitor,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+editMonitor = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+        const validatedBody = editMonitorBodyValidation.parse(req.body);
+
+        const editedMonitor = await this.monitorService.editMonitor({ 
+            teamId: requireTeamId(req.user?.teamId), 
+            monitorId: validatedParams.monitorId, 
+            body: validatedBody 
+        });
+
+        return res.status(200).json({
+            success: true,
+            msg: "Monitor edited successfully",
+            data: editedMonitor,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 	importMonitorsFromJSON = async (req: Request, res: Response, next: NextFunction) => {
 		try {
@@ -263,25 +284,6 @@ class MonitorController implements IMonitorController {
 			return res.status(200).json({
 				success: true,
 				msg: `Deleted ${deletedCount} monitors`,
-			});
-		} catch (error) {
-			next(error);
-		}
-	};
-
-	editMonitor = async (req: Request, res: Response, next: NextFunction) => {
-		try {
-			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
-			const validatedBody = editMonitorBodyValidation.parse(req.body);
-			const monitorId = validatedParams.monitorId;
-			const teamId = requireTeamId(req.user?.teamId);
-
-			const editedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: validatedBody });
-
-			return res.status(200).json({
-				success: true,
-				msg: "Monitor edited successfully",
-				data: editedMonitor,
 			});
 		} catch (error) {
 			next(error);

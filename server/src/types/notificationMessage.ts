@@ -46,6 +46,7 @@ export interface NotificationMessage {
 	monitor: MonitorInfo;
 	content: NotificationContent;
 	clientHost: string;
+	isEscalation?: boolean;
 	metadata: {
 		teamId: string;
 		notificationReason: string;

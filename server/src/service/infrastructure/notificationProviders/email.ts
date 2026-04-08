@@ -78,18 +78,29 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		let subject: string;
 		switch (message.type) {
 			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
+				subject = `Monitor ${message.monitor.name} is down`;
+				break;
 			case "monitor_up":
-				return `Monitor ${message.monitor.name} is back up`;
+				subject = `Monitor ${message.monitor.name} is back up`;
+				break;
 			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
+				subject = `Monitor ${message.monitor.name} threshold exceeded`;
+				break;
 			case "threshold_resolved":
-				return `Monitor ${message.monitor.name} thresholds resolved`;
+				subject = `Monitor ${message.monitor.name} thresholds resolved`;
+				break;
 			default:
-				return `Alert: ${message.monitor.name}`;
+				subject = `Alert: ${message.monitor.name}`;
 		}
+
+		if (message.isEscalation) {
+			subject = `[ESCALATION] ${subject}`;
+		}
+
+		return subject;
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
