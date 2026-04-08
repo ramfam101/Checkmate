@@ -257,11 +257,13 @@ export class StatusService implements IStatusService {
 			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
+				console.log(`--- STATUS CHANGED: ${prevStatus} → down for monitor ${monitorId} (failureRate=${failureRate.toFixed(1)}%) ---`);
 			}
 			// If the failure rate is below the threshold and the monitor is down, recover:
 			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
+				console.log(`--- STATUS CHANGED: ${prevStatus} → up for monitor ${monitorId} ---`);
 			}
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)

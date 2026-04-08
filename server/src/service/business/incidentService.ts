@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -29,6 +30,7 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	checkEscalations(): Promise<void>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -39,19 +41,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -64,48 +69,122 @@ export class IncidentService implements IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null> => {
-		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident) {
-			return null;
-		}
-
 		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
 
-		if (decision.shouldCreateIncident) {
-			if (activeIncident) {
-				return activeIncident;
-			} else {
-				let statusCode = code;
-				let message: string | undefined;
+		// ── 1. New incident: create once, then send the "down" notification once ──
+		if (decision.shouldCreateIncident && !activeIncident) {
+			let statusCode = code;
+			let message: string | undefined;
 
-				// For threshold breaches, use 9999 status code and build descriptive message
-				if (decision.incidentReason === "threshold_breach") {
-					statusCode = 9999;
-					message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
-				}
-
-				const incident = {
-					monitorId: monitor.id,
-					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
-					status: true,
-					statusCode,
-					message,
-				};
-				return await this.incidentsRepository.create(incident);
+			if (decision.incidentReason === "threshold_breach") {
+				statusCode = 9999;
+				message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
 			}
+
+			const newIncident = await this.incidentsRepository.create({
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				startTime: Date.now().toString(),
+				status: true,
+				statusCode,
+				message,
+			});
+
+			// Build a synthetic response if no live network data is available (e.g. unreachable monitor)
+			const notifResponse: MonitorStatusResponse = monitorStatusResponse ?? {
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				type: monitor.type,
+				status: false,
+				code: statusCode,
+				message: message ?? "Monitor is down",
+			};
+			console.log("--- TRIGGERING BASE NOTIFICATION ---");
+			try {
+				await this.notificationsService.handleNotifications(monitor, notifResponse, { ...decision, shouldSendNotification: true });
+			} catch (err: unknown) {
+				this.logger.warn({
+					service: SERVICE_NAME,
+					method: "handleIncident",
+					message: `Down notification failed for monitor ${monitor.id}: ${err instanceof Error ? err.message : "Unknown error"}`,
+				});
+			}
+
+			return newIncident;
 		}
 
-		if (decision.shouldResolveIncident) {
-			if (!activeIncident) {
-				return null;
-			}
+		// ── 2. Resolve incident: resolve once, then send the "up" notification once ──
+		if (decision.shouldResolveIncident && activeIncident) {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			const resolved = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+
+			if (monitorStatusResponse) {
+				console.log("--- TRIGGERING RECOVERY ---");
+				try {
+					await this.notificationsService.handleNotifications(monitor, monitorStatusResponse, { ...decision, shouldSendNotification: true });
+				} catch (err: unknown) {
+					this.logger.warn({
+						service: SERVICE_NAME,
+						method: "handleIncident",
+						message: `Recovery notification failed for monitor ${monitor.id}: ${err instanceof Error ? err.message : "Unknown error"}`,
+					});
+				}
+			}
+
+			return resolved;
 		}
 
-		return null;
+		return activeIncident ?? null;
+	};
+
+	checkEscalations = async (): Promise<void> => {
+		const activeIncidents = await this.incidentsRepository.findAllActive();
+		for (const incident of activeIncidents) {
+			const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId).catch(() => null);
+			if (!monitor?.escalationRules?.length) continue;
+
+			const escalationsSent = incident.escalationsSent ?? [];
+			const incidentAgeMinutes = (Date.now() - new Date(incident.createdAt).getTime()) / 60_000;
+			const pendingRules = monitor.escalationRules.filter(
+				(rule) => incidentAgeMinutes >= rule.escalateAfterMinutes && !escalationsSent.includes(rule.escalateAfterMinutes)
+			);
+			if (pendingRules.length === 0) continue;
+
+			const syntheticResponse: MonitorStatusResponse = {
+				monitorId: incident.monitorId,
+				teamId: incident.teamId,
+				type: monitor.type,
+				status: false,
+				code: incident.statusCode ?? 0,
+				message: incident.message ?? "Monitor is down - escalation alert",
+			};
+			const escalationDecision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: "status_down",
+				notificationReason: "status_change",
+			};
+
+			for (const rule of pendingRules) {
+				console.log("--- TRIGGERING ESCALATION ---");
+				await this.notificationsService
+					.sendEscalationNotifications(rule.notificationChannelIds, monitor, syntheticResponse, escalationDecision)
+					.catch((err: unknown) => {
+						this.logger.warn({
+							service: SERVICE_NAME,
+							method: "checkEscalations",
+							message: `Escalation notification failed for monitor ${monitor.id}: ${err instanceof Error ? err.message : "Unknown error"}`,
+						});
+					});
+				escalationsSent.push(rule.escalateAfterMinutes);
+			}
+
+			incident.escalationsSent = escalationsSent;
+			await this.incidentsRepository.updateById(incident.id, incident.teamId, incident);
+		}
 	};
 
 	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {
