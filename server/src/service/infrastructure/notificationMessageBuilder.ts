@@ -15,7 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
-	build	Message(
+	buildEscalationMessage(
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		clientHost: string,
