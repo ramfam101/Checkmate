@@ -9,6 +9,7 @@ export interface Incident {
 	teamId: string;
 	startTime: string;
 	endTime: string | null;
+	escalationNotifiedAt?: string | null;
 	status: boolean;
 	message?: string | null;
 	statusCode?: number | null;
