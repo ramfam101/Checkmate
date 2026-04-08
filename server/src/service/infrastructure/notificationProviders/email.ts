@@ -68,9 +68,11 @@ export class EmailProvider implements INotificationProvider {
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
 			this.logger.warn({
-				message: "Email notification failed",
+				message: "Email notification failed - check email settings configuration",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				notificationId: notification.id,
+				notificationType: notification.type,
 			});
 			return false;
 		}
@@ -87,6 +89,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
+			case "escalation":
+				return `Escalation: Monitor ${message.monitor.name} server still down`;
 			default:
 				return `Alert: ${message.monitor.name}`;
 		}

@@ -128,6 +128,16 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		// Validate required email settings
+		if (!systemEmailHost || !systemEmailPort || !systemEmailAddress || !systemEmailPassword) {
+			this.logger.warn({
+				message: "Email settings not configured - skipping email send",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
+
 		const emailConfig = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
