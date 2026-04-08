@@ -203,50 +203,57 @@ export const initializeServices = async ({
 	]);
 	const emailService = new EmailService(settingsService, fs, path, compile, mjml2html, nodemailer, logger);
 
-	const notificationMessageBuilder = new NotificationMessageBuilder();
+    const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
+    const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
-	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
+    const globalPingService = new GlobalPingService(logger);
 
-	const globalPingService = new GlobalPingService(logger);
-
-	const geoChecksService = new GeoChecksService({
+    const geoChecksService = new GeoChecksService({
 		logger,
 		geoChecksRepository,
 		globalPingService,
 		monitorsRepository,
 	});
 
-	const bufferService = new BufferService(logger, checkService, geoChecksService, settingsService);
+    const bufferService = new BufferService(logger, checkService, geoChecksService, settingsService);
 
-	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
+    const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
 
-	// Notification providers
-	const webhookProvider = new WebhookProvider(logger);
-	const slackProvider = new SlackProvider(logger);
-	const emailProvider = new EmailProvider(emailService, logger);
-	const discordProvider = new DiscordProvider(logger);
-	const pagerDutyProvider = new PagerDutyProvider(logger);
-	const matrixProvider = new MatrixProvider(logger);
-	const teamsProvider = new TeamsProvider(logger);
+    // Notification providers
+    const webhookProvider = new WebhookProvider(logger);
+    const slackProvider = new SlackProvider(logger);
+    const emailProvider = new EmailProvider(emailService, logger);
+    const discordProvider = new DiscordProvider(logger);
+    const pagerDutyProvider = new PagerDutyProvider(logger);
+    const matrixProvider = new MatrixProvider(logger);
+    const teamsProvider = new TeamsProvider(logger);
 
-	const notificationsService = new NotificationsService(
-		notificationsRepository,
-		monitorsRepository,
-		webhookProvider,
-		emailProvider,
-		slackProvider,
-		discordProvider,
-		pagerDutyProvider,
-		matrixProvider,
-		teamsProvider,
-		settingsService,
-		logger,
-		notificationMessageBuilder
-	);
+    const notificationsService = new NotificationsService(
+        notificationsRepository,
+        monitorsRepository,
+        webhookProvider,
+        emailProvider,
+        slackProvider,
+        discordProvider,
+        pagerDutyProvider,
+        matrixProvider,
+        teamsProvider,
+        settingsService,
+        logger,
+        notificationMessageBuilder
+    );
 
-	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
+    const incidentService = new IncidentService(
+        logger, 
+        incidentsRepository, 
+        monitorsRepository, 
+        usersRepository, 
+        notificationMessageBuilder,
+        notificationsService
+    );
+
+    const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
 		statusService,
@@ -265,10 +272,10 @@ export const initializeServices = async ({
 		geoChecksRepository
 	);
 
-	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+    const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
 
-	// Business services
-	const userService = new UserService({
+    // Business services
+    const userService = new UserService({
 		crypto,
 		emailService,
 		settingsService,
@@ -283,17 +290,17 @@ export const initializeServices = async ({
 		teamsRepository,
 	});
 
-	const diagnosticService = new DiagnosticService();
-	const inviteService = new InviteService({
+    const diagnosticService = new DiagnosticService();
+    const inviteService = new InviteService({
 		invitesRepository,
 		settingsService,
 		emailService,
 	});
-	const maintenanceWindowService = new MaintenanceWindowService({
+    const maintenanceWindowService = new MaintenanceWindowService({
 		monitorsRepository,
 		maintenanceWindowsRepository,
 	});
-	const monitorService = new MonitorService({
+    const monitorService = new MonitorService({
 		jobQueue: superSimpleQueue,
 		emailService,
 		logger,
@@ -306,9 +313,9 @@ export const initializeServices = async ({
 		incidentsRepository,
 	});
 
-	const statusPageService = new StatusPageService(statusPagesRepository);
+    const statusPageService = new StatusPageService(statusPagesRepository);
 
-	const services = {
+    const services = {
 		settingsService,
 		db,
 		networkService,

@@ -8,6 +8,7 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -91,7 +95,37 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+				
+				const delayMinutes = monitor.escalationDelayMinutes ?? 0;
+				const notificationIds = monitor.escalationNotifications ?? [];
+				
+				if (decision.shouldSendNotification && delayMinutes > 0 && notificationIds.length > 0 && monitorStatusResponse) {
+					setTimeout(() => {
+						void (async () => {
+							const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+							if (!activeIncident || activeIncident.id !== createdIncident.id) return;
+							
+							const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+							if (!currentMonitor) return;
+							
+							await this.notificationsService.sendEscalatedNotifications(
+								currentMonitor.escalationNotifications ?? notificationIds,
+								currentMonitor,
+								monitorStatusResponse,
+								decision
+							);
+						})().catch((error: unknown) => {
+							this.logger.warn({
+								service: SERVICE_NAME,
+								method: "scheduleEscalation",
+								message: error instanceof Error ? error.message : "Unknown error"
+							});
+						});
+					}, delayMinutes * 60 * 1000);
+				}
+				
+				return createdIncident;
 			}
 		}
 
