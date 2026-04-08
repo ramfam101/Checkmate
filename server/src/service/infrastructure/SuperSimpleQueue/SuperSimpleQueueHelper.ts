@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -172,6 +172,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalation notifications for ongoing incidents (best effort, don't wait)
+				this.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation notifications for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -454,5 +464,39 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async handleEscalationNotifications(monitor: Monitor, status: MonitorStatusResponse): Promise<void> {
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return;
+		}
+
+		const { dueEscalations, incidentDurationMinutes } = await this.incidentService.getDueEscalationRules(monitor);
+		if (dueEscalations.length === 0) {
+			return;
+		}
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "escalation",
+		};
+
+		for (const escalation of dueEscalations) {
+			const escalationMonitor: Monitor = {
+				...monitor,
+				notifications: [escalation.channelId],
+			};
+
+			await this.notificationsService.handleNotifications(escalationMonitor, status, escalationDecision);
+
+			this.logger.info({
+				message: `Escalation notification sent for monitor ${monitor.id} after ${escalation.delayMinutes} minutes to channel ${escalation.channelId} (incident duration: ${incidentDurationMinutes} minutes)`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+		}
 	}
 }

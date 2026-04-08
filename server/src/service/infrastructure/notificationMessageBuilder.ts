@@ -33,6 +33,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
 
+		if (decision.notificationReason === "escalation") {
+			content.title = `Escalation: ${content.title}`;
+			content.summary = `Escalation alert: ${content.summary}`;
+		}
+
 		return {
 			type,
 			severity,
@@ -56,6 +61,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
+		}
+
+		// Breached status maps to threshold breach notifications
+		if (monitor.status === "breached") {
+			return "threshold_breach";
 		}
 
 		// Threshold breach (only if not down)

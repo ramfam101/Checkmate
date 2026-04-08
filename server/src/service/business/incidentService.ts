@@ -1,5 +1,5 @@
 const SERVICE_NAME = "incidentService";
-import type { Monitor } from "@/types/monitor.js";
+import type { Monitor, MonitorEscalation } from "@/types/monitor.js";
 import type { MonitorStatusResponse } from "@/types/network.js";
 import { AppError } from "@/utils/AppError.js";
 import { getDateForRange } from "@/utils/dataUtils.js";
@@ -16,6 +16,7 @@ export interface IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null>;
+	getDueEscalationRules(monitor: Monitor): Promise<{ dueEscalations: MonitorEscalation[]; incidentDurationMinutes: number }>;
 	resolveIncident(incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string): Promise<Incident>;
 	getIncidentsByTeam(
 		teamId: string,
@@ -107,6 +108,84 @@ export class IncidentService implements IIncidentService {
 
 		return null;
 	};
+
+	getDueEscalationRules = async (monitor: Monitor): Promise<{ dueEscalations: MonitorEscalation[]; incidentDurationMinutes: number }> => {
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return { dueEscalations: [], incidentDurationMinutes: 0 };
+		}
+
+		const escalation = this.normalizeEscalation(monitor.escalation ?? []);
+		if (escalation.length === 0) {
+			return { dueEscalations: [], incidentDurationMinutes: 0 };
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return { dueEscalations: [], incidentDurationMinutes: 0 };
+		}
+
+		const isUnacknowledged = activeIncident.status === true && activeIncident.resolutionType === null;
+		if (!isUnacknowledged) {
+			return { dueEscalations: [], incidentDurationMinutes: 0 };
+		}
+
+		const incidentStartedAt = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(incidentStartedAt)) {
+			return { dueEscalations: [], incidentDurationMinutes: 0 };
+		}
+
+		const incidentDurationMinutes = Math.max(0, Math.floor((Date.now() - incidentStartedAt) / 60000));
+		const alreadyNotified = new Set(activeIncident.escalationNotifiedChannels ?? []);
+
+		const dueEscalations = escalation.filter((entry) => {
+			const key = this.buildEscalationDeliveryKey(entry.delayMinutes, entry.channelId);
+			return entry.delayMinutes <= incidentDurationMinutes && !alreadyNotified.has(key);
+		});
+		if (dueEscalations.length === 0) {
+			return { dueEscalations: [], incidentDurationMinutes };
+		}
+
+		const nextNotifiedChannels = Array.from(
+			new Set([
+				...(activeIncident.escalationNotifiedChannels ?? []),
+				...dueEscalations.map((entry) => this.buildEscalationDeliveryKey(entry.delayMinutes, entry.channelId)),
+			])
+		).sort();
+
+		await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, {
+			escalationNotifiedChannels: nextNotifiedChannels,
+		});
+
+		return {
+			dueEscalations,
+			incidentDurationMinutes,
+		};
+	};
+
+	private normalizeEscalation(entries: MonitorEscalation[]): MonitorEscalation[] {
+		const unique = new Set<string>();
+		const normalized: MonitorEscalation[] = [];
+
+		for (const entry of entries) {
+			const delayMinutes = Number(entry.delayMinutes);
+			const channelId = String(entry.channelId ?? "").trim();
+			if (!Number.isFinite(delayMinutes) || delayMinutes < 1 || !channelId) {
+				continue;
+			}
+			const key = this.buildEscalationDeliveryKey(delayMinutes, channelId);
+			if (unique.has(key)) {
+				continue;
+			}
+			unique.add(key);
+			normalized.push({ delayMinutes, channelId });
+		}
+
+		return normalized.sort((a, b) => a.delayMinutes - b.delayMinutes);
+	}
+
+	private buildEscalationDeliveryKey(delayMinutes: number, channelId: string): string {
+		return `${delayMinutes}:${channelId}`;
+	}
 
 	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {
 		if (!monitorStatusResponse) {
