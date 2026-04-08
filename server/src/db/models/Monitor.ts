@@ -245,6 +245,14 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Boolean,
 			default: false,
 		},
+		escalation: {
+			type: {
+				enabled: { type: Boolean, required: true },
+				delayMinutes: { type: Number, required: true, min: 0 },
+				channelId: { type: String, required: true },
+			},
+			default: null,
+		},
 		useAdvancedMatching: {
 			type: Boolean,
 			default: false,

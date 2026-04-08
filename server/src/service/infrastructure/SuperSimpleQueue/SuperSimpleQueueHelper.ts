@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type Incident, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -167,6 +167,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						});
 					});
 				}
+
+				// Step 6b. Handle delayed escalation (best effort, don't wait)
+				this.handleDelayedEscalation(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error sending delayed escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
@@ -454,5 +464,47 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async handleDelayedEscalation(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> {
+		if (monitor.status !== "down") {
+			return;
+		}
+
+		if (!monitor.escalation?.enabled || !monitor.escalation.channelId) {
+			return;
+		}
+
+		const activeIncident: Incident | null = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalationSent) {
+			return;
+		}
+
+		const incidentStartMs = Date.parse(activeIncident.startTime);
+		if (Number.isNaN(incidentStartMs)) {
+			return;
+		}
+
+		const delayMs = monitor.escalation.delayMinutes * 60000;
+		if (Date.now() < incidentStartMs + delayMs) {
+			return;
+		}
+
+		const escalationSent = await this.notificationsService.handleEscalationNotification(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			monitor.escalation.channelId
+		);
+
+		if (!escalationSent) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, { escalationSent: true });
 	}
 }

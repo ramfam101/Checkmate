@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default defineConfig(({}) => {
+export default defineConfig(({ }) => {
 	let version = "3.5.1";
 
 	return {
@@ -14,6 +14,7 @@ export default defineConfig(({}) => {
 		plugins: [svgr(), react()],
 		server: {
 			host: true,
+			port: 3111,
 		},
 		resolve: {
 			alias: {

@@ -765,35 +765,135 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalation"
+						control={control}
+						render={({ field, fieldState }) => {
+							const escalation =
+								(field.value as { enabled: boolean; delayMinutes: number; channelId: string } | null) ?? {
+									enabled: false,
+									delayMinutes: 5,
+									channelId: "",
+								};
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack
+										direction="row"
+										alignItems="center"
+										spacing={theme.spacing(SPACING.LG)}
+									>
+										<Switch
+											checked={escalation.enabled}
+											onChange={(e) => {
+												if (!e.target.checked) {
+													field.onChange(null);
+												} else {
+													field.onChange({
+														enabled: true,
+														delayMinutes: escalation.delayMinutes ?? 5,
+														channelId: escalation.channelId ?? "",
+													});
+												}
+											}}
+										/>
+										<Typography>
+											{t("pages.createMonitor.form.escalation.option.enabled.label")}
+										</Typography>
+									</Stack>
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<TextField
+											value={escalation.delayMinutes}
+											onChange={(e) => {
+												const delay = Number(e.target.value);
+												field.onChange({
+													...escalation,
+													delayMinutes: Number.isNaN(delay) ? 0 : delay,
+												});
+											}}
+											type="number"
+											fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+											placeholder={t(
+												"pages.createMonitor.form.escalation.option.delay.placeholder"
+											)}
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+											disabled={!escalation.enabled}
+										/>
+										<Select
+											value={escalation.channelId ?? ""}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channel.label"
+											)}
+											fullWidth
+											error={!!fieldState.error}
+											disabled={!escalation.enabled}
+											onChange={(e) => {
+												field.onChange({
+													...escalation,
+													channelId: String(e.target.value),
+												});
+											}}
+										>
+											<MenuItem value="">
+												{t(
+													"pages.createMonitor.form.escalation.option.channel.placeholder"
+												)}
+											</MenuItem>
+											{notificationOptions.map((notification) => (
+												<MenuItem
+													key={notification.id}
+													value={notification.id}
+												>
+													{notification.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+									</Stack>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.ignoreTls.title")}
-					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-					rightContent={
-						<Controller
-							name="ignoreTlsErrors"
-							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
-									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
-								</Stack>
-							)}
-						/>
-					}
-				/>
-			)}
+					<ConfigBox
+						title={t("pages.createMonitor.form.ignoreTls.title")}
+						subtitle={t("pages.createMonitor.form.ignoreTls.description")}
+						rightContent={
+							<Controller
+								name="ignoreTlsErrors"
+								control={control}
+								render={({ field }) => (
+									<Stack
+										direction="row"
+										alignItems="center"
+										spacing={theme.spacing(SPACING.LG)}
+									>
+										<Switch
+											checked={field.value ?? false}
+											onChange={(e) => field.onChange(e.target.checked)}
+										/>
+										<Typography>
+											{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
+										</Typography>
+									</Stack>
+								)}
+							/>
+						}
+					/>
+				)}
 
 			{watchedType === "http" && (
 				<ConfigBox
