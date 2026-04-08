@@ -78,9 +78,10 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		const subjectPrefix = message.metadata.isEscalation ? "Escalated: " : "";
 		switch (message.type) {
 			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
+				return `${subjectPrefix}Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":
@@ -88,7 +89,7 @@ export class EmailProvider implements INotificationProvider {
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
 			default:
-				return `Alert: ${message.monitor.name}`;
+				return `${subjectPrefix}Alert: ${message.monitor.name}`;
 		}
 	}
 
