@@ -12,6 +12,10 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalation: {
+		delayMinutes: data?.escalation?.delayMinutes || 0,
+		channelIds: data?.escalation?.channelIds || [],
+	},
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
