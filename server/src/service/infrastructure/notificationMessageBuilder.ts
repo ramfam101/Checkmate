@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision);
 
 		return {
 			type,
@@ -93,10 +93,17 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const isEscalation = decision.notificationReason === "escalation";
+
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, isEscalation, decision);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -108,10 +115,27 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
+	private buildMonitorDownContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		isEscalation: boolean,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const baseTitle = `Monitor Down: ${monitor.name}`;
+		const escalationTitle = `🚨 ESCALATION: Monitor Still Down - ${monitor.name}`;
+
+		const baseSummary = `Monitor "${monitor.name}" is currently down and unreachable.`;
+		const escalationSummary = `ESCALATION ALERT: Monitor "${monitor.name}" has been down for ${decision.escalationMinutes?.[0] || "extended"} minutes and requires immediate attention.`;
+
+		const title = isEscalation ? escalationTitle : baseTitle;
+		const summary = isEscalation ? escalationSummary : baseSummary;
+
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		// Add escalation info if applicable
+		if (isEscalation && decision.escalationMinutes?.[0]) {
+			details.unshift(`⚠️ ESCALATED after ${decision.escalationMinutes[0]} minutes of downtime`);
+		}
 
 		// Add response code if available
 		if (monitorStatusResponse.code) {

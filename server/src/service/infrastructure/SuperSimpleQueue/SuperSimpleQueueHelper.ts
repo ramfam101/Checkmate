@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { Incident } from "@/types/index.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -38,7 +39,9 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	escalationNotificationIds?: string[];
+	escalationMinutes?: number[];
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -153,19 +156,28 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
-				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				// Step 5.  Get active incident and decisions
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+				const decision = this.evaluateMonitorAction(statusChangeResult, activeIncident);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+					this.notificationsService
+						.handleNotifications(statusChangeResult.monitor, status, decision, decision.escalationNotificationIds)
+						.then(async (result) => {
+							if (result && decision.notificationReason === "escalation" && activeIncident && decision.escalationMinutes?.length) {
+								const updatedEscalations = Array.from(new Set([...(activeIncident.escalationsSent ?? []), ...decision.escalationMinutes]));
+								await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, { escalationsSent: updatedEscalations });
+							}
+						})
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -418,7 +430,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private evaluateMonitorAction(statusChangeResult: StatusChangeResult, activeIncident: Incident | null = null): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -431,6 +443,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			if (activeIncident && (monitor.status === "down" || monitor.status === "breached")) {
+				const escalation = this.getEscalationForIncident(monitor, activeIncident);
+				if (escalation) {
+					decision.shouldSendNotification = true;
+					decision.notificationReason = "escalation";
+					decision.escalationNotificationIds = escalation.notificationIds;
+					decision.escalationMinutes = escalation.delayMinutes;
+				}
+			}
 			return decision;
 		}
 
@@ -454,5 +475,32 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private getEscalationForIncident(monitor: Monitor, activeIncident: Incident) {
+		const escalations = monitor.escalations ?? [];
+		if (!escalations.length) {
+			return null;
+		}
+
+		const sent = activeIncident.escalationsSent ?? [];
+		const startTime = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(startTime)) {
+			return null;
+		}
+
+		const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+		const dueRules = escalations
+			.filter((rule) => rule.delayMinutes <= elapsedMinutes && !sent.includes(rule.delayMinutes))
+			.sort((a, b) => a.delayMinutes - b.delayMinutes);
+
+		if (!dueRules.length) {
+			return null;
+		}
+
+		return {
+			delayMinutes: dueRules.map((rule) => rule.delayMinutes),
+			notificationIds: dueRules.flatMap((rule) => rule.notificationIds),
+		};
 	}
 }

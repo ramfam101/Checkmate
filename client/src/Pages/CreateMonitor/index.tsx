@@ -229,6 +229,12 @@ const CreateMonitorPage = () => {
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
+	// Escalation input states
+	const [escalationDelayInput, setEscalationDelayInput] = useState<string>("");
+	const [selectedEscalationNotifications, setSelectedEscalationNotifications] = useState<
+		string[]
+	>([]);
+
 	const handleDeleteClick = () => {
 		setIsDeleteDialogOpen(true);
 	};
@@ -756,6 +762,152 @@ const CreateMonitorPage = () => {
 													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalations = field.value ?? [];
+
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+
+							const handleAddEscalation = () => {
+								if (escalationDelayInput && selectedEscalationNotifications.length > 0) {
+									const newEscalation = {
+										delayMinutes: parseInt(escalationDelayInput, 10),
+										notificationIds: selectedEscalationNotifications,
+									};
+
+									// Check if this delay already exists
+									const alreadyExists = escalations.some(
+										(e: { delayMinutes: number }) =>
+											e.delayMinutes === newEscalation.delayMinutes
+									);
+									if (!alreadyExists) {
+										field.onChange([...escalations, newEscalation]);
+										setEscalationDelayInput("");
+										setSelectedEscalationNotifications([]);
+									}
+								}
+							};
+
+							const handleRemoveEscalation = (index: number) => {
+								field.onChange(
+									escalations.filter((_: unknown, i: number) => i !== index)
+								);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										<TextField
+											type="number"
+											value={escalationDelayInput}
+											onChange={(e) => setEscalationDelayInput(e.target.value)}
+											placeholder={t(
+												"pages.createMonitor.form.escalations.delayPlaceholder"
+											)}
+											fieldLabel={t("pages.createMonitor.form.escalations.delayLabel")}
+											inputProps={{ min: 1 }}
+										/>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={notificationOptions.filter((n) =>
+												selectedEscalationNotifications.includes(n.id)
+											)}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												setSelectedEscalationNotifications(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.notificationsLabel"
+											)}
+										/>
+										<Button
+											onClick={handleAddEscalation}
+											disabled={
+												!escalationDelayInput ||
+												selectedEscalationNotifications.length === 0
+											}
+										>
+											{t("pages.createMonitor.form.escalations.addButton")}
+										</Button>
+									</Stack>
+
+									{escalations.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{escalations.map(
+												(
+													escalation: { delayMinutes: number; notificationIds: string[] },
+													index: number
+												) => {
+													const selectedNotifs = notificationOptions.filter((n) =>
+														escalation.notificationIds.includes(n.id)
+													);
+													return (
+														<Stack
+															key={`${escalation.delayMinutes}-${index}`}
+															direction="column"
+															spacing={theme.spacing(SPACING.SM)}
+															padding={theme.spacing(LAYOUT.SM)}
+															border={`1px solid ${theme.palette.divider}`}
+															borderRadius={1}
+														>
+															<Stack
+																direction="row"
+																alignItems="center"
+																justifyContent="space-between"
+															>
+																<Typography variant="subtitle2">
+																	{t(
+																		"pages.createMonitor.form.escalations.escalateAfter",
+																		{
+																			minutes: escalation.delayMinutes,
+																		}
+																	)}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => handleRemoveEscalation(index)}
+																	aria-label="Remove escalation"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+															</Stack>
+															<Stack spacing={theme.spacing(SPACING.XS)}>
+																{selectedNotifs.map((notif) => (
+																	<Typography
+																		key={notif.id}
+																		variant="body2"
+																	>
+																		• {notif.notificationName}
+																	</Typography>
+																))}
+															</Stack>
+														</Stack>
+													);
+												}
+											)}
 										</Stack>
 									)}
 								</Stack>
