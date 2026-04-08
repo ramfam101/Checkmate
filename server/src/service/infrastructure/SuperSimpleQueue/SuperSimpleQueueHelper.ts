@@ -20,6 +20,8 @@ import {
 	IChecksRepository,
 	IIncidentsRepository,
 	IGeoChecksRepository,
+	IEscalationsRepository,
+	INotificationsRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
@@ -66,6 +68,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationsRepository: IEscalationsRepository;
+	private notificationsRepository: INotificationsRepository;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +87,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationsRepository: IEscalationsRepository,
+		notificationsRepository: INotificationsRepository
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +107,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationsRepository = escalationsRepository;
+		this.notificationsRepository = notificationsRepository;
 	}
 
 	get serviceName() {
@@ -177,7 +185,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
-			} catch (error: unknown) {
+			// Step 8. Check and trigger escalations (best effort, don't wait)
+			if (statusChangeResult.monitor.escalations && statusChangeResult.monitor.escalations.length > 0) {
+				this.handleEscalations(statusChangeResult.monitor, decision).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error handling escalations for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+			}			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
@@ -455,4 +473,61 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private handleEscalations = async (monitor: Monitor, decision: MonitorActionDecision) => {
+		// Only escalate if incident is active
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+		if (!activeIncident) {
+			return;
+		}
+
+		for (const escalation of monitor.escalations || []) {
+			// Check if escalation already logged for this incident and channel
+			const existingLog = await this.escalationsRepository.findByIncidentAndChannel(
+				activeIncident.id,
+				escalation.channelId
+			);
+
+			if (existingLog) {
+				// Escalation already sent for this incident and channel
+				continue;
+			}
+
+			// Calculate time elapsed since incident start (in minutes)
+			const incidentStartTime = new Date(activeIncident.startTime);
+			const elapsedMinutes = (Date.now() - incidentStartTime.getTime()) / (1000 * 60);
+
+			if (elapsedMinutes >= escalation.delayMinutes) {
+				// Log escalation to prevent duplicates
+				await this.escalationsRepository.create({
+					incidentId: activeIncident.id,
+					monitorId: monitor.id,
+					teamId: monitor.teamId,
+					channelId: escalation.channelId,
+					triggerTime: new Date(),
+					sent: false,
+				});
+
+				// Send escalation notification via notifications service
+				const escalationNotification = await this.notificationsRepository.findById(
+					escalation.channelId,
+					monitor.teamId
+				);
+
+				if (escalationNotification) {
+					this.notificationsService
+						.sendEscalationNotification(monitor, escalationNotification, activeIncident, escalation.delayMinutes)
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "handleEscalations",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+				}
+			}
+		}
+	};
 }

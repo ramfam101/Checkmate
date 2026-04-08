@@ -16,6 +16,7 @@ import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
+import { EscalationConfig } from "@/Components/monitors/EscalationConfig";
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -252,6 +253,8 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		console.log("Submitting full monitor data:", data);
+		console.log("Escalations in data:", data.escalations);
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -762,6 +765,20 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Send additional alerts if incidents aren't resolved quickly"
+				rightContent={
+					notifications && notifications.length > 0 ? (
+						<EscalationConfig notifications={notifications} control={control} />
+					) : (
+						<Typography variant="body2" color="warning.main">
+							Create notification channels first to enable escalations
+						</Typography>
+					)
 				}
 			/>
 

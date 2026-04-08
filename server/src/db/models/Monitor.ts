@@ -351,6 +351,16 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: 300000,
 		},
+		escalations: [
+			{
+				delayMinutes: { type: Number, required: true, min: 1, max: 1440 },
+				channelId: { 
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+				required: true
+				}
+			}
+		],
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],
@@ -359,6 +369,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		timestamps: true,
 	}
+	
 );
 
 MonitorSchema.index({ teamId: 1, type: 1 });

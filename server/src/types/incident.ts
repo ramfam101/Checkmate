@@ -18,6 +18,9 @@ export interface Incident {
 	comment?: string | null;
 	createdAt: string;
 	updatedAt: string;
+	acknowledged?: boolean;
+	acknowledgedAt?: Date | null;
+	acknowledgedBy?: string | null;
 }
 
 export interface IncidentSummaryTopMonitor {

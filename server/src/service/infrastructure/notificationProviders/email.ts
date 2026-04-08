@@ -5,6 +5,7 @@ import { buildTestEmail } from "@/service/infrastructure/notificationProviders/u
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import type { ILogger } from "@/utils/logger.js";
 import { IEmailService } from "@/service/infrastructure/emailService.js";
+
 export class EmailProvider implements INotificationProvider {
 	private emailService: IEmailService;
 	private logger: ILogger;
@@ -78,6 +79,9 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		if (message.escalated) {
+			return `🚨 ESCALATION: ${message.title}`;
+		}
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
@@ -88,22 +92,22 @@ export class EmailProvider implements INotificationProvider {
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
 			default:
-				return `Alert: ${message.monitor.name}`;
+				return `Alert: ${message.monitor?.name ?? "Unknown"}`;
 		}
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
 		const context = {
-			title: message.content.title,
-			summary: message.content.summary,
-			monitorName: message.monitor.name,
-			monitorUrl: message.monitor.url,
-			monitorType: message.monitor.type,
-			monitorStatus: message.monitor.status,
-			headerColor: this.getColorForSeverity(message.severity),
-			thresholds: message.content.thresholds,
-			details: message.content.details,
-			incidentUrl: message.content.incident?.url,
+			title: message.escalated ? message.title : message.content?.title,
+			summary: message.escalated ? message.body : message.content?.summary,
+			monitorName: message.monitor?.name ?? "Unknown",
+			monitorUrl: message.monitor?.url ?? "",
+			monitorType: message.monitor?.type ?? "",
+			monitorStatus: message.monitor?.status ?? "down",
+			headerColor: this.getColorForSeverity(message.severity ?? "critical"),
+			thresholds: message.content?.thresholds,
+			details: message.content?.details,
+			incidentUrl: message.escalated ? message.incidentURL : message.content?.incident?.url,
 		};
 
 		this.logger.info({
@@ -113,9 +117,7 @@ export class EmailProvider implements INotificationProvider {
 			details: { context },
 		});
 
-		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
-
-		return html;
+		return await this.emailService.buildEmail("unifiedNotificationTemplate", context);
 	}
 
 	private getColorForSeverity(severity: string): string {

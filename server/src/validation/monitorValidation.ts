@@ -78,6 +78,10 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalations: z.array(z.object({
+		delayMinutes: z.number().min(1).max(1440),
+		channelId: z.string().min(1),
+	})).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +111,10 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalations: z.array(z.object({
+		delayMinutes: z.number().min(1).max(1440),
+		channelId: z.string().min(1),
+	})).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({

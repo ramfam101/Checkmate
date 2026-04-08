@@ -50,4 +50,10 @@ export interface NotificationMessage {
 		teamId: string;
 		notificationReason: string;
 	};
+	// Escalation fields
+	escalated?: boolean;
+	title?: string;
+	body?: string;
+	monitorURL?: string;
+	incidentURL?: string;
 }

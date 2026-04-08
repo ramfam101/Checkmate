@@ -26,6 +26,11 @@ export const supportsGeoCheck = (type: MonitorType | undefined): boolean => {
 	return GeoCheckSupportedTypes.includes(type);
 };
 
+export interface MonitorEscalation {
+  delayMinutes: number;
+  channelId: string;
+}
+
 export const MonitorStatuses = [
 	"up",
 	"down",
@@ -79,6 +84,7 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalations?: MonitorEscalation[];
 }
 
 export type MonitorWithChecks = Monitor;

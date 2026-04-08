@@ -18,12 +18,14 @@ export const createApp = ({
 	controllers,
 	envSettings,
 	frontendPath,
+	frontendExists,
 	openApiSpec,
 }: {
 	services: InitializedServices;
 	controllers: InitializedControllers;
 	envSettings: EnvConfig;
 	frontendPath: string;
+	frontendExists: boolean;
 	openApiSpec: JsonObject;
 }) => {
 	const allowedOrigin = envSettings.clientHost;
@@ -40,7 +42,10 @@ export const createApp = ({
 		})
 	);
 
-	app.use(express.static(frontendPath));
+	// Only serve static files if frontend build exists (production)
+	if (frontendExists) {
+		app.use(express.static(frontendPath));
+	}
 
 	app.use(express.json());
 	app.use(cookieParser());
@@ -100,10 +105,12 @@ export const createApp = ({
 	// Main app routes
 	setupRoutes(app, controllers, services);
 
-	// FE routes
-	app.get("*", (req, res) => {
-		res.sendFile(path.join(frontendPath, "index.html"));
-	});
+	// FE routes (only if frontend build exists - production)
+	if (frontendExists) {
+		app.get("*", (req, res) => {
+			res.sendFile(path.join(frontendPath, "index.html"));
+		});
+	}
 	app.use(handleErrors);
 	return app;
 };
