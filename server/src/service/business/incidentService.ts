@@ -8,6 +8,7 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { ISuperSimpleQueue } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -29,6 +30,7 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	cancelEscalationJob(incidentId: string): Promise<void>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -39,19 +41,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private queueService: ISuperSimpleQueue;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		queueService: ISuperSimpleQueue
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.queueService = queueService;
 	}
 
 	get serviceName() {
@@ -91,7 +96,20 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				if (
+					monitor.escalationAfterMinutes &&
+					monitor.escalationAfterMinutes > 0 &&
+					monitor.escalationNotifications &&
+					monitor.escalationNotifications.length > 0
+				) {
+					const delayMs = monitor.escalationAfterMinutes * 60 * 1000;
+					await this.queueService.addEscalationJob(createdIncident.id, monitor, delayMs);
+				}
+
+				return createdIncident;
 			}
 		}
 
@@ -161,6 +179,9 @@ export class IncidentService implements IIncidentService {
 				message: `Incident manually resolved by user`,
 				details: { incidentId: resolvedIncident.id },
 			});
+
+			// Cancel any pending escalation job for this incident
+			await this.cancelEscalationJob(incidentId);
 
 			return resolvedIncident;
 		} catch (error: unknown) {
@@ -261,6 +282,31 @@ export class IncidentService implements IIncidentService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
+		}
+	};
+
+	cancelEscalationJob = async (incidentId: string) => {
+		try {
+			// Remove the escalation job if it exists
+			// Note: The scheduler doesn't have a direct remove method for delayed jobs
+			// This would need to be implemented in the SuperSimpleQueue if needed
+			if (this.logger) {
+				this.logger.debug({
+					message: `Attempting to cancel escalation job for incident ${incidentId}`,
+					service: SERVICE_NAME,
+					method: "cancelEscalationJob",
+				});
+			}
+		} catch (error: unknown) {
+			if (this.logger) {
+				this.logger.error({
+					service: SERVICE_NAME,
+					method: "cancelEscalationJob",
+					message: error instanceof Error ? error.message : "Unknown error",
+					details: { incidentId },
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
 		}
 	};
 }

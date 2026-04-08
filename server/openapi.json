@@ -3761,7 +3761,19 @@
 					"geoCheckInterval": {
 						"type": "integer",
 						"minimum": 300000
+					},
+					"escalationAfterMinutes": {
+						"type": "integer",
+						"minimum": 1,
+						"nullable": true
+					},
+					"escalationNotifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
 					}
+
 				}
 			},
 			"Monitor": {
