@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import type { Incident } from "@/types/incident.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
@@ -66,6 +68,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTimers: Map<string, ReturnType<typeof setTimeout>>;
+	private escalationSendInFlight: Set<string>;
 
 	constructor(
 		logger: ILogger,
@@ -101,6 +105,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationTimers = new Map();
+		this.escalationSendInFlight = new Set();
 	}
 
 	get serviceName() {
@@ -155,6 +161,11 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const downNotificationTriggeredAt =
+					decision.shouldSendNotification &&
+					(statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached")
+						? Date.now()
+						: undefined;
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
@@ -168,15 +179,34 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				// Step 7. Handle incidents and get current active incident for escalation checks
+				const handledIncident = await this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						return null;
 					});
-				});
+
+				const activeIncident =
+					handledIncident && handledIncident.status
+						? handledIncident
+						: await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+				await this.handleEscalationCheck(
+					activeIncident,
+					statusChangeResult.monitor,
+					status as any,
+					decision,
+					downNotificationTriggeredAt
+				);
+
+				if (decision.shouldResolveIncident && activeIncident) {
+					this.clearEscalationTimer(activeIncident.id);
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +217,169 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private clearEscalationTimer = (incidentId: string) => {
+		const timer = this.escalationTimers.get(incidentId);
+		if (timer) {
+			clearTimeout(timer);
+			this.escalationTimers.delete(incidentId);
+		}
+	};
+
+	private handleEscalationCheck = async (
+		activeIncident: Incident | null,
+		monitor: Monitor,
+		status: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		downNotificationTriggeredAt?: number
+	) => {
+		if (!activeIncident) {
+			return;
+		}
+
+		const escalationWindowSize = monitor.escalationWindowSize ?? 0;
+		const escalationSentAt = (activeIncident as Incident & { escalationSentAt?: string | null } | null)?.escalationSentAt;
+
+		if (escalationWindowSize <= 0 || escalationSentAt) {
+			this.clearEscalationTimer(activeIncident.id);
+			return;
+		}
+
+		const escalationWindowMs = escalationWindowSize * 60000;
+		const remainingMsFromDownNotification =
+			typeof downNotificationTriggeredAt === "number"
+				? escalationWindowMs - (Date.now() - downNotificationTriggeredAt)
+				: null;
+
+		if (remainingMsFromDownNotification !== null) {
+			if (remainingMsFromDownNotification <= 0) {
+				this.clearEscalationTimer(activeIncident.id);
+				await this.sendEscalationForIncident(activeIncident, monitor, status, decision, escalationWindowSize);
+				return;
+			}
+
+			if (this.escalationTimers.has(activeIncident.id)) {
+				return;
+			}
+
+			const timer = setTimeout(async () => {
+				try {
+					await this.sendEscalationForIncident(activeIncident, monitor, status, decision);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: error instanceof Error ? error.message : "Unknown error",
+						service: SERVICE_NAME,
+						method: "handleEscalationCheck",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				} finally {
+					this.escalationTimers.delete(activeIncident.id);
+				}
+			}, Math.max(1, Math.round(remainingMsFromDownNotification)));
+
+			this.escalationTimers.set(activeIncident.id, timer);
+			return;
+		}
+
+		const elapsedMinutes = (Date.now() - new Date(activeIncident.startTime).getTime()) / 60000;
+		const remainingMinutes = escalationWindowSize - elapsedMinutes;
+
+		if (remainingMinutes <= 0) {
+			this.clearEscalationTimer(activeIncident.id);
+			await this.sendEscalationForIncident(activeIncident, monitor, status, decision, elapsedMinutes);
+			return;
+		}
+
+		if (this.escalationTimers.has(activeIncident.id)) {
+			return;
+		}
+
+		const timer = setTimeout(async () => {
+			this.escalationTimers.delete(activeIncident.id);
+
+			try {
+				await this.sendEscalationForIncident(activeIncident, monitor, status, decision);
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "handleEscalationCheck",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}, Math.max(1, Math.round(remainingMinutes * 60000)));
+
+		this.escalationTimers.set(activeIncident.id, timer);
+	};
+
+	private sendEscalationForIncident = async (
+		activeIncident: Incident,
+		monitor: Monitor,
+		status: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		elapsedMinutes?: number
+	) => {
+		const incidentId = activeIncident.id;
+		if (this.escalationSendInFlight.has(incidentId)) {
+			return;
+		}
+		this.escalationSendInFlight.add(incidentId);
+
+		try {
+		const latestIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!latestIncident || latestIncident.status === false) {
+			return;
+		}
+
+		const escalationSentAt = (latestIncident as Incident & { escalationSentAt?: string | null } | null)?.escalationSentAt;
+		if (escalationSentAt) {
+			return;
+		}
+
+		const resolvedMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+		const elapsed = elapsedMinutes ?? (Date.now() - new Date(activeIncident.startTime).getTime()) / 60000;
+		const escalationChannelIds =
+			resolvedMonitor.escalationNotifications && resolvedMonitor.escalationNotifications.length > 0
+				? resolvedMonitor.escalationNotifications
+				: resolvedMonitor.notifications ?? [];
+
+		this.logger.info({
+			message: `Escalation send attempt for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "sendEscalationForIncident",
+			details: {
+				escalationWindowSize: resolvedMonitor.escalationWindowSize,
+				elapsedMinutes: elapsed,
+				escalationChannelCount: resolvedMonitor.escalationNotifications?.length ?? 0,
+				fallbackChannelCount: resolvedMonitor.notifications?.length ?? 0,
+			},
+		});
+
+		const escalationSent = await this.notificationsService.sendEscalationNotifications(
+			escalationChannelIds,
+			resolvedMonitor as any,
+			status as any,
+			decision,
+			elapsed
+		);
+
+		if (!escalationSent) {
+			this.logger.warn({
+				message: `Escalation notification was not sent for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationForIncident",
+			});
+			return;
+		}
+
+		const escalationPatch = {
+			escalationSentAt: new Date().toISOString(),
+		} as unknown as Partial<Incident>;
+		await this.incidentsRepository.updateById(latestIncident.id, latestIncident.teamId, escalationPatch);
+		} finally {
+			this.escalationSendInFlight.delete(incidentId);
+		}
 	};
 
 	getCleanupOrphanedJob = () => {
