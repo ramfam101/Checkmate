@@ -177,6 +177,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Check escalation levels (best effort, fire-and-forget)
+				this.checkEscalations(statusChangeResult.monitor, statusChangeResult).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error checking escalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -417,6 +427,61 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async checkEscalations(monitor: Monitor, statusChangeResult: StatusChangeResult): Promise<void> {
+		const { statusChanged } = statusChangeResult;
+		// Only check escalations when the monitor is staying down/breached (not on first transition)
+		if (statusChanged) return;
+		if (monitor.status !== "down" && monitor.status !== "breached") return;
+		if (!monitor.escalations || monitor.escalations.length === 0) return;
+
+		const incident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!incident) return;
+
+		const elapsedMinutes = (Date.now() - new Date(incident.startTime).getTime()) / 60000;
+		const firedEscalations: number[] = incident.firedEscalations ?? [];
+
+		const due = monitor.escalations.filter(
+			(esc) => esc.delay <= elapsedMinutes && !firedEscalations.includes(esc.delay)
+		);
+
+		if (due.length === 0) return;
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		for (const escalation of due) {
+			const levelIndex = monitor.escalations.indexOf(escalation) + 1;
+			const message = {
+				type: "monitor_down" as const,
+				severity: "critical" as const,
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: monitor.url,
+					type: monitor.type,
+					status: monitor.status,
+				},
+				content: {
+					title: `Escalation Alert: ${monitor.name} still down`,
+					summary: `Monitor "${monitor.name}" has been down for ${Math.floor(elapsedMinutes)} minutes (Escalation Level ${levelIndex}).`,
+					details: [`URL: ${monitor.url}`, `Status: Down`, `Duration: ~${Math.floor(elapsedMinutes)} minutes`],
+					timestamp: new Date(),
+				},
+				clientHost,
+				subjectOverride: `Escalation: Monitor ${monitor.name} server still down`,
+				metadata: {
+					teamId: monitor.teamId,
+					notificationReason: "escalation",
+				},
+			};
+
+			await this.notificationsService.sendEscalationNotifications(escalation.notifications, message);
+			firedEscalations.push(escalation.delay);
+		}
+
+		await this.incidentsRepository.updateById(incident.id, monitor.teamId, { firedEscalations });
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

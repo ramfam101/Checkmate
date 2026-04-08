@@ -46,6 +46,7 @@ export interface NotificationMessage {
 	monitor: MonitorInfo;
 	content: NotificationContent;
 	clientHost: string;
+	subjectOverride?: string;
 	metadata: {
 		teamId: string;
 		notificationReason: string;

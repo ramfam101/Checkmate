@@ -16,15 +16,21 @@ import type {
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
+type EscalationLevelDocument = {
+	delay: number;
+	notifications: Types.ObjectId[];
+};
+
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt" | "escalations"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
+	escalations: EscalationLevelDocument[];
 };
 
 interface MonitorDocument extends MonitorDocumentBase {
@@ -198,6 +204,14 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationLevelSchema = new Schema<EscalationLevelDocument>(
+	{
+		delay: { type: Number, required: true, min: 1 },
+		notifications: [{ type: Schema.Types.ObjectId, ref: "Notification" }],
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -350,6 +364,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		geoCheckInterval: {
 			type: Number,
 			default: 300000,
+		},
+		escalations: {
+			type: [escalationLevelSchema],
+			default: [],
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],

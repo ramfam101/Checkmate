@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -159,6 +159,140 @@ const getGeneralSettingsConfig = (
 		},
 	};
 	return configs[type] || configs.http;
+};
+
+interface EscalationsSectionProps {
+	control: ReturnType<typeof useForm<MonitorFormData>>["control"];
+	notifications: Notification[];
+	t: (key: string) => string;
+	theme: ReturnType<typeof useTheme>;
+}
+
+const EscalationsSection = ({ control, notifications, t, theme }: EscalationsSectionProps) => {
+	const { fields, append, remove } = useFieldArray({
+		control,
+		name: "escalations",
+	});
+
+	const notificationOptions = notifications.map((n) => ({
+		...n,
+		name: n.notificationName,
+	}));
+
+	return (
+		<Stack spacing={theme.spacing(LAYOUT.MD)}>
+			{fields.map((field, index) => (
+				<Stack
+					key={field.id}
+					spacing={theme.spacing(LAYOUT.MD)}
+					sx={{
+						p: theme.spacing(LAYOUT.MD),
+						border: `1px solid ${theme.palette.divider}`,
+						borderRadius: 1,
+					}}
+				>
+					<Stack
+						direction="row"
+						alignItems="center"
+						justifyContent="space-between"
+					>
+						<Typography fontWeight={600}>
+							{t("pages.createMonitor.form.escalations.title")} {index + 1}
+						</Typography>
+						<IconButton
+							size="small"
+							onClick={() => remove(index)}
+							aria-label={t("pages.createMonitor.form.escalations.removeButton")}
+						>
+							<Trash2 size={16} />
+						</IconButton>
+					</Stack>
+					<Controller
+						name={`escalations.${index}.delay`}
+						control={control}
+						render={({ field: f, fieldState }) => (
+							<TextField
+								{...f}
+								type="number"
+								fieldLabel={t("pages.createMonitor.form.escalations.delay.label")}
+								placeholder={t("pages.createMonitor.form.escalations.delay.placeholder")}
+								inputProps={{ min: 1 }}
+								onChange={(e) => f.onChange(Number(e.target.value))}
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+								fullWidth
+							/>
+						)}
+					/>
+					<Controller
+						name={`escalations.${index}.notifications`}
+						control={control}
+						render={({ field: f, fieldState }) => {
+							const selected = notificationOptions.filter((n) =>
+								(f.value ?? []).includes(n.id)
+							);
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selected}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											f.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.notifications.label"
+										)}
+									/>
+									{selected.length > 0 && (
+										<Stack flex={1} width="100%">
+											{selected.map((notification, ni) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={notification.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{notification.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															f.onChange(
+																(f.value ?? []).filter(
+																	(id: string) => id !== notification.id
+																)
+															);
+														}}
+														aria-label={t(
+															"pages.createMonitor.form.escalations.removeButton"
+														)}
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{ni < selected.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				</Stack>
+			))}
+			<Button
+				variant="outlined"
+				color="primary"
+				onClick={() => append({ delay: 60, notifications: [] })}
+			>
+				{t("pages.createMonitor.form.escalations.addButton")}
+			</Button>
+		</Stack>
+	);
 };
 
 const CreateMonitorPage = () => {
@@ -761,6 +895,19 @@ const CreateMonitorPage = () => {
 								</Stack>
 							);
 						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<EscalationsSection
+						control={control}
+						notifications={notifications ?? []}
+						t={t}
+						theme={theme}
 					/>
 				}
 			/>

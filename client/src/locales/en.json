@@ -543,6 +543,21 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalations": {
+					"title": "Escalated Notifications",
+					"description": "Define time-delayed alert levels that fire if an incident persists. Each level can target different notification channels.",
+					"addButton": "Add Escalation Level",
+					"removeButton": "Remove",
+					"delay": {
+						"label": "Alert after (minutes)",
+						"placeholder": "e.g. 30",
+						"unit": "min"
+					},
+					"notifications": {
+						"label": "Notification channels",
+						"placeholder": "Select channels for this level"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
