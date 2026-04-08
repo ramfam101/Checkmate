@@ -7,11 +7,20 @@ interface UseMonitorFormOptions {
 	defaultType?: MonitorType;
 }
 
+const defaultEscalationRule = {
+	delayMinutes: 5,
+	notifications: [],
+};
+
 const getBaseDefaults = (data?: Monitor | null) => ({
 	name: data?.name || "",
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalationRules:
+		data?.escalationRules && data.escalationRules.length > 0
+			? [data.escalationRules[0]]
+			: [defaultEscalationRule],
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
