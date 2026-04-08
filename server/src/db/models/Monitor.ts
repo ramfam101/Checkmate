@@ -18,11 +18,12 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "escalationRules" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalationRules: Types.DocumentArray<any>;
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -149,7 +150,15 @@ const snapshotNetworkInterfaceSchema = new Schema<CheckNetworkInterfaceInfo>(
 	},
 	{ _id: false }
 );
-
+const escalationRuleSchema = new Schema(
+	{
+		id: { type: String, required: true },
+		escalateAfterMinutes: { type: Number, required: true, min: 1 },
+		notificationIds: [{ type: Schema.Types.ObjectId, ref: "Notification" }],
+		isEnabled: { type: Boolean, default: true },
+	},
+	{ _id: false }
+);
 const snapshotLighthouseAuditSchema = new Schema<ILighthouseAudit>(
 	{
 		id: { type: String },
@@ -284,6 +293,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationRules: [escalationRuleSchema],
 		secret: {
 			type: String,
 		},

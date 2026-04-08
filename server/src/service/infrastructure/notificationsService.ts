@@ -14,6 +14,13 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendNotificationsByIds: (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		message: NotificationMessage
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +146,39 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendNotificationsByIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		message: NotificationMessage
+	) => {
+		try {
+			const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+			const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, message));
+			const outcomes = await Promise.all(tasks);
+			const succeeded = outcomes.filter(Boolean).length;
+			const failed = outcomes.length - succeeded;
+			if (failed > 0) {
+				this.logger.warn({
+					message: `Failed to send ${failed} out of ${outcomes.length} escalation notifications for monitor ${monitor.name}`,
+					service: SERVICE_NAME,
+					method: "sendNotificationsByIds",
+				});
+				return false;
+			}
+			return true;
+		} catch (error) {
+			this.logger.error({
+				message: `Error sending escalation notifications for monitor ${monitor.name}`,
+				service: SERVICE_NAME,
+				method: "sendNotificationsByIds",
+				details: { error: error instanceof Error ? error.message : String(error) },
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

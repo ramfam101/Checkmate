@@ -352,6 +352,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
 
+		const escalationRules = (doc.escalationRules ?? []).map((rule: any) => ({
+			id: rule.id,
+			escalateAfterMinutes: rule.escalateAfterMinutes,
+			notificationIds: (rule.notificationIds ?? []).map((id: any) => toStringId(id)),
+			isEnabled: rule.isEnabled ?? true,
+		}));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -374,6 +381,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationRules,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -411,6 +419,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
+		const escalationRules = (doc.escalationRules ?? []).map((rule: any) => ({
+			id: rule.id,
+			escalateAfterMinutes: rule.escalateAfterMinutes,
+			notificationIds: (rule.notificationIds ?? []).map((id: any) => toStringId(id)),
+			isEnabled: rule.isEnabled ?? true,
+		}));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -433,6 +448,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationRules,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
