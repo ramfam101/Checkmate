@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -203,6 +203,15 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+
+	const {
+		fields: escalationFields,
+		append: appendEscalation,
+		remove: removeEscalation,
+	} = useFieldArray({
+		control,
+		name: "escalationPolicy" as never,
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +771,92 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send additional notifications if an incident remains unresolved after a delay."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack
+									key={field.id}
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Controller
+										name={`escalationPolicy.${index}.delayMinutes` as never}
+										control={control}
+										render={({ field: delayField }) => (
+											<TextField
+												type="number"
+												label="Delay (min)"
+												value={delayField.value ?? 0}
+												onChange={(e) =>
+													delayField.onChange(Number(e.target.value))
+												}
+												sx={{ width: 160 }}
+											/>
+										)}
+									/>
+									<Controller
+										name={`escalationPolicy.${index}.notificationId` as never}
+										control={control}
+										render={({ field: notifField }) => {
+											const selected =
+												notificationOptions.find(
+													(n) => n.id === notifField.value
+												) ?? null;
+											return (
+												<Autocomplete
+													options={notificationOptions}
+													value={selected}
+													getOptionLabel={(option) => option.name}
+													onChange={(
+														_: unknown,
+														newValue: (typeof notificationOptions)[number] | null
+													) => {
+														notifField.onChange(newValue?.id ?? "");
+													}}
+													isOptionEqualToValue={(option, value) =>
+														option.id === value.id
+													}
+													sx={{ flex: 1 }}
+												/>
+											);
+										}}
+									/>
+									<IconButton
+										size="small"
+										onClick={() => removeEscalation(index)}
+										aria-label="Remove escalation tier"
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+							);
+						})}
+						<Button
+							variant="text"
+							onClick={() =>
+								(appendEscalation as (value: { delayMinutes: number; notificationId: string }) => void)({
+									delayMinutes: 0,
+									notificationId: "",
+								})
+							}
+							sx={{ alignSelf: "flex-start" }}
+						>
+							<Plus size={16} />
+							&nbsp;Add escalation tier
+						</Button>
+					</Stack>
 				}
 			/>
 
