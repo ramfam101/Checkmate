@@ -777,8 +777,8 @@ const CreateMonitorPage = () => {
 			/>
 
 			<ConfigBox
-				title="Escalation Rules"
-				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
 				rightContent={
 					<Stack spacing={theme.spacing(LAYOUT.MD)}>
 						<Controller
@@ -789,7 +789,7 @@ const CreateMonitorPage = () => {
 									{...field}
 									value={field.value ?? ""}
 									type="number"
-									fieldLabel="Escalate after (minutes)"
+									fieldLabel={t("pages.createMonitor.form.escalation.option.after.label")}
 									placeholder="0"
 									fullWidth
 									error={!!fieldState.error}
@@ -820,7 +820,7 @@ const CreateMonitorPage = () => {
 												field.onChange(newValue.map((n) => n.id));
 											}}
 											isOptionEqualToValue={(option, value) => option.id === value.id}
-											fieldLabel="Escalation channels"
+													fieldLabel={t("pages.createMonitor.form.escalation.option.channels.label")}
 										/>
 										{selectedChannels.length > 0 && (
 											<Stack
