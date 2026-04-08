@@ -241,10 +241,12 @@ export const initializeServices = async ({
 		pagerDutyProvider,
 		matrixProvider,
 		teamsProvider,
+		incidentsRepository,
 		settingsService,
 		logger,
 		notificationMessageBuilder
 	);
+	await notificationsService.init();
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
