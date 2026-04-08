@@ -1,5 +1,4 @@
-import type { Incident } from "@/types/index.js";
-import type { IncidentSummary } from "@/types/index.js";
+import type { Incident, IncidentSummary } from "@/types/incident.js";
 export interface IIncidentsRepository {
 	// create
 	create(incident: Partial<Incident>): Promise<Incident>;
