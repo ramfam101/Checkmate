@@ -252,11 +252,21 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const escalation =
+			data.escalation && data.escalation.delayMinutes > 0 && data.escalation.channelId
+				? data.escalation
+				: undefined;
+
+		const payload = {
+			...data,
+			escalation,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -757,6 +767,79 @@ const CreateMonitorPage = () => {
 												</Stack>
 											))}
 										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			{/* Escalation Settings */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalation"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const currentEscalation = field.value;
+							const selectedChannel = notificationOptions.find(
+								(n) => n.id === currentEscalation?.channelId
+							);
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										type="number"
+										inputProps={{ min: "1", step: "1" }}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.delayMinutes.label"
+										)}
+										placeholder={t(
+											"pages.createMonitor.form.escalation.delayMinutes.placeholder"
+										)}
+										value={currentEscalation?.delayMinutes ?? ""}
+										onChange={(e) => {
+											const delayMinutes = parseInt(e.target.value, 10) || 0;
+											field.onChange({
+												delayMinutes,
+												channelId: currentEscalation?.channelId || "",
+											});
+										}}
+										fullWidth
+									/>
+									<Select
+										value={currentEscalation?.channelId ?? ""}
+										fieldLabel={t("pages.createMonitor.form.escalation.channelId.label")}
+										onChange={(e) => {
+											field.onChange({
+												delayMinutes: currentEscalation?.delayMinutes || 1,
+												channelId: e.target.value,
+											});
+										}}
+									>
+										<MenuItem value="">
+											{t("pages.createMonitor.form.escalation.channelId.placeholder")}
+										</MenuItem>
+										{notificationOptions.map((notification) => (
+											<MenuItem
+												key={notification.id}
+												value={notification.id}
+											>
+												{notification.notificationName}
+											</MenuItem>
+										))}
+									</Select>
+									{selectedChannel && (
+										<Typography variant="caption">
+											{t("pages.createMonitor.form.escalation.info")}
+										</Typography>
 									)}
 								</Stack>
 							);

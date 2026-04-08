@@ -27,6 +27,14 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalation: z
+		.object({
+			delayMinutes: z.coerce.number().min(1),
+			channelId: z.string().min(1),
+		})
+		.nullable()
+		.optional()
+		.transform((value) => value ?? undefined),
 });
 
 // HTTP monitor schema

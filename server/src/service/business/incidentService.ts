@@ -64,7 +64,7 @@ export class IncidentService implements IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null> => {
-		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident) {
+		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident && !decision.shouldEscalate) {
 			return null;
 		}
 
@@ -102,6 +102,12 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
+			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+		}
+
+		// Handle escalation - mark escalationSentAt on active incident
+		if (decision.shouldEscalate && activeIncident && !activeIncident.escalationSentAt) {
+			activeIncident.escalationSentAt = new Date().toISOString();
 			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 		}
 

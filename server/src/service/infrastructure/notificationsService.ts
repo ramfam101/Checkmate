@@ -132,13 +132,78 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+	private sendEscalationNotification = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationChannelId: string | null | undefined
+	) => {
+		if (!escalationChannelId) {
+			this.logger.warn({
+				message: "No escalation channel ID provided",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const notification = await this.notificationsRepository.findById(escalationChannelId, monitor.teamId);
+		if (!notification) {
+			this.logger.warn({
+				message: `Escalation notification channel not found: ${escalationChannelId}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+
+		// Build notification message for escalation
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		this.logger.debug({
+			message: `Sending escalation notification to ${notification.notificationName} for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "sendEscalationNotification",
+		});
+
+		const success = await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+
+		// Mark escalation as sent on the active incident
+		if (success) {
+			try {
+				const activeIncident = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+				// The incident will be updated by incidentService; we log for tracking
+				this.logger.debug({
+					message: `Escalation notification sent successfully for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Error after escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			}
+		}
+
+		return success;
+	};
+
+	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		// Handle escalation notification first
+		if (decision.shouldEscalate && decision.escalationChannelId) {
+			await this.sendEscalationNotification(monitor, monitorStatusResponse, decision, decision.escalationChannelId);
+		}
+
+		// Send standard notifications
+		if (decision.shouldSendNotification) {
+			return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		}
+
+		return false;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

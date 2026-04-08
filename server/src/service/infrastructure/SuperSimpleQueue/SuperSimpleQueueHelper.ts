@@ -45,6 +45,8 @@ export interface MonitorActionDecision {
 		disk?: boolean;
 		temp?: boolean;
 	};
+	shouldEscalate?: boolean;
+	escalationChannelId?: string | null;
 }
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
@@ -155,9 +157,29 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
+				// Step 5b. Check for escalation (best effort)
+				if (statusChangeResult.monitor.escalation && statusChangeResult.monitor.status === "down") {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+					if (activeIncident) {
+						const incidentStartTime = new Date(activeIncident.createdAt).getTime();
+						const nowTime = new Date().getTime();
+						const incidentDurationMs = nowTime - incidentStartTime;
+						const escalationDelayMs = statusChangeResult.monitor.escalation.delayMinutes * 60 * 1000;
 
+						// Only escalate if threshold is met AND escalation hasn't been sent yet
+						if (incidentDurationMs >= escalationDelayMs && !activeIncident.escalationSentAt) {
+							decision.shouldEscalate = true;
+							decision.escalationChannelId = statusChangeResult.monitor.escalation.channelId;
+							this.logger.debug({
+								message: `Monitor ${monitorId} escalation triggered: incident down for ${incidentDurationMs}ms (threshold: ${escalationDelayMs}ms)`,
+								service: SERVICE_NAME,
+								method: "getHeartbeatJob",
+							});
+						}
+					}
+				}
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
+				if (decision.shouldSendNotification || decision.shouldEscalate) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,

@@ -33,6 +33,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
 
+		// Add escalation indicator to title and summary if this is an escalated alert
+		if (decision.shouldEscalate) {
+			content.title = `[ESCALATED] ${content.title}`;
+			content.summary = `[Escalated Alert] ${content.summary}`;
+		}
+
 		return {
 			type,
 			severity,
