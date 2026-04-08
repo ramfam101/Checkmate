@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, formState: { errors } } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -252,11 +252,17 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		// Convert escalationAfterMinutes from string to number
+		const processedData = {
+			...data,
+			escalationAfterMinutes: data.escalationAfterMinutes ? parseInt(data.escalationAfterMinutes, 10) : undefined,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, processedData as any);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", processedData as any);
 		}
 
 		if (result?.success) {
@@ -762,6 +768,71 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Send escalation emails after the monitor stays down for the configured delay."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationAfterMinutes"
+							control={control}
+							render={({ field }) => (
+								<TextField
+									{...field}
+									fieldLabel="Escalation delay (minutes)"
+									placeholder="Leave blank to disable"
+									fullWidth
+									error={Boolean(errors.escalationAfterMinutes)}
+									helperText={
+										errors.escalationAfterMinutes?.message ??
+										"If set, escalation emails will send after this many minutes of downtime."
+									}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationIds"
+							control={control}
+							render={({ field }) => {
+								const emailNotificationOptions = (notifications ?? [])
+									.filter((notification) => notification.type === "email")
+									.map((notification) => ({
+										...notification,
+										name: notification.notificationName,
+									}));
+								const selectedEscalationNotifications = emailNotificationOptions.filter(
+									(notification) => (field.value ?? []).includes(notification.id)
+								);
+
+								return (
+										<Stack spacing={theme.spacing(LAYOUT.MD)}>
+											<Autocomplete
+										multiple
+										options={emailNotificationOptions}
+										value={selectedEscalationNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue) => {
+											field.onChange(newValue.map((notification: typeof emailNotificationOptions[0]) => notification.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										renderInput={(params) => (
+											<TextField
+												{...params}
+												fieldLabel="Escalation email channels"
+												placeholder="Select email notification channels"
+												fullWidth
+												helperText="Only email notifications can receive escalation alerts."
+											/>
+										)}
+									/>
+									</Stack>
+									);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

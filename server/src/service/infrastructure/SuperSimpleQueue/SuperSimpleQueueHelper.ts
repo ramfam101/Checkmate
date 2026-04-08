@@ -8,6 +8,7 @@ import {
 	INotificationsService,
 	ISettingsService,
 	IStatusService,
+	IEscalationService,
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
@@ -30,6 +31,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -58,6 +60,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private settingsService: ISettingsService;
 	private buffer: IBufferService;
 	private incidentService: IncidentService;
+	private escalationService: IEscalationService;
 	private maintenanceWindowsRepository: IMaintenanceWindowsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private teamsRepository: ITeamsRepository;
@@ -75,6 +78,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checkService: ICheckService,
 		settingsService: ISettingsService,
 		buffer: IBufferService,
+		escalationService: IEscalationService,
 		incidentService: IncidentService,
 		maintenanceWindowsRepository: IMaintenanceWindowsRepository,
 		monitorsRepository: IMonitorsRepository,
@@ -92,6 +96,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.settingsService = settingsService;
 		this.buffer = buffer;
 		this.notificationsService = notificationsService;
+		this.escalationService = escalationService;
 		this.incidentService = incidentService;
 		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -383,6 +388,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}, false);
 		return maintenanceWindowIsActive;
 	}
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				await this.escalationService.processEscalations();
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
 
 	getCleanupRetentionJob = () => {
 		return async () => {

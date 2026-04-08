@@ -564,6 +564,7 @@ export class MonitorService implements IMonitorService {
 
 		const cleanedMonitors: Monitor[] = monitors.map((monitor) => ({
 			...monitor,
+			escalationAfterMinutes: monitor.escalationAfterMinutes ?? undefined,
 			id: "",
 			teamId,
 			userId,

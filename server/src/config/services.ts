@@ -12,6 +12,7 @@ import {
 	StatusService,
 	NotificationMessageBuilder,
 	MonitorService,
+	EscalationService,
 	StatusPageService,
 	UserService,
 	CheckService,
@@ -44,6 +45,7 @@ import {
 	IMaintenanceWindowService,
 	IStatusPageService,
 	IIncidentService,
+	IEscalationService,
 	INotificationMessageBuilder,
 	ISettingsService,
 	EnvConfig,
@@ -127,6 +129,7 @@ export type InitializedServices = {
 	maintenanceWindowService: IMaintenanceWindowService;
 	monitorService: IMonitorService;
 	incidentService: IIncidentService;
+	escalationService: IEscalationService;
 	logger: ILogger;
 	notificationsService: INotificationsService;
 	statusPageService: IStatusPageService;
@@ -246,6 +249,15 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(
+		logger,
+		incidentsRepository,
+		notificationsRepository,
+		monitorsRepository,
+		notificationMessageBuilder,
+		emailService
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -254,6 +266,7 @@ export const initializeServices = async ({
 		checkService,
 		settingsService,
 		bufferService,
+		escalationService,
 		incidentService,
 		maintenanceWindowsRepository,
 		monitorsRepository,
@@ -324,6 +337,7 @@ export const initializeServices = async ({
 		maintenanceWindowService,
 		monitorService,
 		incidentService,
+		escalationService,
 		logger,
 		notificationsService,
 		statusPageService,
