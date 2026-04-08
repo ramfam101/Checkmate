@@ -72,6 +72,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalated: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	{ timestamps: true }
 );

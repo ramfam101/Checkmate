@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotifications: (monitor: Monitor, escalationChannels: string[], message: string) => Promise<void>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -196,5 +196,35 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	sendEscalationNotifications = async (monitor: Monitor, escalationChannels: string[], message: string) => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escalationChannels);
+		const notificationMessage: NotificationMessage = {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalated Alert: ${monitor.name}`,
+				summary: message,
+				timestamp: new Date(),
+			},
+			clientHost: this.settingsService.getSettings().clientHost || "",
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, {} as MonitorStatusResponse, {} as MonitorActionDecision, notificationMessage)
+		);
+		await Promise.all(tasks);
 	};
 }

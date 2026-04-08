@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -29,6 +30,7 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	checkEscalations(): Promise<void>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -39,19 +41,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -261,6 +266,33 @@ export class IncidentService implements IIncidentService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
+		}
+	};
+
+	checkEscalations = async () => {
+		try {
+			const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+			for (const incident of activeIncidents) {
+				const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+				if (monitor?.escalationRules?.escalateAfter && monitor.escalationRules.escalationChannels.length > 0 && !incident.escalated) {
+					const duration = (Date.now() - new Date(incident.startTime).getTime()) / (1000 * 60); // Minutes
+					if (duration >= monitor.escalationRules.escalateAfter) {
+						await this.notificationsService.sendEscalationNotifications(
+							monitor,
+							monitor.escalationRules.escalationChannels,
+							`Monitor ${monitor.name} has been down for ${Math.floor(duration)} minutes.`
+						);
+						await this.incidentsRepository.updateById(incident.id, incident.teamId, { escalated: true });
+					}
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "checkEscalations",
+				message: error instanceof Error ? error.message : "Unknown error",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 		}
 	};
 }

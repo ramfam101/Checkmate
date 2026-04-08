@@ -24,6 +24,10 @@ type MonitorDocumentBase = Omit<
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
+	escalationRules?: {
+		escalateAfter: number;
+		escalationChannels: Types.ObjectId[];
+	};
 	matchMethod?: MonitorMatchMethod;
 };
 
@@ -284,6 +288,19 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationRules: {
+			escalateAfter: {
+				type: Number,
+				default: 0,
+				min: 0,
+			},
+			escalationChannels: [
+				{
+					type: Schema.Types.ObjectId,
+					ref: "Notification",
+				},
+			],
+		},
 		secret: {
 			type: String,
 		},

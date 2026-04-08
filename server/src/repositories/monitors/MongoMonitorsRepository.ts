@@ -351,6 +351,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationChannelIds = (doc.escalationRules?.escalationChannels ?? []).map((channel) => toStringId(channel));
 
 		return {
 			id: toStringId(doc._id),
@@ -365,6 +366,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			type: doc.type,
 			ignoreTlsErrors: doc.ignoreTlsErrors,
 			useAdvancedMatching: doc.useAdvancedMatching ?? false,
+			escalationRules: {
+				escalateAfter: doc.escalationRules?.escalateAfter ?? 0,
+				escalationChannels: escalationChannelIds,
+			},
 			jsonPath: doc.jsonPath ?? undefined,
 			expectedValue: doc.expectedValue ?? undefined,
 			matchMethod: doc.matchMethod ?? undefined,
@@ -410,6 +415,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationChannelIds = (doc.escalationRules?.escalationChannels ?? []).map((channel) => toStringId(channel));
 
 		return {
 			id: toStringId(doc._id),
@@ -424,6 +430,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			type: doc.type,
 			ignoreTlsErrors: doc.ignoreTlsErrors,
 			useAdvancedMatching: doc.useAdvancedMatching ?? false,
+			escalationRules: {
+				escalateAfter: doc.escalationRules?.escalateAfter ?? 0,
+				escalationChannels: escalationChannelIds,
+			},
 			jsonPath: doc.jsonPath ?? undefined,
 			expectedValue: doc.expectedValue ?? undefined,
 			matchMethod: doc.matchMethod ?? undefined,

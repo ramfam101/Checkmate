@@ -765,6 +765,98 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationRules.escalateAfter"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									fieldLabel={t("pages.createMonitor.form.escalationRules.escalateAfter")}
+									type="number"
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message}
+									{...field}
+									value={field.value ?? 0}
+									onChange={(e) =>
+										field.onChange(Math.max(0, parseInt(e.target.value) || 0))
+									}
+									inputProps={{ min: 0 }}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationRules.escalationChannels"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedChannels = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedChannels}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											renderInput={(params) => (
+												<TextField
+													{...params}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalationRules.escalationChannels"
+													)}
+												/>
+											)}
+										/>
+										{selectedChannels.length > 0 && (
+											<Stack>
+												{selectedChannels.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation channel"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedChannels.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
