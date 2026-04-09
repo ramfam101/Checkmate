@@ -38,13 +38,15 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
 		disk?: boolean;
 		temp?: boolean;
 	};
+	shouldSendEscalation?: boolean;
+	escalationNotificationIds?: string[];
 }
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
@@ -113,8 +115,22 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const monitorId = monitor.id;
 				const teamId = monitor.teamId;
 				if (!monitorId) {
-					throw new AppError({ message: "No monitor id", service: SERVICE_NAME, method: "getMonitorJob" });
+					throw new AppError({ message: "No monitor id", service: SERVICE_NAME, method: "getHeartbeatJob" });
 				}
+
+				// Refresh the monitor state from the database in case the queued job data is stale.
+				monitor = await this.monitorsRepository.findById(monitorId, teamId);
+				this.logger.debug({
+					message: `Reloaded monitor state from DB for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "getHeartbeatJob",
+					details: {
+						escalationMinutes: monitor.escalationMinutes,
+						escalationNotificationIds: monitor.escalationNotificationIds,
+						downSince: monitor.downSince,
+						escalationSentAt: monitor.escalationSentAt,
+					},
+				});
 
 				// Step 1.  Check for maintenance window, if found, skip the check
 
@@ -123,7 +139,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					this.logger.debug({
 						message: `Monitor ${monitorId} is in maintenance window`,
 						service: SERVICE_NAME,
-						method: "getMonitorJob",
+						method: "getHeartbeatJob",
 					});
 					if (monitor.status !== "maintenance") {
 						await this.monitorsRepository.updateById(monitorId, teamId, { status: "maintenance" });
@@ -143,7 +159,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					this.logger.warn({
 						message: `No check could be built for monitor ${monitorId}`,
 						service: SERVICE_NAME,
-						method: "getMonitorJob",
+						method: "getHeartbeatJob",
 						details: { code: status.code, message: status.message },
 					});
 					return;
@@ -156,13 +172,30 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				// Persist monitor if escalation was triggered (to save escalationSentAt timestamp)
+				if (decision.shouldSendEscalation) {
+					await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, statusChangeResult.monitor);
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
-							method: "getMonitorJob",
+							method: "getHeartbeatJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 6.5. Handle escalation notifications (best effort, continue even in event of failure, don't wait)
+				if (decision.shouldSendEscalation) {
+					this.notificationsService.handleEscalation(statusChangeResult.monitor, decision).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getHeartbeatJob",
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
@@ -173,7 +206,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
-						method: "getMonitorJob",
+						method: "getHeartbeatJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
@@ -181,7 +214,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
-					method: "getMonitorJob",
+					method: "getHeartbeatJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				throw error;
@@ -430,7 +463,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			notificationReason: null,
 		};
 
+		const escalationNotificationIds = monitor.escalationNotificationIds ?? (monitor.escalationNotificationId ? [monitor.escalationNotificationId] : undefined);
+		// Check for escalation on every heartbeat when monitor is down
+		if (monitor.status === "down" && monitor.escalationMinutes && escalationNotificationIds && escalationNotificationIds.length > 0 && !monitor.escalationSentAt && monitor.downSince) {
+			const elapsedMinutes = (Date.now() - monitor.downSince) / (1000 * 60);
+			if (elapsedMinutes >= monitor.escalationMinutes) {
+				decision.shouldSendEscalation = true;
+				decision.escalationNotificationIds = escalationNotificationIds;
+				decision.notificationReason = "escalation";
+				// Set escalationSentAt timestamp to prevent duplicate escalations
+				monitor.escalationSentAt = Date.now();
+			}
+		}
+
 		if (!statusChanged) {
+			// Status didn't change, no further action needed
 			return decision;
 		}
 
