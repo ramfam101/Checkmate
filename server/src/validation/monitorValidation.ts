@@ -49,65 +49,105 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
-export const createMonitorBodyValidation = z.object({
-	_id: z.string().optional(),
-	name: z.string().min(1, "Name is required"),
-	description: z.union([z.string(), z.literal("")]).optional(),
-	type: z.enum(MonitorTypes, "Invalid monitor type"),
-	statusWindowSize: z.number().min(1).max(20).default(5),
-	statusWindowThreshold: z.number().min(1).max(100).default(60),
-	url: z.string().min(1, "URL is required"),
-	ignoreTlsErrors: z.boolean().default(false),
-	useAdvancedMatching: z.boolean().default(false),
-	port: z.number().optional(),
-	isActive: z.boolean().optional(),
-	interval: z.number().optional(),
-	cpuAlertThreshold: z.number().optional(),
-	memoryAlertThreshold: z.number().optional(),
-	diskAlertThreshold: z.number().optional(),
-	tempAlertThreshold: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
-	secret: z.string().optional(),
-	jsonPath: z.union([z.string(), z.literal("")]).optional(),
-	expectedValue: z.union([z.string(), z.literal("")]).optional(),
-	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
-	gameId: z.union([z.string(), z.literal("")]).optional(),
-	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
-	selectedDisks: z.array(z.string()).optional(),
-	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z.number().min(300000).optional(),
-});
+export const createMonitorBodyValidation = z
+	.object({
+		_id: z.string().optional(),
+		name: z.string().min(1, "Name is required"),
+		description: z.union([z.string(), z.literal("")]).optional(),
+		type: z.enum(MonitorTypes, "Invalid monitor type"),
+		statusWindowSize: z.number().min(1).max(20).default(5),
+		statusWindowThreshold: z.number().min(1).max(100).default(60),
+		url: z.string().min(1, "URL is required"),
+		ignoreTlsErrors: z.boolean().default(false),
+		useAdvancedMatching: z.boolean().default(false),
+		port: z.number().optional(),
+		isActive: z.boolean().optional(),
+		interval: z.number().optional(),
+		cpuAlertThreshold: z.number().optional(),
+		memoryAlertThreshold: z.number().optional(),
+		diskAlertThreshold: z.number().optional(),
+		tempAlertThreshold: z.number().optional(),
+		notifications: z.array(z.string()).optional(),
+		escalationMinutes: z.number().int().min(1).nullable().optional(),
+		escalationNotifications: z.array(z.string()).optional(),
+		secret: z.string().optional(),
+		jsonPath: z.union([z.string(), z.literal("")]).optional(),
+		expectedValue: z.union([z.string(), z.literal("")]).optional(),
+		matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
+		gameId: z.union([z.string(), z.literal("")]).optional(),
+		grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
+		selectedDisks: z.array(z.string()).optional(),
+		group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
+		geoCheckEnabled: z.boolean().optional(),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+		geoCheckInterval: z.number().min(300000).optional(),
+	})
+	.superRefine((data, ctx) => {
+		if ((data.escalationNotifications?.length ?? 0) > 0 && data.escalationMinutes == null) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["escalationMinutes"],
+				message: "Escalation time is required when escalation channels are selected",
+			});
+		}
 
-export const editMonitorBodyValidation = z.object({
-	name: z.string().optional(),
-	type: z.enum(MonitorTypes).optional(),
-	url: z.string().optional(),
-	statusWindowSize: z.number().min(1).max(20).default(5),
-	statusWindowThreshold: z.number().min(1).max(100).default(60),
-	description: z.union([z.string(), z.literal("")]).optional(),
-	interval: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
-	secret: z.string().optional(),
-	ignoreTlsErrors: z.boolean().optional(),
-	useAdvancedMatching: z.boolean().optional(),
-	jsonPath: z.union([z.string(), z.literal("")]).optional(),
-	expectedValue: z.union([z.string(), z.literal("")]).optional(),
-	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
-	port: z.number().min(1).max(65535).optional(),
-	cpuAlertThreshold: z.number().optional(),
-	memoryAlertThreshold: z.number().optional(),
-	diskAlertThreshold: z.number().optional(),
-	tempAlertThreshold: z.number().optional(),
-	gameId: z.union([z.string(), z.literal("")]).optional(),
-	grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
-	selectedDisks: z.array(z.string()).optional(),
-	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z.number().min(300000).optional(),
-});
+		if (data.escalationMinutes != null && (data.escalationNotifications?.length ?? 0) === 0) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["escalationNotifications"],
+				message: "Select at least one escalation notification channel",
+			});
+		}
+	});
+
+export const editMonitorBodyValidation = z
+	.object({
+		name: z.string().optional(),
+		type: z.enum(MonitorTypes).optional(),
+		url: z.string().optional(),
+		statusWindowSize: z.number().min(1).max(20).default(5),
+		statusWindowThreshold: z.number().min(1).max(100).default(60),
+		description: z.union([z.string(), z.literal("")]).optional(),
+		interval: z.number().optional(),
+		notifications: z.array(z.string()).optional(),
+		escalationMinutes: z.number().int().min(1).nullable().optional(),
+		escalationNotifications: z.array(z.string()).optional(),
+		secret: z.string().optional(),
+		ignoreTlsErrors: z.boolean().optional(),
+		useAdvancedMatching: z.boolean().optional(),
+		jsonPath: z.union([z.string(), z.literal("")]).optional(),
+		expectedValue: z.union([z.string(), z.literal("")]).optional(),
+		matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
+		port: z.number().min(1).max(65535).optional(),
+		cpuAlertThreshold: z.number().optional(),
+		memoryAlertThreshold: z.number().optional(),
+		diskAlertThreshold: z.number().optional(),
+		tempAlertThreshold: z.number().optional(),
+		gameId: z.union([z.string(), z.literal("")]).optional(),
+		grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
+		selectedDisks: z.array(z.string()).optional(),
+		group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
+		geoCheckEnabled: z.boolean().optional(),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+		geoCheckInterval: z.number().min(300000).optional(),
+	})
+	.superRefine((data, ctx) => {
+		if ((data.escalationNotifications?.length ?? 0) > 0 && data.escalationMinutes == null) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["escalationMinutes"],
+				message: "Escalation time is required when escalation channels are selected",
+			});
+		}
+
+		if (data.escalationMinutes != null && (data.escalationNotifications?.length ?? 0) === 0) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["escalationNotifications"],
+				message: "Select at least one escalation notification channel",
+			});
+		}
+	});
 
 export const pauseMonitorParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
@@ -122,47 +162,67 @@ export const getUptimeDetailsByIdQueryValidation = z.object({
 	normalize: booleanCoercion.optional(),
 });
 
-const importedMonitorSchema = z.object({
-	id: z.string().optional(),
-	userId: z.string().optional(),
-	teamId: z.string().optional(),
-	name: z.string().min(1, "Name is required"),
-	description: z.union([z.string(), z.literal("")]).optional(),
-	status: z.enum(["up", "down", "paused", "initializing", "maintenance", "breached"]).default("initializing"),
-	statusWindow: z.array(z.boolean()).default([]),
-	statusWindowSize: z.number().min(1).max(20).default(5),
-	statusWindowThreshold: z.number().min(1).max(100).default(60),
-	type: z.enum(MonitorTypes, "Invalid monitor type"),
-	ignoreTlsErrors: z.boolean().default(false),
-	useAdvancedMatching: z.boolean().default(false),
-	jsonPath: z.union([z.string(), z.literal("")]).optional(),
-	expectedValue: z.union([z.string(), z.literal("")]).optional(),
-	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
-	url: z.string().min(1, "URL is required"),
-	port: z.number().optional(),
-	isActive: z.boolean().default(true),
-	interval: z.number().default(60000),
-	uptimePercentage: z.number().optional(),
-	notifications: z.array(z.string()).default([]),
-	secret: z.string().optional(),
-	cpuAlertThreshold: z.number().default(100),
-	cpuAlertCounter: z.number().default(5),
-	memoryAlertThreshold: z.number().default(100),
-	memoryAlertCounter: z.number().default(5),
-	diskAlertThreshold: z.number().default(100),
-	diskAlertCounter: z.number().default(5),
-	tempAlertThreshold: z.number().default(100),
-	tempAlertCounter: z.number().default(5),
-	selectedDisks: z.array(z.string()).default([]),
-	gameId: z.union([z.string(), z.literal("")]).optional(),
-	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
-	group: z.union([z.string().max(50).trim(), z.null()]).default(null),
-	geoCheckEnabled: z.boolean().default(false),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
-	geoCheckInterval: z.number().min(300000).default(300000),
-	createdAt: z.string().optional(),
-	updatedAt: z.string().optional(),
-});
+const importedMonitorSchema = z
+	.object({
+		id: z.string().optional(),
+		userId: z.string().optional(),
+		teamId: z.string().optional(),
+		name: z.string().min(1, "Name is required"),
+		description: z.union([z.string(), z.literal("")]).optional(),
+		status: z.enum(["up", "down", "paused", "initializing", "maintenance", "breached"]).default("initializing"),
+		statusWindow: z.array(z.boolean()).default([]),
+		statusWindowSize: z.number().min(1).max(20).default(5),
+		statusWindowThreshold: z.number().min(1).max(100).default(60),
+		type: z.enum(MonitorTypes, "Invalid monitor type"),
+		ignoreTlsErrors: z.boolean().default(false),
+		useAdvancedMatching: z.boolean().default(false),
+		jsonPath: z.union([z.string(), z.literal("")]).optional(),
+		expectedValue: z.union([z.string(), z.literal("")]).optional(),
+		matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
+		url: z.string().min(1, "URL is required"),
+		port: z.number().optional(),
+		isActive: z.boolean().default(true),
+		interval: z.number().default(60000),
+		uptimePercentage: z.number().optional(),
+		notifications: z.array(z.string()).default([]),
+		escalationMinutes: z.number().int().min(1).nullable().default(null),
+		escalationNotifications: z.array(z.string()).default([]),
+		secret: z.string().optional(),
+		cpuAlertThreshold: z.number().default(100),
+		cpuAlertCounter: z.number().default(5),
+		memoryAlertThreshold: z.number().default(100),
+		memoryAlertCounter: z.number().default(5),
+		diskAlertThreshold: z.number().default(100),
+		diskAlertCounter: z.number().default(5),
+		tempAlertThreshold: z.number().default(100),
+		tempAlertCounter: z.number().default(5),
+		selectedDisks: z.array(z.string()).default([]),
+		gameId: z.union([z.string(), z.literal("")]).optional(),
+		grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
+		group: z.union([z.string().max(50).trim(), z.null()]).default(null),
+		geoCheckEnabled: z.boolean().default(false),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
+		geoCheckInterval: z.number().min(300000).default(300000),
+		createdAt: z.string().optional(),
+		updatedAt: z.string().optional(),
+	})
+	.superRefine((data, ctx) => {
+		if (data.escalationNotifications.length > 0 && data.escalationMinutes == null) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["escalationMinutes"],
+				message: "Escalation time is required when escalation channels are selected",
+			});
+		}
+
+		if (data.escalationMinutes != null && data.escalationNotifications.length === 0) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["escalationNotifications"],
+				message: "Select at least one escalation notification channel",
+			});
+		}
+	});
 
 export const importMonitorsBodyValidation = z.object({
 	monitors: z.array(importedMonitorSchema).min(1, "At least one monitor is required"),

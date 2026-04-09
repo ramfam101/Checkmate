@@ -177,6 +177,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle one-time escalation notifications for ongoing incidents.
+				if (["down", "breached"].includes(statusChangeResult.monitor.status)) {
+					this.notificationsService.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

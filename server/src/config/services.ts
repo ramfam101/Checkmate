@@ -231,11 +231,12 @@ export const initializeServices = async ({
 	const matrixProvider = new MatrixProvider(logger);
 	const teamsProvider = new TeamsProvider(logger);
 
-	const notificationsService = new NotificationsService(
-		notificationsRepository,
-		monitorsRepository,
-		webhookProvider,
-		emailProvider,
+		const notificationsService = new NotificationsService(
+			notificationsRepository,
+			incidentsRepository,
+			monitorsRepository,
+			webhookProvider,
+			emailProvider,
 		slackProvider,
 		discordProvider,
 		pagerDutyProvider,
