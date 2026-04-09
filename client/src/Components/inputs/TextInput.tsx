@@ -37,7 +37,7 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
                     marginRight: 0,
                     marginTop: theme.spacing(1),
                 },
-                ...props.sx,  // 👈 add this at the bottom
+                ...props.sx,
             }}
         />
     );
