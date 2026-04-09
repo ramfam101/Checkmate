@@ -76,6 +76,13 @@ const NotificationsCreatePage = () => {
 		};
 	}, [watchedType, t]);
 
+	const escalationConfig = {
+		title: t("pages.notifications.form.escalation.title"),
+		description: t("pages.notifications.form.escalation.description"),
+		delayLabel: t("pages.notifications.form.escalation.delayLabel"),
+		channelLabel: t("pages.notifications.form.escalation.channelLabel"),
+	};
+
 	const onSubmit = async (data: NotificationFormData) => {
 		const result = isEditMode
 			? await patch(`/notifications/${notificationId}`, data)

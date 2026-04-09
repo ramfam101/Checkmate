@@ -38,8 +38,7 @@ import {
 	type GamesMap,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
-import type { Notification } from "@/Types/Notification";
-import type { MonitorFormData } from "@/Validation/monitor";
+// (Removed duplicate imports for Notification and MonitorFormData)
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -765,6 +764,14 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			{/* Escalation Rule Config */}
+			<EscalationConfigBox
+				notifications={notifications ?? undefined}
+				control={control}
+				t={(key: string, defaultText?: string) => t(key, { defaultValue: defaultText })}
+				theme={theme}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1070,3 +1077,77 @@ const CreateMonitorPage = () => {
 };
 
 export default CreateMonitorPage;
+
+import type { Control } from "react-hook-form";
+import type { Theme } from "@mui/material";
+import type { Notification } from "@/Types/Notification";
+import type { MonitorFormData } from "@/Validation/monitor";
+
+// EscalationConfigBox: UI for escalation rule configuration
+interface EscalationConfigBoxProps {
+	notifications: Notification[] | undefined;
+	control: Control<MonitorFormData>;
+	t: (key: string, defaultText?: string) => string;
+	theme: Theme;
+}
+const EscalationConfigBox = ({ notifications, control, t, theme }: EscalationConfigBoxProps) => (
+	<ConfigBox
+		title={t("pages.createMonitor.form.escalation.title", "Escalation Rule")}
+		subtitle={t(
+			"pages.createMonitor.form.escalation.description",
+			"If the incident is not acknowledged after a delay, send an escalation notification."
+		)}
+		rightContent={
+			<Stack spacing={theme.spacing(2)}>
+				<Controller
+					name="escalation.delayMinutes"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							type="number"
+							fieldLabel={t("pages.createMonitor.form.escalation.delay", "Escalation Delay (minutes)")}
+							inputProps={{ min: 1 }}
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
+							fullWidth
+							onChange={(e) => {
+								const value = e.target.value;
+								field.onChange(value === "" ? undefined : Number(value));
+							}}
+							value={field.value ?? ""}
+						/>
+					)}
+				/>
+				<Controller
+					name="escalation.channelId"
+					control={control}
+					render={({ field, fieldState }) => {
+						const notificationOptions = (notifications ?? []).map((n: Notification) => ({
+							...n,
+							name: n.notificationName,
+						}));
+						const selected = notificationOptions.find((n: Notification) => n.id === field.value) || null;
+						return (
+							<Autocomplete
+								options={notificationOptions}
+								value={selected}
+								getOptionLabel={(option) => option.name}
+								onChange={(_: unknown, newValue: typeof notificationOptions[number] | null) => field.onChange(newValue?.id || "")}
+								isOptionEqualToValue={(option, value) => option.id === value.id}
+								fieldLabel={t("pages.createMonitor.form.escalation.channel", "Escalation Channel")}
+								renderInput={(params) => (
+									<TextField
+										{...params}
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+									/>
+								)}
+							/>
+						);
+					}}
+				/>
+			</Stack>
+		}
+	/>
+);

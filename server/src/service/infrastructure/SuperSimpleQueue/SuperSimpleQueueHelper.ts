@@ -169,14 +169,92 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.then(async (incident) => {
+						// Escalation logic: if escalation config exists and incident is created
+						const escalation = statusChangeResult.monitor.escalation;
+						this.logger.info({
+							message: "[ESCALATION DEBUG] Checking escalation logic",
+							monitorId: statusChangeResult.monitor.id,
+							escalationConfig: escalation,
+							incidentPresent: !!incident,
+							incidentStatus: incident?.status,
+							service: SERVICE_NAME,
+							method: "escalationPreCheck"
+						});
+						if (!escalation) {
+							this.logger.info({
+								message: "[ESCALATION DEBUG] Skipping: No escalation config present on monitor",
+								monitorId: statusChangeResult.monitor.id,
+								service: SERVICE_NAME,
+								method: "escalationSkipNoConfig"
+							});
+						} else if (!incident) {
+							this.logger.info({
+								message: "[ESCALATION DEBUG] Skipping: No incident present",
+								monitorId: statusChangeResult.monitor.id,
+								escalationConfig: escalation,
+								service: SERVICE_NAME,
+								method: "escalationSkipNoIncident"
+							});
+						} else if (!incident.status) {
+							this.logger.info({
+								message: "[ESCALATION DEBUG] Skipping: Incident status is falsy",
+								monitorId: statusChangeResult.monitor.id,
+								escalationConfig: escalation,
+								incidentId: incident.id,
+								incidentStatus: incident.status,
+								service: SERVICE_NAME,
+								method: "escalationSkipNoStatus"
+							});
+						} else {
+							this.logger.info({
+								message: "[ESCALATION DEBUG] Scheduling escalation notification",
+								monitorId: statusChangeResult.monitor.id,
+								escalationConfig: escalation,
+								incidentId: incident.id,
+								delayMinutes: escalation.delayMinutes,
+								service: SERVICE_NAME,
+								method: "escalationSchedule"
+							});
+							// Schedule escalation check after delayMinutes
+							setTimeout(async () => {
+								// Re-fetch incident to check if still active
+								const activeIncident = await this.incidentsRepository.findActiveByMonitorId(incident.monitorId, incident.teamId);
+								if (activeIncident && activeIncident.status) {
+									this.logger.info({
+										message: "[ESCALATION DEBUG] Triggering escalation notification send",
+										monitorId: statusChangeResult.monitor.id,
+										escalationConfig: escalation,
+										incidentId: activeIncident.id,
+										service: SERVICE_NAME,
+										method: "escalationSend"
+									});
+									// Send escalation notification to escalation.channelId
+									this.notificationsService.sendEscalationNotification(
+										statusChangeResult.monitor,
+										activeIncident,
+										escalation.channelId
+									).catch((error: unknown) => {
+										this.logger.error({
+											message: `Error sending escalation notification for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+											service: SERVICE_NAME,
+											method: "escalationNotification",
+											stack: error instanceof Error ? error.stack : undefined,
+										});
+									});
+								}
+							}, escalation.delayMinutes * 60 * 1000);
+						}
+					})
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

@@ -56,6 +56,10 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalation?: {
+		delayMinutes: number;
+		channelId: string;
+	};
 }
 
 export interface MonitorsSummary {
