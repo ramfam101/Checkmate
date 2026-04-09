@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchEscalationEnabled = watch("escalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +763,109 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalation.option.enable.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						{watchEscalationEnabled && (
+							<>
+								<Controller
+									name="escalationDelayMs"
+									control={control}
+									render={({ field }) => (
+										<TextField
+											fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+											type="number"
+											value={Math.round((field.value ?? 60000) / 60000)}
+											onChange={(e) =>
+												field.onChange(Math.max(1, Number(e.target.value)) * 60000)
+											}
+										/>
+									)}
+								/>
+								<Controller
+									name="escalationNotifications"
+									control={control}
+									render={({ field }) => {
+										const escalationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedEscalation = escalationOptions.filter((n) =>
+											(field.value ?? []).includes(n.id)
+										);
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<Autocomplete
+													multiple
+													options={escalationOptions}
+													value={selectedEscalation}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: typeof escalationOptions) => {
+														field.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+												/>
+												{selectedEscalation.length > 0 && (
+													<Stack flex={1} width="100%">
+														{selectedEscalation.map((notification, index) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={notification.id}
+																width="100%"
+															>
+																<Typography flexGrow={1}>
+																	{notification.notificationName}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		field.onChange(
+																			(field.value ?? []).filter(
+																				(id: string) => id !== notification.id
+																			)
+																		);
+																	}}
+																	aria-label="Remove escalation notification"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{index < selectedEscalation.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</>
+						)}
+					</Stack>
 				}
 			/>
 

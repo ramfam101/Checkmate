@@ -72,6 +72,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationSent: { // NEW: prevents duplicate escalation alerts for the same incident
+			type: Boolean,
+			default: false,
+		},
 	},
 	{ timestamps: true }
 );

@@ -92,7 +92,8 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			this.scheduler.addTemplate("monitor-job", this.helper.getHeartbeatJob());
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
-			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
+				this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
+				this.scheduler.addTemplate("escalation-check-job", this.helper.getEscalationCheckJob()); // NEW: registers escalation job template
 			const monitors = await this.monitorsRepository.findAll();
 			if (!monitors) {
 				return true;
@@ -106,7 +107,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addJob({ id: "cleanup-orphaned", template: "cleanup-orphaned", active: true });
 			this.scheduler.addJob({ id: "cleanup-retention", template: "cleanup-retention-job", active: true, repeat: 24 * 60 * 60 * 1000 });
-
+				this.scheduler.addJob({ id: "escalation-checker", template: "escalation-check-job", active: true, repeat: 60 * 1000 }); // NEW: runs escalation check every 60 seconds
 			return true;
 		} catch (error: unknown) {
 			this.logger.error({

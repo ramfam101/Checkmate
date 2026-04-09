@@ -30,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationCheckJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -455,4 +456,32 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationCheckJob = () => { // NEW: background job handler — polls for incidents needing escalation
+		return async () => {
+			try {
+				const activeIncidents = await this.incidentsRepository.findActiveUnescalated(); // NEW: only fetches incidents not yet escalated
+				for (const incident of activeIncidents) {
+					const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+					if (!monitor) continue;
+
+					if (
+						monitor.escalationEnabled &&
+						monitor.escalationDelayMs > 0 &&
+						Date.now() - new Date(incident.startTime).getTime() >= monitor.escalationDelayMs // NEW: incident age >= configured delay
+					) {
+						await this.notificationsService.handleEscalationNotifications(monitor, incident); // NEW: sends the escalation alert
+						await this.incidentsRepository.updateById(incident.id, incident.teamId, { escalationSent: true }); // NEW: marks incident so it won't escalate again
+					}
+				}
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
 }
