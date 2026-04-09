@@ -78,6 +78,7 @@ export const SettingsPage = () => {
 		fetchedSettings?.emailPasswordSet ?? false
 	);
 	const [emailPasswordHasBeenReset, setEmailPasswordHasBeenReset] = useState(false);
+	const hasSavedEmailPassword = isEmailPasswordSet && !emailPasswordHasBeenReset;
 	// Test email functionality
 	const { post: sendTestEmail, loading: isSendingTestEmail } = usePost();
 	// Local state for clear stats dialog
@@ -163,7 +164,7 @@ export const SettingsPage = () => {
 			!formValues.systemEmailHost ||
 			!formValues.systemEmailPort ||
 			!formValues.systemEmailAddress ||
-			!formValues.systemEmailPassword
+			(!formValues.systemEmailPassword && !hasSavedEmailPassword)
 		) {
 			alert("Please fill in all required email fields before testing.");
 			return;
@@ -174,12 +175,14 @@ export const SettingsPage = () => {
 			systemEmailHost: formValues.systemEmailHost,
 			systemEmailPort: formValues.systemEmailPort,
 			systemEmailAddress: formValues.systemEmailAddress,
-			systemEmailPassword: formValues.systemEmailPassword,
 			systemEmailSecure: formValues.systemEmailSecure,
 			systemEmailPool: formValues.systemEmailPool,
 			systemEmailIgnoreTLS: formValues.systemEmailIgnoreTLS,
 			systemEmailRequireTLS: formValues.systemEmailRequireTLS,
 			systemEmailRejectUnauthorized: formValues.systemEmailRejectUnauthorized,
+			...(formValues.systemEmailPassword && {
+				systemEmailPassword: formValues.systemEmailPassword,
+			}),
 			...(formValues.systemEmailUser && { systemEmailUser: formValues.systemEmailUser }),
 			...(formValues.systemEmailTLSServername && {
 				systemEmailTLSServername: formValues.systemEmailTLSServername,
@@ -838,7 +841,7 @@ export const SettingsPage = () => {
 										!form.watch("systemEmailHost") ||
 										!form.watch("systemEmailPort") ||
 										!form.watch("systemEmailAddress") ||
-										!form.watch("systemEmailPassword")
+										(!form.watch("systemEmailPassword") && !hasSavedEmailPassword)
 									}
 								>
 									{t("common.buttons.sendTestEmail")}

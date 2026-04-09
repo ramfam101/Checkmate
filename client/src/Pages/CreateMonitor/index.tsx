@@ -209,17 +209,32 @@ const CreateMonitorPage = () => {
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const watchedEscalationNotifications = watch("escalationNotifications") ?? [];
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const [escalationDelay, setEscalationDelay] = useState(3);
 
 	useEffect(() => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
 
+	useEffect(() => {
+		const firstDelay = watchedEscalationNotifications[0]?.delayMinutes;
+		setEscalationDelay(firstDelay ?? 3);
+	}, [watchedEscalationNotifications]);
+
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
 		[watchedType, t]
+	);
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
 	);
 
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
@@ -705,11 +720,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -754,6 +764,115 @@ const CreateMonitorPage = () => {
 														<Trash2 size={16} />
 													</IconButton>
 													{index < selectedNotifications.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalationNotifications"
+						control={control}
+						render={({ field }) => {
+							const escalationNotifications = field.value ?? [];
+							const selectedEscalationIds = escalationNotifications.map(
+								(escalation) => escalation.notificationId
+							);
+							const selectedEscalations = notificationOptions.filter((notification) =>
+								selectedEscalationIds.includes(notification.id)
+							);
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										type="number"
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.option.delay.label"
+										)}
+										value={escalationDelay}
+										onChange={(event) => {
+											const nextDelay = Number(event.target.value);
+											const sanitizedDelay =
+												Number.isNaN(nextDelay) || nextDelay < 1
+													? 1
+													: nextDelay > 10080
+														? 10080
+														: nextDelay;
+											setEscalationDelay(sanitizedDelay);
+											field.onChange(
+												escalationNotifications.map((entry) => ({
+													...entry,
+													delayMinutes: sanitizedDelay,
+												}))
+											);
+										}}
+										inputProps={{ min: 1, max: 10080 }}
+										fullWidth
+									/>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedEscalations}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalations.option.channels.label"
+										)}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											const nextValue = newValue.map((notification) => {
+												const existingEscalation = escalationNotifications.find(
+													(escalation) =>
+														escalation.notificationId === notification.id
+												);
+												return (
+													existingEscalation ?? {
+														notificationId: notification.id,
+														delayMinutes: escalationDelay,
+													}
+												);
+											});
+											field.onChange(nextValue);
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+									{selectedEscalations.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedEscalations.map((notification, index) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={notification.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{notification.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															field.onChange(
+																escalationNotifications.filter(
+																	(entry) =>
+																		entry.notificationId !== notification.id
+																)
+															);
+														}}
+														aria-label="Remove escalation notification"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{index < selectedEscalations.length - 1 && <Divider />}
 												</Stack>
 											))}
 										</Stack>

@@ -525,7 +525,7 @@
 							"label": "Ignore TLS/SSL errors"
 						}
 					},
-					"title": "TLS/SSL settings"
+					"title": "TLS/SSL Settings"
 				},
 				"incidents": {
 					"description": "A sliding window is used to determine when a monitor goes down. The status of a monitor will only change when the percentage of checks in the sliding window meet the specified value.",
@@ -542,6 +542,18 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+				},
+				"escalations": {
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"title": "Escalation Rules",
+					"option": {
+						"channels": {
+							"label": "Escalation notification channels"
+						},
+						"delay": {
+							"label": "Escalate after (minutes)"
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",
