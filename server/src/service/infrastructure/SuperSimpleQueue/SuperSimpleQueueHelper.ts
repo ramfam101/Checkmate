@@ -156,6 +156,35 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				// Step 5.5. Handle escalation scheduling (if enabled and status changed to down)
+				if (monitor.escalation?.enabled && statusChangeResult.statusChanged && monitor.status === "down") {
+					const delayMs = (monitor.escalation.delayMinutes || 1) * 60 * 1000;
+					setTimeout(async () => {
+						try {
+							// Re-check monitor status after delay
+							const currentMonitor = await this.monitorsRepository.findById(monitorId, teamId);
+							if (currentMonitor && currentMonitor.status === "down") {
+								// Monitor is still down, send escalation notification
+								this.notificationsService.handleEscalationNotification(currentMonitor, status).catch((error: unknown) => {
+									this.logger.error({
+										message: `Error sending escalation notification for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: error instanceof Error ? error.stack : undefined,
+									});
+								});
+							}
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Error checking escalation status for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}, delayMs);
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {

@@ -15,6 +15,11 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +53,34 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		clientHost: string
+	): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Escalation is always for down monitors
+		const severity: NotificationSeverity = "critical";
+		const content = this.buildEscalationContent(monitor, monitorStatusResponse);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "status_change",
 			},
 		};
 	}
@@ -106,6 +139,32 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `ESCALATION: Monitor Still Down: ${monitor.name}`;
+		const summary = `URGENT: Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		const details = [`URL: ${monitor.url}`, `Status: Still Down`, `Type: ${monitor.type}`, `Escalation: Follow-up notification after initial alert`];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add response time if available
+		if (monitorStatusResponse.responseTime) {
+			details.push(`Response Time: ${monitorStatusResponse.responseTime}ms`);
+		}
+
+		// Add timestamp
+		details.push(`Escalation Time: ${new Date().toISOString()}`);
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
