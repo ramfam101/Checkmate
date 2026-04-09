@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,14 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const {
+		fields: escalationFields,
+		append: appendEscalationRule,
+		remove: removeEscalationRule,
+	} = useFieldArray({
+		control,
+		name: "escalationRules",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -220,6 +228,15 @@ const CreateMonitorPage = () => {
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
 		[watchedType, t]
+	);
+
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
 	);
 
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
@@ -705,11 +722,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -762,6 +774,94 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((rule, index) => (
+							<Stack
+								key={rule.id}
+								direction={{ xs: "column", md: "row" }}
+								spacing={theme.spacing(LAYOUT.MD)}
+								alignItems={{ xs: "stretch", md: "center" }}
+							>
+								<Controller
+									name={`escalationRules.${index}.delayMinutes` as const}
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											value={field.value ?? 0}
+											onChange={(e) => {
+												const val = e.target.value;
+												const parsedValue = val === "" ? 0 : Number(val);
+												field.onChange(
+													Number.isNaN(parsedValue) ? 0 : Math.max(0, parsedValue)
+												);
+											}}
+											type="number"
+											inputProps={{ min: 0 }}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.delay.label"
+											)}
+											placeholder={t(
+												"pages.createMonitor.form.escalations.option.delay.placeholder"
+											)}
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+											fullWidth
+										/>
+									)}
+								/>
+								<Controller
+									name={`escalationRules.${index}.channelId` as const}
+									control={control}
+									render={({ field, fieldState }) => (
+										<Select
+											{...field}
+											value={field.value ?? ""}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.channel.label"
+											)}
+											error={!!fieldState.error}
+										>
+											<MenuItem value="">
+												{t(
+													"pages.createMonitor.form.escalations.option.channel.placeholder"
+												)}
+											</MenuItem>
+											{notificationOptions.map((notification) => (
+												<MenuItem
+													key={notification.id}
+													value={notification.id}
+												>
+													{notification.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+									)}
+								/>
+								<IconButton
+									size="small"
+									onClick={() => removeEscalationRule(index)}
+									aria-label={t("pages.createMonitor.form.escalations.option.removeRule")}
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						))}
+						<Button
+							type="button"
+							variant="outlined"
+							onClick={() => appendEscalationRule({ delayMinutes: 15, channelId: "" })}
+						>
+							{t("pages.createMonitor.form.escalations.option.addRule")}
+						</Button>
+					</Stack>
 				}
 			/>
 
