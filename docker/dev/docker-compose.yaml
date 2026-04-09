@@ -18,6 +18,9 @@ services:
       - "52345:52345"
     env_file:
       - server.env
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       - mongodb
   mongodb:

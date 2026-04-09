@@ -31,13 +31,25 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 
 	private handleHttpError<T>(error: unknown, monitor: Monitor): MonitorStatusResponse<T> {
 		if (error instanceof HTTPError || error instanceof RequestError) {
+			// Provide more specific error messages for common issues
+			let errorMessage = error.message;
+			if (error.message.includes("ENOTFOUND") || error.message.includes("queryA")) {
+				errorMessage = `DNS resolution failed for ${monitor.url}. Check network connectivity and DNS configuration.`;
+			} else if (error.message.includes("ECONNREFUSED")) {
+				errorMessage = `Connection refused to ${monitor.url}. The server may be down or blocking connections.`;
+			} else if (error.message.includes("ETIMEDOUT") || error.message.includes("timeout")) {
+				errorMessage = `Request timed out connecting to ${monitor.url}. The server may be slow or unreachable.`;
+			} else if (error.message.includes("CERT_HAS_EXPIRED") || error.message.includes("certificate")) {
+				errorMessage = `SSL certificate error for ${monitor.url}. Try enabling "Ignore TLS Errors" if this is expected.`;
+			}
+
 			return {
 				monitorId: monitor.id,
 				teamId: monitor.teamId,
 				type: monitor.type,
 				status: false,
 				code: error.response?.statusCode ?? NETWORK_ERROR,
-				message: error.message,
+				message: errorMessage,
 				responseTime: error.timings?.phases?.total ?? 0,
 				timings: error.timings,
 				payload: null as T,
