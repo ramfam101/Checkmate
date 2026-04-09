@@ -53,9 +53,14 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+
+		if (decision.shouldEscalate) {
+			return "escalation";
+		}
+		
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
-			return "monitor_down";
+				return "monitor_down";
 		}
 
 		// Threshold breach (only if not down)
@@ -88,6 +93,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "success";
 			case "test":
 				return "info";
+			case "escalation":
+				return "critical";
 			default:
 				return "info";
 		}
@@ -95,6 +102,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
+			case "escalation":
+				return this.buildMonitorEscalationContent(monitor);
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
@@ -122,6 +131,19 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		if (monitorStatusResponse.message) {
 			details.push(`Error: ${monitorStatusResponse.message}`);
 		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorEscalationContent(monitor: Monitor): NotificationContent {
+		const title = `Monitor Escalation: ${monitor.name} still down`;
+		const summary = `Monitor "${monitor.name}" has triggered an escalation.`;
+		const details = [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`];
 
 		return {
 			title,

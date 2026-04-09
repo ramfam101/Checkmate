@@ -160,7 +160,6 @@ const getGeneralSettingsConfig = (
 	};
 	return configs[type] || configs.http;
 };
-
 const CreateMonitorPage = () => {
 	const theme = useTheme();
 	const { t } = useTranslation();
@@ -754,6 +753,97 @@ const CreateMonitorPage = () => {
 														<Trash2 size={16} />
 													</IconButton>
 													{index < selectedNotifications.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationNotifications"
+						control={control}
+						render={({ field }) => {
+							// Map notifications to have 'name' property for Autocomplete
+							const escalationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const escalationNotifications = escalationOptions.filter((n) =>
+								(field.value ?? []).includes(n.id)
+							);
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Controller
+										name="escalationDelay"
+										control={form.control}
+										render={({ field, fieldState }) => (
+											<TextField
+												name={field.name}
+												ref={field.ref}
+												onBlur={field.onBlur}
+												value={
+													field.value === undefined || field.value === 0 ? "" : field.value
+												}
+												onChange={(e) => {
+													const val = e.target.value;
+													field.onChange(val === "" ? 0 : Number(val));
+												}}
+												fieldLabel={t("pages.createMonitor.form.escalation.option.escalationDelay.label")}
+												type="number"
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message}
+											/>
+										)}
+									/>
+									<Autocomplete
+										multiple
+										options={escalationOptions}
+										value={escalationNotifications}
+										fieldLabel={t("pages.createMonitor.form.escalation.option.escalationNotifications.label")}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof escalationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+									{escalationNotifications.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{escalationNotifications.map((escalation, index) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={escalation.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{escalation.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															field.onChange(
+																(field.value ?? []).filter(
+																	(id: string) => id !== escalation.id
+																)
+															);
+														}}
+														aria-label="Remove notification"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{index < escalationNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
 										</Stack>
