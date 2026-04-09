@@ -9,6 +9,7 @@ import { useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
+import type { Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useGet, usePost, usePatch } from "@/Hooks/UseApi";
 import { useNotificationForm } from "@/Hooks/useNotificationForm";
@@ -35,7 +36,7 @@ const NotificationsCreatePage = () => {
 	const { schema, defaults } = useNotificationForm({ data: existingNotification });
 
 	const form = useForm<NotificationFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema) as Resolver<NotificationFormData>,
 		defaultValues: defaults,
 	});
 
@@ -168,6 +169,55 @@ const NotificationsCreatePage = () => {
 								/>
 							)}
 						/>
+					}
+				/>
+			)}
+			{watchedType === "email" && (
+				<ConfigBox
+					title={t("pages.notifications.form.escalation.title")}
+					subtitle={t("pages.notifications.form.escalation.description")}
+					rightContent={
+						<Stack spacing={theme.spacing(8)}>
+							<Controller
+								name="escalationDelayMinutes"
+								control={control}
+								render={({ field, fieldState }) => (
+									<TextField
+										ref={field.ref}
+										name={field.name}
+										type="number"
+										value={field.value ?? ""}
+										onBlur={field.onBlur}
+										onChange={(event) => {
+											const nextValue = event.target.value;
+											field.onChange(nextValue === "" ? undefined : Number(nextValue));
+										}}
+										fieldLabel={t("pages.notifications.form.escalation.optionDelay")}
+										placeholder={t("pages.notifications.form.escalation.placeholderDelay")}
+										fullWidth
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+										inputProps={{ min: 1 }}
+									/>
+								)}
+							/>
+							<Controller
+								name="escalationEmailAddress"
+								control={control}
+								render={({ field, fieldState }) => (
+									<TextField
+										{...field}
+										type="text"
+										value={field.value ?? ""}
+										fieldLabel={t("pages.notifications.form.escalation.optionEmail")}
+										placeholder={t("pages.notifications.form.escalation.placeholderEmail")}
+										fullWidth
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+									/>
+								)}
+							/>
+						</Stack>
 					}
 				/>
 			)}

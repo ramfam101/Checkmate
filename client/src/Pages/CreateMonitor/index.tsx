@@ -202,13 +202,15 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const watchedNotifications = watch("notifications") as string[];
+const watchedEscalationNotificationId = watch("escalationNotificationId") as string | undefined;
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
@@ -216,6 +218,16 @@ const CreateMonitorPage = () => {
 	useEffect(() => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
+
+	useEffect(() => {
+		if (!watchedEscalationNotificationId) {
+			return;
+		}
+
+		if (!(watchedNotifications ?? []).includes(watchedEscalationNotificationId)) {
+			setValue("escalationNotificationId", "");
+		}
+	}, [watchedEscalationNotificationId, watchedNotifications, setValue]);
 
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
@@ -762,6 +774,76 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									ref={field.ref}
+									name={field.name}
+									type="number"
+									value={field.value ?? ""}
+									onBlur={field.onBlur}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? undefined : Number(val));
+									}}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+									placeholder={t(
+										"pages.createMonitor.form.escalation.option.delay.placeholder"
+									)}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+									inputProps={{ min: 1 }}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationId"
+							control={control}
+							render={({ field, fieldState }) => {
+								const options = (notifications ?? []).filter((notification) =>
+									(watchedNotifications ?? []).includes(notification.id)
+								);
+
+								return (
+									<Select
+										value={field.value ?? ""}
+										onChange={field.onChange}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.channel.label"
+										)}
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+										disabled={options.length === 0}
+									>
+										<MenuItem value="">
+											{t(
+												"pages.createMonitor.form.escalation.option.channel.placeholder"
+											)}
+										</MenuItem>
+										{options.map((option) => (
+											<MenuItem
+												key={option.id}
+												value={option.id}
+											>
+												{option.notificationName}
+											</MenuItem>
+										))}
+									</Select>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

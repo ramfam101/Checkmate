@@ -8,6 +8,8 @@ export interface Notification {
 	type: NotificationChannel;
 	notificationName: string;
 	address?: string;
+	escalationDelayMinutes?: number;
+	escalationEmailAddress?: string;
 	phone?: string;
 	homeserverUrl?: string;
 	roomId?: string;

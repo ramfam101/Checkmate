@@ -5,6 +5,14 @@ const baseSchema = z.object({
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	escalationDelayMinutes: z
+		.number()
+		.int("Escalation delay must be a whole number")
+		.min(1, "Escalation delay must be at least 1 minute")
+		.optional(),
+	escalationEmailAddress: z
+		.union([z.literal(""), z.string().email("Please enter a valid escalation email address")])
+		.optional(),
 });
 
 const emailSchema = baseSchema.extend({
