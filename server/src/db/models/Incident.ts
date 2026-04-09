@@ -40,6 +40,11 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: Date,
 			default: null,
 		},
+		// Whether escalation notifications have been sent for this incident
+		escalationSent: {
+			type: Boolean,
+			default: false,
+		},
 		status: {
 			type: Boolean,
 			default: true,

@@ -17,6 +17,9 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+
+	// Send notifications by explicit list of notification IDs (used for escalation)
+	sendNotificationsByIds: (notificationIds: string[], monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -129,6 +132,82 @@ export class NotificationsService implements INotificationsService {
 			});
 		}
 		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
+	};
+
+	// Send notifications for a specific list of notification ids (used by escalation)
+	sendNotificationsByIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
+		if (!notificationIds || notificationIds.length === 0) return true;
+
+		this.logger.info({
+			message: `[ESCALATION] Loading notifications by IDs: ${JSON.stringify(notificationIds)}`,
+			service: SERVICE_NAME,
+			method: "sendNotificationsByIds",
+		});
+
+		// Use the same lookup method as regular notifications (findNotificationsByIds)
+		// instead of findByTeamId + filter, to ensure consistent ObjectId handling
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		this.logger.info({
+			message: `[ESCALATION] Found ${notifications.length} notification(s): ${JSON.stringify(notifications.map((n) => ({ id: n.id, type: n.type, address: n.address, name: n.notificationName })))}`,
+			service: SERVICE_NAME,
+			method: "sendNotificationsByIds",
+		});
+
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: `No escalation notifications found for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendNotificationsByIds",
+			});
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		// Mark as escalation so providers can differentiate (e.g. different email subject)
+		notificationMessage.metadata.isEscalation = true;
+
+		this.logger.info({
+			message: `[ESCALATION] Built notification message: type=${notificationMessage.type}, severity=${notificationMessage.severity}, title=${notificationMessage.content.title}, isEscalation=${notificationMessage.metadata.isEscalation}`,
+			service: SERVICE_NAME,
+			method: "sendNotificationsByIds",
+		});
+
+		const tasks = notifications.map(async (notification) => {
+			this.logger.info({
+				message: `[ESCALATION] Sending to notification ${notification.id} (type=${notification.type}, address=${notification.address})`,
+				service: SERVICE_NAME,
+				method: "sendNotificationsByIds",
+			});
+			const result = await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+			this.logger.info({
+				message: `[ESCALATION] Send result for ${notification.id}: ${result}`,
+				service: SERVICE_NAME,
+				method: "sendNotificationsByIds",
+			});
+			return result;
+		});
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendNotificationsByIds",
+			});
+		}
+
 		return succeeded === notifications.length;
 	};
 

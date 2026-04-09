@@ -168,15 +168,111 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				// Step 7. Handle incidents (must complete before escalation check)
+				try {
+					await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+				} catch (error: unknown) {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
-				});
+				}
+
+				// Step 8. Handle escalation: if there's an active incident and the monitor has escalation rules
+				// Use statusChangeResult.monitor (fresh from DB) for escalation fields
+				const currentMonitor = statusChangeResult.monitor;
+				try {
+					this.logger.info({
+						message: `[ESCALATION DEBUG] Monitor ${currentMonitor.id} (${currentMonitor.name}): escalateAfterMinutes=${currentMonitor.escalateAfterMinutes}, escalationNotifications=${JSON.stringify(currentMonitor.escalationNotifications)}, status=${currentMonitor.status}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
+
+					if (currentMonitor.escalateAfterMinutes && currentMonitor.escalateAfterMinutes > 0 && Array.isArray(currentMonitor.escalationNotifications) && currentMonitor.escalationNotifications.length > 0) {
+						const activeIncident = await this.incidentsRepository.findActiveByMonitorId(currentMonitor.id, currentMonitor.teamId);
+
+						this.logger.info({
+							message: `[ESCALATION DEBUG] Monitor ${currentMonitor.id}: activeIncident=${activeIncident ? activeIncident.id : "null"}, startTime=${activeIncident?.startTime ?? "N/A"}, escalationSent=${activeIncident?.escalationSent ?? "N/A"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+
+						if (activeIncident) {
+							// Check elapsed time since incident start
+							const startMs = new Date(activeIncident.startTime).getTime();
+							const elapsedMs = Date.now() - startMs;
+							const thresholdMs = currentMonitor.escalateAfterMinutes * 60 * 1000;
+							const escalationAlreadySent = activeIncident.escalationSent ?? false;
+
+							this.logger.info({
+								message: `[ESCALATION DEBUG] Monitor ${currentMonitor.id}: elapsedMs=${elapsedMs}, thresholdMs=${thresholdMs}, escalationAlreadySent=${escalationAlreadySent}, shouldTrigger=${!escalationAlreadySent && elapsedMs >= thresholdMs}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+
+							if (!escalationAlreadySent && elapsedMs >= thresholdMs) {
+								// Build a decision for escalation notification
+								const escalationDecision: MonitorActionDecision = {
+									shouldCreateIncident: false,
+									shouldResolveIncident: false,
+									shouldSendNotification: true,
+									incidentReason: null,
+									notificationReason: "status_change",
+								};
+								this.logger.info({
+									message: `[ESCALATION DEBUG] Monitor ${currentMonitor.id}: SENDING escalation to notification IDs: ${JSON.stringify(currentMonitor.escalationNotifications)}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+								// Send escalation notifications by explicit ids
+								const sent = await this.notificationsService.sendNotificationsByIds(currentMonitor.escalationNotifications, currentMonitor, status, escalationDecision).catch((err) => {
+									this.logger.warn({
+										message: `Error sending escalation notifications for monitor ${currentMonitor.id}: ${err instanceof Error ? err.message : String(err)}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: err instanceof Error ? err.stack : undefined,
+									});
+									return false;
+								});
+
+								this.logger.info({
+									message: `[ESCALATION DEBUG] Monitor ${currentMonitor.id}: sendNotificationsByIds returned: ${sent}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+
+								if (sent) {
+									// mark incident as escalationSent so we don't resend for this incident
+									await this.incidentsRepository
+										.updateById(activeIncident.id, activeIncident.teamId, { escalationSent: true })
+										.catch((err) => {
+											this.logger.warn({
+												message: `Failed to mark escalationSent for incident ${activeIncident.id}: ${err instanceof Error ? err.message : String(err)}`,
+												service: SERVICE_NAME,
+												method: "getMonitorJob",
+												stack: err instanceof Error ? err.stack : undefined,
+											});
+										});
+								}
+							}
+						}
+					} else {
+						this.logger.debug({
+							message: `[ESCALATION DEBUG] Monitor ${currentMonitor.id}: Skipping escalation - no escalation rules configured`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					}
+				} catch (err: unknown) {
+					this.logger.warn({
+						message: `Error during escalation check for monitor ${currentMonitor.id}: ${err instanceof Error ? err.message : String(err)}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: err instanceof Error ? err.stack : undefined,
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -354,8 +450,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	async isInMaintenanceWindow(monitorId: string, teamId: string) {
-		const maintenanceWindows = await this.maintenanceWindowsRepository.findByMonitorId(monitorId, teamId);
+
+	isInMaintenanceWindow = async (monitorId: string, teamId: string): Promise<boolean> => {
+			const maintenanceWindows = await this.maintenanceWindowsRepository.findByMonitorId(monitorId, teamId);
 		// Check for active maintenance window:
 		const maintenanceWindowIsActive = maintenanceWindows.reduce((acc: boolean, window: MaintenanceWindow) => {
 			if (window.active) {
