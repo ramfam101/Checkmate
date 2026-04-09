@@ -539,6 +539,27 @@
 					},
 					"title": "Incidents"
 				},
+				"escalations": {
+					"description": "Create one or more alert stages that fire as an incident continues to run.",
+					"option": {
+						"enabled": {
+							"label": "Enable escalated notifications"
+						}
+					},
+					"stage": {
+						"title": "Escalation stage {{index}}",
+						"removeAriaLabel": "Remove escalation stage {{index}}",
+						"delay": {
+							"label": "Alert after (minutes)",
+							"placeholder": 15
+						},
+						"notifications": {
+							"label": "Notifications to send"
+						}
+					},
+					"addStage": "Add escalation stage",
+					"title": "Escalated notifications"
+				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
@@ -951,6 +972,14 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"telegram": {
+					"title": "Telegram configuration",
+					"description": "Configure your Telegram bot to send notifications.",
+					"optionBotToken": "Bot token",
+					"placeholderBotToken": "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ",
+					"optionChatId": "Chat ID",
+					"placeholderChatId": "-1001234567890"
 				}
 			},
 			"table": {
