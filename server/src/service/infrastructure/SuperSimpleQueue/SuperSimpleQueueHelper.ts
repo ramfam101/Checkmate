@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -168,15 +168,20 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				// Step 7. Handle incidents, then check escalation rules after incident exists (best effort, don't wait)
+				this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.then(() => {
+						return this.checkEscalationRules(statusChangeResult.monitor, status, decision);
+					})
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error in incident/escalation handling for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -416,6 +421,28 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private checkEscalationRules = async (monitor: Monitor, status: MonitorStatusResponse, decision: MonitorActionDecision): Promise<void> => {
+		if (monitor.status !== "down" && monitor.status !== "breached") return;
+
+		const rule = monitor.escalationRule;
+		if (!rule || rule.notificationIds.length === 0) return;
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) return;
+
+		// Rule index 0 is the only rule; skip if already escalated
+		const escalatedIndices = activeIncident.escalatedIndices ?? [];
+		if (escalatedIndices.includes(0)) return;
+
+		const incidentDurationMs = Date.now() - new Date(activeIncident.startTime).getTime();
+		if (incidentDurationMs >= rule.delayMinutes * 60 * 1000) {
+			await this.notificationsService.sendEscalationNotifications(monitor, rule.notificationIds, status, decision);
+			await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, {
+				escalatedIndices: [0],
+			});
+		}
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {

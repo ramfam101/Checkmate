@@ -36,6 +36,7 @@ import {
 	type Monitor,
 	type MonitorType,
 	type GamesMap,
+	type EscalationRule,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
@@ -758,6 +759,54 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationRule"
+						control={control}
+						render={({ field }) => {
+							const rule: EscalationRule | null = field.value ?? null;
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										value={rule?.delayMinutes ?? 30}
+										onChange={(e) => {
+											const delay = Math.max(1, Number(e.target.value) || 1);
+											field.onChange({ delayMinutes: delay, notificationIds: rule?.notificationIds ?? [] });
+										}}
+										type="number"
+										fieldLabel={t("pages.createMonitor.form.escalation.delayLabel")}
+										fullWidth
+									/>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={notificationOptions.filter((n) =>
+											(rule?.notificationIds ?? []).includes(n.id)
+										)}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange({
+												delayMinutes: Math.max(1, rule?.delayMinutes ?? 30),
+												notificationIds: newValue.map((n) => n.id),
+											});
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t("pages.createMonitor.form.escalation.channelsLabel")}
+									/>
 								</Stack>
 							);
 						}}
