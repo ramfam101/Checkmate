@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,7 +154,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
@@ -418,7 +418,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -431,6 +431,26 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			const escalationMinutes = monitor.escalationTime ?? 0;
+			if (monitor.status === "down" && escalationMinutes > 0) {
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+				const escalationEmailSentAt = (activeIncident as { escalationEmailSentAt?: string | null } | null)
+					?.escalationEmailSentAt;
+				const incidentStartMs = activeIncident?.startTime
+					? new Date(activeIncident.startTime).getTime()
+					: Number.NaN;
+				const escalationMs = escalationMinutes * 60000;
+
+				if (
+					activeIncident &&
+					!Number.isNaN(incidentStartMs) &&
+					Date.now() - incidentStartMs >= escalationMs &&
+					!escalationEmailSentAt
+				) {
+					decision.shouldSendNotification = true;
+					decision.notificationReason = "escalation";
+				}
+			}
 			return decision;
 		}
 
