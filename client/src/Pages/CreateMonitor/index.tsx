@@ -765,6 +765,66 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delayMinutes")}
+									placeholder="30"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+									onChange={(e) => {
+										const value = e.target.value ? parseInt(e.target.value) : undefined;
+										field.onChange(value);
+									}}
+									inputProps={{ min: 1, max: 10080 }}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationId"
+							control={control}
+							render={({ field, fieldState }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									id: n.id,
+									name: n.notificationName,
+									type: n.type,
+								}));
+								return (
+									<Select
+										value={field.value ?? ""}
+										fieldLabel={t("pages.createMonitor.form.escalation.option.escalationChannel")}
+										error={!!fieldState.error}
+										onChange={(e) => field.onChange(e.target.value)}
+									>
+										<MenuItem value="">
+											<em>{t("pages.createMonitor.form.escalation.option.selectChannel")}</em>
+										</MenuItem>
+										{notificationOptions.map((notif) => (
+											<MenuItem
+												key={notif.id}
+												value={notif.id}
+											>
+												{notif.name} ({notif.type})
+											</MenuItem>
+										))}
+									</Select>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
