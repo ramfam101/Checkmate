@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalationMinutes = watch("escalationMinutes") as number | undefined;
 
 	useEffect(() => {
 		clearErrors();
@@ -764,152 +765,96 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
-
-			{(watchedType === "http" ||
-				watchedType === "grpc" ||
-				watchedType === "websocket") && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.ignoreTls.title")}
-					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-					rightContent={
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatedNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
 						<Controller
-							name="ignoreTlsErrors"
+							name="escalationMinutes"
 							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
-									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
-								</Stack>
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									type="number"
+									fieldLabel={t(
+										"pages.createMonitor.form.escalatedNotifications.escalationMinutes.label"
+									)}
+									helperText={fieldState.error?.message ?? ""}
+									error={!!fieldState.error}
+									fullWidth
+									inputProps={{ min: 1 }}
+								/>
 							)}
 						/>
-					}
-				/>
-			)}
-
-			{watchedType === "http" && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.advanced.title")}
-					subtitle={t("pages.createMonitor.form.advanced.description")}
-					rightContent={
-						<Stack spacing={theme.spacing(LAYOUT.MD)}>
-							<Controller
-								name="useAdvancedMatching"
-								control={control}
-								render={({ field }) => (
-									<Stack
-										direction="row"
-										alignItems="center"
-										spacing={theme.spacing(SPACING.LG)}
-									>
-										<Switch
-											checked={field.value ?? false}
-											onChange={(e) => field.onChange(e.target.checked)}
-										/>
-										<Typography>
-											{t(
-												"pages.createMonitor.form.advanced.option.advancedMatching.label"
-											)}
-										</Typography>
-									</Stack>
-								)}
-							/>
-							{watchedUseAdvancedMatching && (
-								<Stack spacing={theme.spacing(LAYOUT.MD)}>
-									<Controller
-										name="matchMethod"
-										control={control}
-										render={({ field }) => (
-											<Select
-												{...field}
-												value={field.value ?? "equal"}
-												fieldLabel={t(
-													"pages.createMonitor.form.advanced.option.matchMethod.label"
-												)}
-											>
-												<MenuItem value="equal">
-													{t(
-														"pages.createMonitor.form.advanced.option.matchMethod.equal"
-													)}
-												</MenuItem>
-												<MenuItem value="include">
-													{t(
-														"pages.createMonitor.form.advanced.option.matchMethod.include"
-													)}
-												</MenuItem>
-												<MenuItem value="regex">
-													{t(
-														"pages.createMonitor.form.advanced.option.matchMethod.regex"
-													)}
-												</MenuItem>
-											</Select>
-										)}
-									/>
-									<Controller
-										name="expectedValue"
-										control={control}
-										render={({ field, fieldState }) => (
-											<TextField
-												{...field}
-												value={field.value ?? ""}
-												fieldLabel={t(
-													"pages.createMonitor.form.advanced.option.expectedValue.label"
-												)}
-												fullWidth
-												error={!!fieldState.error}
-												helperText={fieldState.error?.message ?? ""}
-											/>
-										)}
-									/>
-									<Controller
-										name="jsonPath"
-										control={control}
-										render={({ field, fieldState }) => (
-											<TextField
-												{...field}
-												value={field.value ?? ""}
-												fieldLabel={t(
-													"pages.createMonitor.form.advanced.option.jsonPath.label"
-												)}
-												fullWidth
-												error={!!fieldState.error}
-												helperText={fieldState.error?.message ?? ""}
-											/>
-										)}
-									/>
-									<Typography
-										component="span"
-										color="text.secondary"
-										sx={{ opacity: 0.8 }}
-									>
-										<Trans
-											i18nKey="pages.createMonitor.form.advanced.option.jsonPath.description"
-											components={{
-												jmesLink: (
-													<Link
-														href="https://jmespath.org/"
-														target="_blank"
-														rel="noopener noreferrer"
-													/>
-												),
+						<Controller
+							name="escalatedNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
 											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalatedNotifications.channels.label"
+											)}
+											disabled={!watchedEscalationMinutes}
 										/>
-									</Typography>
-								</Stack>
-							)}
-						</Stack>
-					}
-				/>
-			)}
-
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
 			{supportsGeoCheck(watchedType) && (
 				<ConfigBox
 					title={t("pages.createMonitor.form.geoChecks.title")}
@@ -917,128 +862,103 @@ const CreateMonitorPage = () => {
 					rightContent={
 						<Stack spacing={theme.spacing(LAYOUT.MD)}>
 							<Controller
-								name="geoCheckEnabled"
+								name="geoCheckLocations"
 								control={control}
-								render={({ field }) => (
-									<Stack
-										direction="row"
-										alignItems="center"
-										spacing={theme.spacing(SPACING.LG)}
-									>
-										<Switch
-											checked={field.value ?? false}
-											onChange={(e) => field.onChange(e.target.checked)}
-										/>
-										<Typography>
-											{t("pages.createMonitor.form.geoChecks.option.enabled.label")}
-										</Typography>
-									</Stack>
-								)}
-							/>
-							{watchGeoCheckEnabled && (
-								<Stack spacing={theme.spacing(LAYOUT.MD)}>
-									<Controller
-										name="geoCheckLocations"
-										control={control}
-										render={({ field }) => {
-											// Map continents to have 'name' property for Autocomplete
-											const locationOptions = GeoContinents.map((continent) => ({
-												id: continent,
-												name: t(
-													`pages.createMonitor.form.geoChecks.option.locations.options.${continent}`
-												),
-											}));
-											const selectedLocations = locationOptions.filter((loc) =>
-												(field.value ?? []).includes(loc.id)
-											);
-											return (
-												<Stack spacing={theme.spacing(LAYOUT.MD)}>
-													<Autocomplete
-														multiple
-														options={locationOptions}
-														value={selectedLocations}
-														getOptionLabel={(option) => option.name}
-														onChange={(_: unknown, newValue: typeof locationOptions) => {
-															field.onChange(newValue.map((loc) => loc.id));
-														}}
-														isOptionEqualToValue={(option, value) =>
-															option.id === value.id
-														}
-														fieldLabel={t(
-															"pages.createMonitor.form.geoChecks.option.locations.label"
-														)}
-													/>
-													{selectedLocations.length > 0 && (
+								render={({ field }) => {
+									// Map continents to have 'name' property for Autocomplete
+									const locationOptions = GeoContinents.map((continent) => ({
+										id: continent,
+										name: t(
+											`pages.createMonitor.form.geoChecks.option.locations.options.${continent}`
+										),
+									}));
+									const selectedLocations = locationOptions.filter((loc) =>
+										(field.value ?? []).includes(loc.id)
+									);
+									return (
+										<Stack spacing={theme.spacing(LAYOUT.MD)}>
+											<Autocomplete
+												multiple
+												options={locationOptions}
+												value={selectedLocations}
+												getOptionLabel={(option) => option.name}
+												onChange={(_: unknown, newValue: typeof locationOptions) => {
+													field.onChange(newValue.map((loc) => loc.id));
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												fieldLabel={t(
+													"pages.createMonitor.form.geoChecks.option.locations.label"
+												)}
+											/>
+											{selectedLocations.length > 0 && (
+												<Stack
+													flex={1}
+													width="100%"
+												>
+													{selectedLocations.map((location, index) => (
 														<Stack
-															flex={1}
+															direction="row"
+															alignItems="center"
+															key={location.id}
 															width="100%"
 														>
-															{selectedLocations.map((location, index) => (
-																<Stack
-																	direction="row"
-																	alignItems="center"
-																	key={location.id}
-																	width="100%"
-																>
-																	<Typography flexGrow={1}>{location.name}</Typography>
-																	<IconButton
-																		size="small"
-																		onClick={() => {
-																			field.onChange(
-																				(field.value ?? []).filter(
-																					(id: string) => id !== location.id
-																				)
-																			);
-																		}}
-																		aria-label="Remove location"
-																	>
-																		<Trash2 size={16} />
-																	</IconButton>
-																	{index < selectedLocations.length - 1 && <Divider />}
-																</Stack>
-															))}
+															<Typography flexGrow={1}>{location.name}</Typography>
+															<IconButton
+																size="small"
+																onClick={() => {
+																	field.onChange(
+																		(field.value ?? []).filter(
+																			(id: string) => id !== location.id
+																		)
+																	);
+																}}
+																aria-label="Remove location"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+															{index < selectedLocations.length - 1 && <Divider />}
 														</Stack>
-													)}
+													))}
 												</Stack>
-											);
-										}}
-									/>
-									<Controller
-										name="geoCheckInterval"
-										control={control}
-										render={({ field }) => (
-											<Select
-												{...field}
-												value={field.value ?? 300000}
-												fieldLabel={t(
-													"pages.createMonitor.form.geoChecks.option.interval.label"
-												)}
-											>
-												<MenuItem value={300000}>
-													{t(
-														"pages.createMonitor.form.geoChecks.option.interval.value.fiveMinutes"
-													)}
-												</MenuItem>
-												<MenuItem value={600000}>
-													{t(
-														"pages.createMonitor.form.geoChecks.option.interval.value.tenMinutes"
-													)}
-												</MenuItem>
-												<MenuItem value={900000}>
-													{t(
-														"pages.createMonitor.form.geoChecks.option.interval.value.fifteenMinutes"
-													)}
-												</MenuItem>
-												<MenuItem value={1800000}>
-													{t(
-														"pages.createMonitor.form.geoChecks.option.interval.value.thirtyMinutes"
-													)}
-												</MenuItem>
-											</Select>
+											)}
+										</Stack>
+									);
+								}}
+							/>
+							<Controller
+								name="geoCheckInterval"
+								control={control}
+								render={({ field }) => (
+									<Select
+										{...field}
+										value={field.value ?? 300000}
+										fieldLabel={t(
+											"pages.createMonitor.form.geoChecks.option.interval.label"
 										)}
-									/>
-								</Stack>
-							)}
+									>
+										<MenuItem value={300000}>
+											{t(
+												"pages.createMonitor.form.geoChecks.option.interval.value.fiveMinutes"
+											)}
+										</MenuItem>
+										<MenuItem value={600000}>
+											{t(
+												"pages.createMonitor.form.geoChecks.option.interval.value.tenMinutes"
+											)}
+										</MenuItem>
+										<MenuItem value={900000}>
+											{t(
+												"pages.createMonitor.form.geoChecks.option.interval.value.fifteenMinutes"
+											)}
+										</MenuItem>
+										<MenuItem value={1800000}>
+											{t(
+												"pages.createMonitor.form.geoChecks.option.interval.value.thirtyMinutes"
+											)}
+										</MenuItem>
+									</Select>
+								)}
+							/>
 						</Stack>
 					}
 				/>
