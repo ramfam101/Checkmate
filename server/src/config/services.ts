@@ -9,6 +9,7 @@ import {
 	SuperSimpleQueue,
 	SuperSimpleQueueHelper,
 	NotificationsService,
+	EscalationService,
 	StatusService,
 	NotificationMessageBuilder,
 	MonitorService,
@@ -246,6 +247,14 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(
+		logger,
+		incidentsRepository,
+		monitorsRepository,
+		notificationsRepository,
+		notificationsService
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -265,7 +274,12 @@ export const initializeServices = async ({
 		geoChecksRepository
 	);
 
-	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+	const superSimpleQueue = await SuperSimpleQueue.create(
+		logger,
+		superSimpleQueueHelper,
+		monitorsRepository,
+		escalationService.checkAndSendEscalations
+	);
 
 	// Business services
 	const userService = new UserService({
@@ -326,6 +340,7 @@ export const initializeServices = async ({
 		incidentService,
 		logger,
 		notificationsService,
+		escalationService,
 		statusPageService,
 		notificationMessageBuilder,
 

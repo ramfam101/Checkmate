@@ -61,26 +61,28 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 	private helper: ISuperSimpleQueueHelper;
 	private monitorsRepository: IMonitorsRepository;
 	private readonly scheduler: Scheduler;
+	private escalationJob: (() => Promise<void>) | null = null;
 
-	constructor(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, scheduler: Scheduler) {
+	constructor(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, scheduler: Scheduler, escalationJobFn?: () => Promise<void>) {
 		this.logger = logger;
 		this.helper = helper;
 		this.monitorsRepository = monitorsRepository;
 		this.scheduler = scheduler;
+		this.escalationJob = escalationJobFn || null;
 	}
 
 	get serviceName() {
 		return SuperSimpleQueue.SERVICE_NAME;
 	}
 
-	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository) {
+	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, escalationJobFn?: () => Promise<void>) {
 		const scheduler = new Scheduler({
 			// storeType: "mongo",
 			// storeType: "redis",
 			logLevel: "debug",
 			// dbUri: envSettings.dbConnectionString,
 		});
-		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler);
+		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler, escalationJobFn);
 		await instance.init();
 		return instance;
 	}
@@ -93,6 +95,11 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
+			
+			if (this.escalationJob) {
+				this.scheduler.addTemplate("escalation-job", this.escalationJob);
+			}
+
 			const monitors = await this.monitorsRepository.findAll();
 			if (!monitors) {
 				return true;
@@ -106,6 +113,11 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addJob({ id: "cleanup-orphaned", template: "cleanup-orphaned", active: true });
 			this.scheduler.addJob({ id: "cleanup-retention", template: "cleanup-retention-job", active: true, repeat: 24 * 60 * 60 * 1000 });
+			
+			if (this.escalationJob) {
+				// Run escalation job every 5 minutes
+				this.scheduler.addJob({ id: "escalation", template: "escalation-job", active: true, repeat: 5 * 60 * 1000 });
+			}
 
 			return true;
 		} catch (error: unknown) {

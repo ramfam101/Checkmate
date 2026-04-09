@@ -541,7 +541,19 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"escalationAfter": "Escalation after {{minutes}} minute(s)"
+				},
+				"escalation": {
+					"description": "Configure escalation rules for selected notifications",
+					"title": "Escalation Rules",
+					"delay": {
+						"label": "Escalate after (minutes)",
+						"requiresChannels": "Select escalation notification channels to enable this field"
+					},
+					"notifications": {
+						"label": "Escalation notification channels"
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",

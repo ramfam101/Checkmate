@@ -12,6 +12,7 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalationDelay?: number; // in minutes, 0 or undefined means immediate
 	createdAt: string;
 	updatedAt: string;
 }

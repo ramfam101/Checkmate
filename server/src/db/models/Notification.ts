@@ -37,6 +37,7 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		homeserverUrl: { type: String },
 		roomId: { type: String },
 		accessToken: { type: String },
+		escalationDelay: { type: Number, default: 0 }, // in minutes
 	},
 	{
 		timestamps: true,

@@ -198,7 +198,7 @@ const CreateMonitorPage = () => {
 		defaultType,
 	});
 
-	const form = useForm<MonitorFormData>({
+	const form = useForm({
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
@@ -736,10 +736,16 @@ const CreateMonitorPage = () => {
 													alignItems="center"
 													key={notification.id}
 													width="100%"
+													spacing={1}
 												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
+													<Stack
+														flex={1}
+														spacing={0.5}
+													>
+														<Typography>
+															{notification.notificationName}
+														</Typography>
+													</Stack>
 													<IconButton
 														size="small"
 														onClick={() => {
@@ -762,6 +768,109 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelay"
+							control={control}
+							render={({ field, fieldState }) => {
+								// Show empty field with placeholder when value is 0 or undefined (default state)
+								const displayValue = (field.value === 0 || field.value === undefined || field.value === null) ? "" : field.value;
+								
+								return (
+									<TextField
+										type="number"
+										value={displayValue}
+										onChange={(e) => {
+											const value = e.target.value;
+											const numValue = value === "" ? undefined : Number(value);
+											field.onChange(numValue);
+										}}
+										onBlur={field.onBlur}
+										fieldLabel={t("pages.createMonitor.form.escalation.delay.label")}
+										fullWidth
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+										inputProps={{ min: 0, step: "any" }}
+										placeholder="0"
+									/>
+								);
+							}}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedEscalationNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedEscalationNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t("pages.createMonitor.form.escalation.notifications.label")}
+										/>
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+														spacing={1}
+													>
+														<Stack
+															flex={1}
+															spacing={0.5}
+														>
+															<Typography>
+																{notification.notificationName}
+															</Typography>
+														</Stack>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

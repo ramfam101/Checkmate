@@ -13,6 +13,8 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationDelay: z.number().min(0, "Escalation delay must be 0 or greater").default(0),
+	escalationNotifications: z.array(z.string()).default([]),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -27,7 +29,19 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
-});
+}).refine(
+	(data) => {
+		// If escalation notifications are selected, escalationDelay must be > 0
+		if (data.escalationNotifications.length > 0) {
+			return data.escalationDelay > 0;
+		}
+		return true;
+	},
+	{
+		message: "Escalation delay must be greater than 0 when escalation channels are selected",
+		path: ["escalationDelay"],
+	}
+);
 
 // HTTP monitor schema
 const httpSchema = baseSchema.extend({
