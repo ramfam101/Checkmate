@@ -230,11 +230,11 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		statusWindowSize: {
 			type: Number,
-			default: 5,
+			default: 1,
 		},
 		statusWindowThreshold: {
 			type: Number,
-			default: 60,
+			default: 100,
 		},
 		type: {
 			type: String,
