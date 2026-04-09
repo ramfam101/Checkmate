@@ -252,11 +252,18 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		// Transform escalation data to the format expected by the backend
+		const transformedData = {
+			...data,
+			escalationEnabled: (data.escalationMinutes ?? 0) > 0,
+			escalationIntervals: (data.escalationMinutes ?? 0) > 0 ? [data.escalationMinutes ?? 0] : [],
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, transformedData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", transformedData);
 		}
 
 		if (result?.success) {
@@ -705,7 +712,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
@@ -719,11 +725,12 @@ const CreateMonitorPage = () => {
 										multiple
 										options={notificationOptions}
 										value={selectedNotifications}
-										getOptionLabel={(option) => option.name}
-										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+										getOptionLabel={(option) => option.notificationName}
+										onChange={(_: unknown, newValue: Notification[]) => {
 											field.onChange(newValue.map((n) => n.id));
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
+										disabled={!notifications || notifications.length === 0}
 									/>
 									{selectedNotifications.length > 0 && (
 										<Stack
@@ -761,6 +768,101 @@ const CreateMonitorPage = () => {
 								</Stack>
 							);
 						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Controller
+						name="escalationMinutes"
+						control={control}
+						render={({ field: minutesField }) => (
+							<Controller
+								name="escalationNotificationIds"
+								control={control}
+								render={({ field: notificationsField }) => {
+									const notificationOptions = (notifications ?? []).map((n) => ({
+										...n,
+										name: n.notificationName,
+									}));
+
+									const selectedNotifications = notificationOptions.filter((n) =>
+										notificationsField.value?.includes(n.id)
+									);
+
+									return (
+										<Stack spacing={theme.spacing(LAYOUT.MD)}>
+											{/* Minutes input */}
+											<TextField
+												fieldLabel={t("pages.createMonitor.form.escalationRules.minutesLabel")}
+												type="number"
+												value={minutesField.value ?? 0}
+												onChange={(e) =>
+													minutesField.onChange(parseInt(e.target.value) || 0)
+												}
+												size="small"
+												helperText={t("pages.createMonitor.form.escalationRules.minutesHelper")}
+											/>
+
+											{/* Channel search bar - similar to notifications */}
+											<Autocomplete
+												multiple
+												options={notificationOptions}
+												value={selectedNotifications}
+												getOptionLabel={(option) => option.notificationName}
+												onChange={(_: unknown, newValue: Notification[]) => {
+													notificationsField.onChange(newValue.map((n) => n.id));
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												renderInput={(params) => (
+													<TextField {...params} fieldLabel={t("pages.createMonitor.form.escalationRules.channelsLabel")} />
+												)}
+												disabled={!notifications || notifications.length === 0}
+											/>
+
+											{/* Selected channels display - similar to notifications */}
+											{selectedNotifications.length > 0 && (
+												<Stack
+													flex={1}
+													width="100%"
+												>
+													{selectedNotifications.map((notification, index) => (
+														<Stack
+															direction="row"
+															alignItems="center"
+															key={notification.id}
+															width="100%"
+														>
+															<Typography flexGrow={1}>
+																{notification.notificationName}
+															</Typography>
+															<IconButton
+																size="small"
+																onClick={() => {
+																	notificationsField.onChange(
+																		(notificationsField.value ?? []).filter(
+																			(id: string) => id !== notification.id
+																		)
+																	);
+																}}
+																aria-label="Remove notification"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+															{index < selectedNotifications.length - 1 && <Divider />}
+														</Stack>
+													))}
+												</Stack>
+											)}
+
+										</Stack>
+									);
+								}}
+							/>
+						)}
 					/>
 				}
 			/>

@@ -1104,5 +1104,19 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "إذا ظل جهاز المراقبة معطلاً للوقت المحدد، قم بإعلام القنوات الإضافية.",
+					"title": "قواعد التصعيد",
+					"minutesLabel": "التصعيد بعد (دقائق)",
+					"minutesHelper": "اضبط على 0 لتعطيل التصعيد",
+					"channelsLabel": "قنوات إشعار التصعيد",
+					"info": "اضبط على 0 لتعطيل التصعيد"
+				}
+			}
+		}
+	}
 }

@@ -19,6 +19,7 @@ export interface IIncidentsRepository {
 	): Promise<Incident[]>;
 	findSummaryByTeamId(teamId: string, limit?: number): Promise<IncidentSummary>;
 	countByTeamId(teamId: string, startDate: Date | undefined, status?: boolean, monitorId?: string, resolutionType?: string): Promise<number>;
+	findIncidentsNeedingEscalation(teamId: string, currentTime: Date): Promise<Incident[]>;
 
 	// update
 	updateById(incidentId: string, teamId: string, updateData: Partial<Incident>): Promise<Incident>;

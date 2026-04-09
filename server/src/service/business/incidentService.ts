@@ -91,7 +91,14 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const created = await this.incidentsRepository.create(incident);
+				this.logger.debug({
+					message: `Created incident ${created.id} for monitor ${monitor.id}`,
+					service: "IncidentService",
+					method: "handleIncident",
+					details: { escalationEnabled: monitor.escalationEnabled, escalationIntervals: monitor.escalationIntervals },
+				});
+				return created;
 			}
 		}
 
@@ -102,6 +109,9 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
+			// Reset escalation state when incident is resolved
+			activeIncident.escalationsSent = 0;
+			activeIncident.lastEscalationTime = null;
 			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 		}
 
@@ -152,6 +162,9 @@ export class IncidentService implements IIncidentService {
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;
 			incident.endTime = Date.now().toString();
+			// Reset escalation state when incident is manually resolved
+			incident.escalationsSent = 0;
+			incident.lastEscalationTime = null;
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
 

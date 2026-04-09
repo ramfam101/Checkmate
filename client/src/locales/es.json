@@ -1104,5 +1104,19 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
+"selectInterface": "",
+        "pages": {
+                "createMonitor": {
+                        "form": {
+                                "escalationRules": {
+                                        "description": "Si el monitor permanece caído durante el tiempo especificado, notifique canales adicionales.",
+                                        "title": "Reglas de escalada",
+                                        "minutesLabel": "Escalar después de (minutos)",
+                                        "minutesHelper": "Establecer en 0 para deshabilitar la escalada",
+                                        "channelsLabel": "Canales de notificación de escalada",
+                                        "info": "Establecer en 0 para deshabilitar la escalada"
+                                }
+                        }
+                }
+        }
 }

@@ -1108,5 +1108,19 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "如果監控器在指定時間內持續停機，則通知其他頻道。",
+					"title": "升級規則",
+					"minutesLabel": "升級時間（分鐘）",
+					"minutesHelper": "設置為0以禁用升級",
+					"channelsLabel": "升級通知頻道",
+					"info": "設置為0以禁用升級"
+				}
+			}
+		}
+	}
 }

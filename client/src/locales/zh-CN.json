@@ -1128,5 +1128,19 @@
 			"disk_selection_info": "目前没有检测到磁盘。",
 			"disk_selection_description": "选择您要监控的特定磁盘。"
 		}
+	},
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "如果监控器在指定时间内持续宕机，则通知其他渠道。",
+					"title": "升级规则",
+					"minutesLabel": "升级时间（分钟）",
+					"minutesHelper": "设置为0以禁用升级",
+					"channelsLabel": "升级通知渠道",
+					"info": "设置为0以禁用升级"
+				}
+			}
+		}
 	}
 }

@@ -78,6 +78,9 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationIntervals: z.array(z.number().min(0, "Interval must be non-negative")).optional(),
+	escalationNotificationIds: z.array(z.string()).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +110,9 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationIntervals: z.array(z.number().min(0, "Interval must be non-negative")).optional(),
+	escalationNotificationIds: z.array(z.string()).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -158,6 +164,8 @@ const importedMonitorSchema = z.object({
 	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
 	group: z.union([z.string().max(50).trim(), z.null()]).default(null),
 	geoCheckEnabled: z.boolean().default(false),
+	escalationEnabled: z.boolean().default(false),
+	escalationIntervals: z.array(z.number().min(0, "Interval must be non-negative")).default([]),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
 	geoCheckInterval: z.number().min(300000).default(300000),
 	createdAt: z.string().optional(),
