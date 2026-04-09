@@ -54,6 +54,8 @@ export interface Monitor {
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;
 	recentChecks: CheckSnapshot[];
+	escalationMinutes?: number;
+	escalationNotifications?: string[];
 	createdAt: string;
 	updatedAt: string;
 }

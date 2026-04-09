@@ -1,0 +1,104 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\tyler\\Checkmate\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\tyler\\Checkmate\\client\\src\\Pages\\CreateMonitor\\index.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:client\\src\\Pages\\CreateMonitor\\index.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\tyler\\Checkmate\\client\\src\\locales\\en.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:client\\src\\locales\\en.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\tyler\\Checkmate\\client\\src\\Hooks\\useMonitorForm.ts||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:client\\src\\Hooks\\useMonitorForm.ts||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\tyler\\Checkmate\\client\\src\\Validation\\monitor.ts||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:client\\src\\Validation\\monitor.ts||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 5,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{56df62a4-05a3-4e5b-aa1a-99371ccfb997}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{40ea2e6b-2121-4bb8-a43e-c83c04b51041}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c64b9c2-e352-428e-a56d-0ace190b99a6}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "monitor.ts",
+              "DocumentMoniker": "C:\\Users\\tyler\\Checkmate\\client\\src\\Validation\\monitor.ts",
+              "RelativeDocumentMoniker": "client\\src\\Validation\\monitor.ts",
+              "ToolTip": "C:\\Users\\tyler\\Checkmate\\client\\src\\Validation\\monitor.ts",
+              "RelativeToolTip": "client\\src\\Validation\\monitor.ts",
+              "ViewState": "AgIAAAkAAAAAAAAAAAAAACMAAAAOAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-09T21:50:24.03Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "index.tsx",
+              "DocumentMoniker": "C:\\Users\\tyler\\Checkmate\\client\\src\\Pages\\CreateMonitor\\index.tsx",
+              "RelativeDocumentMoniker": "client\\src\\Pages\\CreateMonitor\\index.tsx",
+              "ToolTip": "C:\\Users\\tyler\\Checkmate\\client\\src\\Pages\\CreateMonitor\\index.tsx",
+              "RelativeToolTip": "client\\src\\Pages\\CreateMonitor\\index.tsx",
+              "ViewState": "AgIAACcDAAAAAAAAAAAAAFoDAAAMAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-09T21:50:22.055Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "en.json",
+              "DocumentMoniker": "C:\\Users\\tyler\\Checkmate\\client\\src\\locales\\en.json",
+              "RelativeDocumentMoniker": "client\\src\\locales\\en.json",
+              "ToolTip": "C:\\Users\\tyler\\Checkmate\\client\\src\\locales\\en.json",
+              "RelativeToolTip": "client\\src\\locales\\en.json",
+              "ViewState": "AgIAABkCAAAAAAAAAAAAACICAAAZAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-04-09T21:50:17.363Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "useMonitorForm.ts",
+              "DocumentMoniker": "C:\\Users\\tyler\\Checkmate\\client\\src\\Hooks\\useMonitorForm.ts",
+              "RelativeDocumentMoniker": "client\\src\\Hooks\\useMonitorForm.ts",
+              "ToolTip": "C:\\Users\\tyler\\Checkmate\\client\\src\\Hooks\\useMonitorForm.ts",
+              "RelativeToolTip": "client\\src\\Hooks\\useMonitorForm.ts",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAA+AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-09T21:50:15.001Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

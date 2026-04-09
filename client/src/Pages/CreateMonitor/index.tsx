@@ -252,21 +252,63 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
-		let result;
-		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
-		} else {
-			result = await post("/monitors", data);
+		// Basic client-side validation so we don't send an invalid payload
+		if (!data.name || !data.name.trim()) {
+			// eslint-disable-next-line no-alert
+			alert("Monitor name is required.");
+			logger.debug("Client validation failed: name is required", data);
+			return;
+		}
+		if (!data.type) {
+			// eslint-disable-next-line no-alert
+			alert("Monitor type is required.");
+			logger.debug("Client validation failed: type is required", data);
+			return;
+		}
+		if (!data.url || !data.url.trim()) {
+			// eslint-disable-next-line no-alert
+			alert("URL/host is required.");
+			logger.debug("Client validation failed: url is required", data);
+			return;
 		}
 
-		if (result?.success) {
-			if (pageType === "pagespeed") {
-				navigate("/pagespeed");
-			} else if (pageType === "hardware") {
-				navigate("/infrastructure");
-			} else {
-				navigate("/uptime");
+		// Debug: show raw form data
+		// eslint-disable-next-line no-console
+		console.log("submit payload (raw)", data);
+
+		// Map frontend scalar fields to server shape if needed
+		const payload: any = { ...data };
+		if (payload.escalationDelayMinutes !== undefined) {
+			payload.escalationMinutes = Number(payload.escalationDelayMinutes);
+			delete payload.escalationDelayMinutes;
+		}
+		if (payload.escalationNotificationId) {
+			payload.escalationNotifications = [String(payload.escalationNotificationId)];
+			delete payload.escalationNotificationId;
+		}
+
+		// eslint-disable-next-line no-console
+		console.log("submit payload (sent)", payload);
+
+		try {
+			const result = isEditMode && monitorId
+				? await patch(`/monitors/${monitorId}`, payload)
+				: await post("/monitors", payload);
+
+			// eslint-disable-next-line no-console
+			console.log("server response", result);
+
+			if (result?.success) {
+				if (pageType === "pagespeed") navigate("/pagespeed");
+				else if (pageType === "hardware") navigate("/infrastructure");
+				else navigate("/uptime");
 			}
+		} catch (err) {
+			// eslint-disable-next-line no-console
+			console.error("create monitor failed", err);
+			logger.error("POST request failed", { endpoint: "/monitors", body: payload });
+			// eslint-disable-next-line no-alert
+			alert("Failed to create monitor — check server logs for details.");
 		}
 	};
 
@@ -485,7 +527,7 @@ const CreateMonitorPage = () => {
 
 						<Controller
 							name="name"
-							control={control}
+						control={control}
 							render={({ field, fieldState }) => (
 								<TextField
 									{...field}
@@ -619,7 +661,7 @@ const CreateMonitorPage = () => {
 							/>
 							<Controller
 								name="diskAlertThreshold"
-								control={control}
+							 control={control}
 								render={({ field }) => (
 									<SliderWithLabel
 										{...field}
@@ -765,6 +807,92 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									value={field.value ?? 0}
+									onChange={(e) => field.onChange(Number(e.target.value))}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.minutes.label")}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											fieldLabel={t("pages.createMonitor.form.escalation.option.channels.label")}
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -871,7 +999,7 @@ const CreateMonitorPage = () => {
 									/>
 									<Controller
 										name="jsonPath"
-										control={control}
+									 control={control}
 										render={({ field, fieldState }) => (
 											<TextField
 												{...field}

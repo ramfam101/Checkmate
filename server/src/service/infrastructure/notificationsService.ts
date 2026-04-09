@@ -107,10 +107,9 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const notificationIds = decision.notificationReason === "escalation" ? (monitor.escalationNotifications ?? []) : (monitor.notifications ?? []);
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";

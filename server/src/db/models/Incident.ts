@@ -7,6 +7,8 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	//boolean for escalation
+	isEscalated?: boolean;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -71,6 +73,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 		comment: {
 			type: String,
 			default: null,
+		},
+		isEscalated: {
+			type: Boolean,
+			default: false
 		},
 	},
 	{ timestamps: true }
