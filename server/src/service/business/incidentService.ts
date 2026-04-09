@@ -91,7 +91,14 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const created = await this.incidentsRepository.create(incident);
+				this.logger.debug({
+					message: `Created incident ${created.id} for monitor ${monitor.id}`,
+					service: "IncidentService",
+					method: "handleIncident",
+					details: { escalationEnabled: monitor.escalationEnabled, escalationIntervals: monitor.escalationIntervals },
+				});
+				return created;
 			}
 		}
 

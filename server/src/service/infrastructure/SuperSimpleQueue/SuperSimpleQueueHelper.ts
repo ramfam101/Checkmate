@@ -209,6 +209,11 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private handleEscalations = async (monitor: Monitor): Promise<void> => {
 		try {
 			if (!monitor.escalationEnabled || !monitor.escalationIntervals || monitor.escalationIntervals.length === 0) {
+				this.logger.debug({
+					message: `Skipping escalation for monitor ${monitor.id}: escalationEnabled=${monitor.escalationEnabled}, intervals=${JSON.stringify(monitor.escalationIntervals)}`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+				});
 				return;
 			}
 
@@ -217,6 +222,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 			// Find all incidents for this team that need escalation
 			const incidentsNeedingEscalation = await this.incidentsRepository.findIncidentsNeedingEscalation(teamId, currentTime);
+			this.logger.debug({
+				message: `Found ${incidentsNeedingEscalation.length} incident(s) needing escalation for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				details: { incidentIds: incidentsNeedingEscalation.map((i) => i.id) },
+			});
 
 			for (const incident of incidentsNeedingEscalation) {
 				try {
@@ -231,32 +242,30 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					const existingNotifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 					// Send escalation notifications using existing infrastructure
+					const settings = this.settingsService.getSettings();
+					const clientHost = settings.clientHost || "Host not defined";
+					const escalationMessage = this.notificationMessageBuilder.buildMessage(
+						monitorData,
+						undefined,
+						{
+							shouldCreateIncident: false,
+							shouldResolveIncident: false,
+							shouldSendNotification: true,
+							incidentReason: null,
+							notificationReason: "status_change",
+						},
+						clientHost,
+						{
+							escalationLevel,
+							incidentId: incident.id,
+						}
+					);
+
+					let anySent = false;
 					for (const escalationNotification of existingNotifications) {
 						try {
-							// Get client host from settings
-							const settings = this.settingsService.getSettings();
-							const clientHost = settings.clientHost || "Host not defined";
-
-							// Build escalation message
-							const escalationMessage = this.notificationMessageBuilder.buildMessage(
-								monitorData,
-								undefined, // No monitor status response for escalations
-								{
-									shouldCreateIncident: false,
-									shouldResolveIncident: false,
-									shouldSendNotification: true,
-									incidentReason: null,
-									notificationReason: "status_change",
-								},
-								clientHost,
-								{
-									escalationLevel,
-									incidentId: incident.id,
-								}
-							);
-
-							// Send escalation notification
 							await this.notificationsService.sendEscalationNotification(escalationNotification, escalationMessage);
+							anySent = true;
 						} catch (sendError: unknown) {
 							this.logger.error({
 								message: `Error sending escalation notification ${escalationNotification.id}: ${sendError instanceof Error ? sendError.message : "Unknown error"}`,
@@ -267,11 +276,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						}
 					}
 
-					// Update incident to mark escalation as sent
-					await this.incidentsRepository.updateById(incident.id, teamId, {
-						escalationsSent: escalationLevel,
-						lastEscalationTime: currentTime.toISOString(),
-					});
+					// Only advance escalationsSent if at least one notification was sent successfully
+					if (anySent) {
+						await this.incidentsRepository.updateById(incident.id, teamId, {
+							escalationsSent: escalationLevel,
+							lastEscalationTime: currentTime.toISOString(),
+						});
+					}
 
 					this.logger.debug({
 						message: `Escalation ${escalationLevel} sent for incident ${incident.id} on monitor ${incident.monitorId}`,

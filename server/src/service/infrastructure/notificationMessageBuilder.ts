@@ -118,7 +118,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private buildMonitorDownContent(
 		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
+		monitorStatusResponse: MonitorStatusResponse | undefined,
 		escalationContext?: { escalationLevel: number; incidentId: string }
 	): NotificationContent {
 		let title = `Monitor Down: ${monitor.name}`;
@@ -129,12 +129,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
 
 		// Add response code if available
-		if (monitorStatusResponse.code) {
+		if (monitorStatusResponse?.code) {
 			details.push(`Response Code: ${monitorStatusResponse.code}`);
 		}
 
 		// Add error message if available
-		if (monitorStatusResponse.message) {
+		if (monitorStatusResponse?.message) {
 			details.push(`Error: ${monitorStatusResponse.message}`);
 		}
 
