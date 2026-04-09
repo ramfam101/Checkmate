@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,7 +154,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
@@ -418,7 +418,39 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async hasPendingEscalation(monitor: Monitor): Promise<boolean> {
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return false;
+		}
+
+		const configuredEscalations = monitor.escalatedNotifications ?? [];
+		if (configuredEscalations.length === 0) {
+			return false;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return false;
+		}
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(incidentStart)) {
+			return false;
+		}
+
+		const elapsedMs = Date.now() - incidentStart;
+		const sentEscalations = new Set(activeIncident.sentEscalations ?? []);
+
+		return configuredEscalations.some((escalation) => {
+			if (!escalation?.notificationId || escalation.delayInMinutes < 1) {
+				return false;
+			}
+			const key = `${escalation.notificationId}:${escalation.delayInMinutes}`;
+			return elapsedMs >= escalation.delayInMinutes * 60 * 1000 && !sentEscalations.has(key);
+		});
+	}
+
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -431,6 +463,11 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			const shouldEscalate = await this.hasPendingEscalation(monitor);
+			if (shouldEscalate) {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+			}
 			return decision;
 		}
 
