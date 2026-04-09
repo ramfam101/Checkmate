@@ -37,6 +37,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldScheduleEscalation: boolean;
+	shouldSendEscalation: boolean;
+	shouldCancelEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -172,6 +175,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalation (best effort, don't wait)
+				this.handleEscalation(statusChangeResult.monitor, decision).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -426,11 +439,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldScheduleEscalation: false,
+			shouldSendEscalation: false,
+			shouldCancelEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
 		if (!statusChanged) {
+			// Check if escalation should be sent even when status hasn't changed
+			if (monitor.escalationEnabled && monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+				const escalationTime = new Date(monitor.escalationScheduledAt.getTime() + (monitor.escalationDelayMinutes || 30) * 60 * 1000);
+				if (new Date() >= escalationTime && (monitor.status === "down" || monitor.status === "breached")) {
+					decision.shouldSendEscalation = true;
+				}
+			}
 			return decision;
 		}
 
@@ -440,19 +463,84 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+
+			// Schedule escalation if enabled and not already scheduled/sent
+			if (monitor.escalationEnabled && !monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+				decision.shouldScheduleEscalation = true;
+			}
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
+
+			// Schedule escalation if enabled and not already scheduled/sent
+			if (monitor.escalationEnabled && !monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+				decision.shouldScheduleEscalation = true;
+			}
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+
+			// Cancel any pending escalation
+			if (monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+				decision.shouldCancelEscalation = true;
+			}
 		}
 
 		return decision;
+	}
+
+	private async handleEscalation(monitor: Monitor, decision: MonitorActionDecision): Promise<void> {
+		const monitorId = monitor.id;
+		const teamId = monitor.teamId;
+
+		try {
+			if (decision.shouldScheduleEscalation) {
+				// Schedule escalation
+				await this.monitorsRepository.updateById(monitorId, teamId, {
+					escalationScheduledAt: new Date(),
+					escalationSentAt: null, // Reset sent status
+				});
+				this.logger.debug({
+					message: `Scheduled escalation for monitor ${monitorId} in ${monitor.escalationDelayMinutes} minutes`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			} else if (decision.shouldSendEscalation) {
+				// Send escalation notification
+				await this.notificationsService.sendEscalationNotification(monitor);
+				await this.monitorsRepository.updateById(monitorId, teamId, {
+					escalationSentAt: new Date(),
+				});
+				this.logger.info({
+					message: `Sent escalation notification for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			} else if (decision.shouldCancelEscalation) {
+				// Cancel escalation
+				await this.monitorsRepository.updateById(monitorId, teamId, {
+					escalationScheduledAt: null,
+					escalationSentAt: null,
+				});
+				this.logger.debug({
+					message: `Canceled escalation for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error handling escalation for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			throw error;
+		}
 	}
 }

@@ -373,6 +373,14 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				message: "Invalid email format",
 			},
 		},
+		escalationScheduledAt: {
+			type: Date,
+			default: null,
+		},
+		escalationSentAt: {
+			type: Date,
+			default: null,
+		},
 	},
 	{
 		timestamps: true,

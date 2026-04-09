@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotification: (monitor: Monitor) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +139,63 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (monitor: Monitor) => {
+		if (!monitor.escalationEnabled || !monitor.escalationEmail) {
+			this.logger.warn({
+				message: `Escalation not enabled or no email configured for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+
+		try {
+			// Create escalation notification message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, clientHost);
+
+			// Create a temporary email notification object for escalation
+			const escalationNotification: Notification = {
+				id: `escalation-${monitor.id}`,
+				userId: monitor.userId || "",
+				teamId: monitor.teamId,
+				type: "email",
+				notificationName: `Escalation for ${monitor.name}`,
+				address: monitor.escalationEmail,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			// Send escalation email using sendMessage method
+			const success = await this.emailProvider.sendMessage!(escalationNotification, escalationMessage);
+
+			if (success) {
+				this.logger.info({
+					message: `Escalation notification sent to ${monitor.escalationEmail} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			} else {
+				this.logger.error({
+					message: `Failed to send escalation notification to ${monitor.escalationEmail} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			}
+
+			return success;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

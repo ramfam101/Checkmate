@@ -83,6 +83,8 @@ export interface Monitor {
 	escalationEnabled?: boolean;
 	escalationDelayMinutes?: number;
 	escalationEmail?: string;
+	escalationScheduledAt?: string | null;
+	escalationSentAt?: string | null;
 }
 
 export type MonitorWithChecks = Monitor;

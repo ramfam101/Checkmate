@@ -59,6 +59,8 @@ export interface Monitor {
 	escalationEnabled?: boolean;
 	escalationDelayMinutes?: number;
 	escalationEmail?: string;
+	escalationScheduledAt?: Date | null;
+	escalationSentAt?: Date | null;
 }
 
 export interface MonitorsSummary {
