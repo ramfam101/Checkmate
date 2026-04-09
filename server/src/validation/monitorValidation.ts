@@ -3,6 +3,11 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const escalationValidation = z.object({
+	delayMinutes: z.number().int().min(1),
+	channelId: z.string().min(1),
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -53,7 +58,7 @@ export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
 	description: z.union([z.string(), z.literal("")]).optional(),
-	type: z.enum(MonitorTypes, "Invalid monitor type"),
+	type: z.enum(MonitorTypes, { message: "Invalid monitor type" }),
 	statusWindowSize: z.number().min(1).max(20).default(5),
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	url: z.string().min(1, "URL is required"),
@@ -68,6 +73,7 @@ export const createMonitorBodyValidation = z.object({
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
+	escalation: escalationValidation.optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
 	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
@@ -89,6 +95,7 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalation: escalationValidation.optional().nullable(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),

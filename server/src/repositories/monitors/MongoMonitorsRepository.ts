@@ -8,7 +8,14 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const payload: any = { ...monitor, teamId, userId };
+		if (monitor.escalation) {
+			payload.escalation = {
+				delayMinutes: monitor.escalation.delayMinutes,
+				channelId: new mongoose.Types.ObjectId(monitor.escalation.channelId),
+			};
+		}
+		const monitorModel = new MonitorModel(payload);
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -167,11 +174,23 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const updateData: any = { ...patch };
+		if (patch.escalation) {
+			updateData.escalation = {
+				delayMinutes: patch.escalation.delayMinutes,
+				channelId: new mongoose.Types.ObjectId(patch.escalation.channelId),
+			};
+		}
+
+		if (patch.escalation === undefined) {
+			updateData.escalation = undefined;
+		}
+
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
 			{
 				$set: {
-					...patch,
+					...updateData,
 				},
 			},
 			{ new: true, runValidators: true }
@@ -374,6 +393,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalation: doc.escalation
+				? {
+						delayMinutes: doc.escalation.delayMinutes,
+						channelId: doc.escalation.channelId instanceof mongoose.Types.ObjectId ? doc.escalation.channelId.toString() : doc.escalation.channelId,
+					}
+				: undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +458,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalation: doc.escalation
+				? {
+						delayMinutes: doc.escalation.delayMinutes,
+						channelId: doc.escalation.channelId instanceof mongoose.Types.ObjectId ? doc.escalation.channelId.toString() : doc.escalation.channelId,
+					}
+				: undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

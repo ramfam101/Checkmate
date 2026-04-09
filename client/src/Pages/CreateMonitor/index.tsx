@@ -252,11 +252,20 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const normalizedData: any = { ...data };
+
+		if (
+			!normalizedData.escalation?.delayMinutes ||
+			!normalizedData.escalation?.channelId
+		) {
+			delete normalizedData.escalation;
+		}
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, normalizedData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", normalizedData);
 		}
 
 		if (result?.success) {
@@ -269,7 +278,6 @@ const CreateMonitorPage = () => {
 			}
 		}
 	};
-
 	const onError = (errors: unknown) => {
 		logger.debug("Monitor creation validation errors", errors);
 	};
@@ -762,6 +770,63 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalation.delayMinutes"
+							control={control}
+							render={({ field }) => (
+								<TextField
+									fieldLabel={t("pages.createMonitor.form.escalation.delayMinutes.label")}
+									type="number"
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const value = e.target.value;
+										field.onChange(value === "" ? undefined : Number(value));
+									}}
+									fullWidth
+								/>
+							)}
+						/>
+
+						<Controller
+							name="escalation.channelId"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+
+								return (
+									<Select
+										fieldLabel={t("pages.createMonitor.form.escalation.channelId.label")}
+										value={field.value ?? ""}
+										onChange={(e) => field.onChange(e.target.value)}
+										fullWidth
+									>
+										<MenuItem value="">
+											{t("pages.createMonitor.form.escalation.channelId.placeholder")}
+										</MenuItem>
+										{notificationOptions.map((notification) => (
+											<MenuItem
+												key={notification.id}
+												value={notification.id}
+											>
+												{notification.name}
+											</MenuItem>
+										))}
+									</Select>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 
