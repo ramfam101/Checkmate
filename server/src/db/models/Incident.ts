@@ -72,6 +72,11 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		acknowledged: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
 	},
 	{ timestamps: true }
 );

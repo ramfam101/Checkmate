@@ -62,6 +62,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			comment: doc.comment ?? null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
+			acknowledged: doc.acknowledged ?? false,
 		};
 	};
 
