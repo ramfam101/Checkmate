@@ -5,7 +5,7 @@ import type { AxiosRequestConfig, AxiosResponse } from "axios";
 const BASE_URL = import.meta.env.VITE_APP_API_BASE_URL;
 
 const api = axios.create({
-	baseURL: BASE_URL,
+  baseURL: import.meta.env.VITE_APP_API_BASE_URL,
 });
 
 type StoreType = {

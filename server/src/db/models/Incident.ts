@@ -1,12 +1,22 @@
 import { Schema, model, type Types } from "mongoose";
 import { IncidentResolutionTypes, type Incident } from "@/types/incident.js";
 
-type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt"> & {
+type IncidentEscalationStateDocument = {
+	afterMinutes: number;
+	notifications: Types.ObjectId[];
+	sentAt?: Date | null;
+};
+
+type IncidentDocumentBase = Omit<
+	Incident,
+	"id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt" | "escalations"
+> & {
 	monitorId: Types.ObjectId;
 	teamId: Types.ObjectId;
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	escalations?: IncidentEscalationStateDocument[];
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -14,6 +24,27 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 export interface IncidentDocument extends IncidentDocumentBase {
 	_id: Types.ObjectId;
 }
+
+const incidentEscalationStateSchema = new Schema<IncidentEscalationStateDocument>(
+	{
+		afterMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+		},
+		notifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		sentAt: {
+			type: Date,
+			default: null,
+		},
+	},
+	{ _id: false }
+);
 
 const IncidentSchema = new Schema<IncidentDocument>(
 	{
@@ -53,6 +84,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: Number,
 			default: null,
 			index: true,
+		},
+		escalations: {
+			type: [incidentEscalationStateSchema],
+			default: [],
 		},
 		resolutionType: {
 			type: String,

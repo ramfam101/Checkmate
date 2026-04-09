@@ -345,7 +345,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			}
 			return value?.toString() ?? "";
 		};
-
+		const escalationRules = (doc.escalations ?? []).map((rule: any) => ({
+			afterMinutes: rule.afterMinutes,
+			notifications: (rule.notifications ?? []).map((notification: unknown) =>
+				toStringId(notification)
+			),
+		}));
 		const toDateString = (value: Date | string): string => {
 			return value instanceof Date ? value.toISOString() : value;
 		};
@@ -374,6 +379,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations: escalationRules,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -408,7 +414,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			if (!value) return "";
 			return value instanceof Date ? value.toISOString() : value;
 		};
-
+		const escalationRules = (doc.escalations ?? []).map((rule: any) => ({
+			afterMinutes: rule.afterMinutes,
+			notifications: (rule.notifications ?? []).map((notification: unknown) =>
+				toStringId(notification)
+			),
+		}));
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
@@ -433,6 +444,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations: escalationRules,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

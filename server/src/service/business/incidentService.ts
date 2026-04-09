@@ -9,6 +9,21 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
 
+type IncidentEscalationState = {
+	afterMinutes: number;
+	notifications: string[];
+	sentAt?: string | null;
+};
+
+type IncidentWithEscalations = Incident & {
+	escalations?: IncidentEscalationState[];
+};
+
+type NewIncidentWithEscalations = Omit<
+	IncidentWithEscalations,
+	"id" | "endTime" | "resolutionType" | "createdAt" | "updatedAt"
+>;
+
 export interface IIncidentService {
 	handleIncident(
 		monitor: Monitor,
@@ -57,7 +72,13 @@ export class IncidentService implements IIncidentService {
 	get serviceName() {
 		return IncidentService.SERVICE_NAME;
 	}
-
+	private buildIncidentEscalations(monitor: Monitor): IncidentEscalationState[] {
+		return (monitor.escalations ?? []).map((rule) => ({
+			afterMinutes: rule.afterMinutes,
+			notifications: rule.notifications,
+			sentAt: null,
+		}));
+	}
 	handleIncident = async (
 		monitor: Monitor,
 		code: number,
@@ -83,13 +104,14 @@ export class IncidentService implements IIncidentService {
 					message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
 				}
 
-				const incident = {
+				const incident: NewIncidentWithEscalations = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
 					startTime: Date.now().toString(),
 					status: true,
 					statusCode,
 					message,
+					escalations: this.buildIncidentEscalations(monitor),
 				};
 				return await this.incidentsRepository.create(incident);
 			}
@@ -121,7 +143,48 @@ export class IncidentService implements IIncidentService {
 
 		return breaches.map((b) => `${b.metric.toUpperCase()}: ${b.formattedValue} (threshold: ${b.threshold}${b.unit})`).join(", ");
 	}
+	getDueEscalations(incident: IncidentWithEscalations): IncidentEscalationState[] {
+		if (!incident.escalations?.length) {
+			return [];
+		}
 
+		const startMs = new Date(incident.startTime).getTime();
+		const nowMs = Date.now();
+		const elapsedMs = nowMs - startMs;
+
+		return incident.escalations.filter((rule) => {
+			if (rule.sentAt) return false;
+			return elapsedMs >= rule.afterMinutes * 60 * 1000;
+		});
+	}
+	async markEscalationsSent(
+		incident: IncidentWithEscalations,
+		rulesToMark: IncidentEscalationState[]
+	): Promise<Incident> {
+		const nowIso = new Date().toISOString();
+		const rulesToMarkSet = new Set(
+			rulesToMark.map((rule) => `${rule.afterMinutes}:${rule.notifications.join(",")}`)
+		);
+
+		const updatedEscalations = (incident.escalations ?? []).map((rule) => {
+			const key = `${rule.afterMinutes}:${rule.notifications.join(",")}`;
+			if (rulesToMarkSet.has(key) && !rule.sentAt) {
+				return { ...rule, sentAt: nowIso };
+			}
+			return rule;
+		});
+
+		const updatedIncident: IncidentWithEscalations = {
+			...incident,
+			escalations: updatedEscalations,
+		};
+
+		return await this.incidentsRepository.updateById(
+			incident.id,
+			incident.teamId,
+			updatedIncident
+		);
+	}
 	resolveIncident = async (incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string) => {
 		try {
 			if (!incidentId) {

@@ -20,6 +20,27 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 	};
 
+	private toEscalations = (
+		escalations?:
+			| {
+					afterMinutes: number;
+					notifications: (mongoose.Types.ObjectId | string)[];
+					sentAt?: Date | string | null;
+			  }[]
+			| null
+	) => {
+		if (!escalations?.length) {
+			return [];
+		}
+
+		return escalations.map((rule) => ({
+			afterMinutes: rule.afterMinutes,
+			notifications: (rule.notifications ?? []).map((notification) =>
+				this.toStringId(notification)
+			),
+			sentAt: rule.sentAt ? this.toDateString(rule.sentAt) : null,
+		}));
+	};
 	private buildMatchStage({
 		teamId,
 		startDate,
@@ -56,6 +77,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			status: doc.status,
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
+			escalations: this.toEscalations(doc.escalations),
 			resolutionType: doc.resolutionType ?? null,
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,

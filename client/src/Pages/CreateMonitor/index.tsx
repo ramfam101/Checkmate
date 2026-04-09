@@ -36,6 +36,7 @@ import {
 	type Monitor,
 	type MonitorType,
 	type GamesMap,
+	type EscalationRule,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
@@ -764,7 +765,108 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Send additional notifications if the incident remains active after a delay."
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalationRules = (field.value ?? []) as EscalationRule[];
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
 
+							const addRule = () => {
+								field.onChange([
+									...escalationRules,
+									{ afterMinutes: 1, notifications: [] },
+								]);
+							};
+
+							const updateRule = (
+								index: number,
+								patch: Partial<EscalationRule>
+							) => {
+								const updated = escalationRules.map((rule, i) =>
+									i === index ? { ...rule, ...patch } : rule
+								);
+								field.onChange(updated);
+							};
+
+							const removeRule = (index: number) => {
+								field.onChange(escalationRules.filter((_, i) => i !== index));
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationRules.map((rule, index) => {
+										const selectedNotifications = notificationOptions.filter((n) =>
+											(rule.notifications ?? []).includes(n.id)
+										);
+
+										return (
+											<Stack
+												key={index}
+												spacing={theme.spacing(LAYOUT.MD)}
+												sx={{
+													border: "1px solid",
+													borderColor: "divider",
+													borderRadius: 2,
+													p: 2,
+												}}
+											>
+												<TextField
+													type="number"
+													fieldLabel="Escalate after (minutes)"
+													value={rule.afterMinutes}
+													onChange={(e) =>
+														updateRule(index, {
+															afterMinutes: Number(e.target.value) || 1,
+														})
+													}
+													fullWidth
+												/>
+
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selectedNotifications}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: typeof notificationOptions) =>
+														updateRule(index, {
+															notifications: newValue.map((n) => n.id),
+														})
+													}
+													isOptionEqualToValue={(option, value) =>
+														option.id === value.id
+													}
+												/>
+
+												<Button
+													variant="outlined"
+													onClick={() => removeRule(index)}
+												>
+													Remove escalation rule
+												</Button>
+											</Stack>
+										);
+									})}
+
+									<Button
+										variant="outlined"
+										onClick={addRule}
+									>
+										Add escalation rule
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
