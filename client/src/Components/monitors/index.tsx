@@ -1,3 +1,4 @@
+export { default as EscalationPolicy } from "./EscalationPolicy";
 export * from "./ControlsFilter";
 export * from "./MonitorStatBoxes";
 export * from "./HeaderMonitorControls";

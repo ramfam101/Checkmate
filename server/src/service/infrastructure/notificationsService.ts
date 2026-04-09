@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalatedNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,31 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalatedNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]): Promise<boolean> => {
+		if (!notificationIds.length) {
+			return true;
+		}
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, escalationDecision, clientHost);
+
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage)
+		);
+		const outcomes = await Promise.all(tasks);
+		return outcomes.filter(Boolean).length === outcomes.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

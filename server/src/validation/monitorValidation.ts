@@ -49,6 +49,11 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const escalationTierValidation = z.object({
+	delay: z.number().min(1, "Delay must be at least 1 minute"),
+	notifications: z.array(z.string()),
+});
+
 export const createMonitorBodyValidation = z.object({
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
@@ -78,6 +83,7 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationPolicy: z.array(escalationTierValidation).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +113,7 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationPolicy: z.array(escalationTierValidation).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
