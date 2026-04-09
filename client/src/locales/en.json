@@ -541,7 +541,13 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"escalation": {
+						"description": "Optional: define escalation delays per channel (in minutes). When an incident persists beyond the delay, this channel is notified.",
+						"delayLabel": "Escalation delay for {{channel}} (minutes)",
+						"delayPlaceholder": "Leave empty to disable",
+						"delayHint": "Example: 15 sends an escalation after 15 minutes of active incident"
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",

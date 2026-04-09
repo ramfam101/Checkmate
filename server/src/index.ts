@@ -1,10 +1,18 @@
+import dotenv from "dotenv";
+import { fileURLToPath } from "url";
+import path from "path";
+
+// Load environment variables first, before anything else
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const envPath = path.join(__dirname, "..", ".env");
+dotenv.config({ path: envPath });
+
 import { initializeServices } from "./config/services.js";
 import { initializeControllers } from "./config/controllers.js";
 import { createApp } from "./app.js";
 import { initShutdownListener } from "./shutdown.js";
 import { validateEnv } from "./validation/envValidation.js";
-import { fileURLToPath } from "url";
-import path from "path";
 import fs from "fs";
 import { runMigrations } from "./db/migration/index.js";
 

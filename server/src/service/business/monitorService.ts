@@ -165,8 +165,38 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
+	private normalizeEscalatedNotifications(
+		notificationIds: string[] = [],
+		escalatedNotifications: Monitor["escalatedNotifications"] = []
+	): NonNullable<Monitor["escalatedNotifications"]> {
+		const notificationSet = new Set(notificationIds);
+		const unique = new Set<string>();
+		const normalized = (escalatedNotifications ?? [])
+			.filter((item) => item?.notificationId && item.delayInMinutes >= 1 && notificationSet.has(item.notificationId))
+			.map((item) => ({
+				notificationId: item.notificationId,
+				delayInMinutes: Math.floor(item.delayInMinutes),
+			}))
+			.filter((item) => {
+				const key = `${item.notificationId}:${item.delayInMinutes}`;
+				if (unique.has(key)) {
+					return false;
+				}
+				unique.add(key);
+				return true;
+			})
+			.sort((a, b) => a.delayInMinutes - b.delayInMinutes);
+
+		return normalized;
+	}
+
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
-		const monitor = await this.monitorsRepository.create(body, teamId, userId);
+		const normalizedMonitor = {
+			...body,
+			escalatedNotifications: this.normalizeEscalatedNotifications(body.notifications ?? [], body.escalatedNotifications),
+		};
+
+		const monitor = await this.monitorsRepository.create(normalizedMonitor, teamId, userId);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
 		}
@@ -437,7 +467,18 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
-		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
+		let patch = body;
+
+		if (body.notifications !== undefined || body.escalatedNotifications !== undefined) {
+			const existingMonitor = await this.monitorsRepository.findById(monitorId, teamId);
+			const notifications = body.notifications ?? existingMonitor.notifications;
+			patch = {
+				...body,
+				escalatedNotifications: this.normalizeEscalatedNotifications(notifications, body.escalatedNotifications ?? existingMonitor.escalatedNotifications),
+			};
+		}
+
+		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, patch);
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;
 	};

@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IIncidentsRepository, IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -26,6 +26,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -40,6 +41,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -53,6 +55,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -107,6 +110,76 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
+	private getEscalationKey(notificationId: string, delayInMinutes: number): string {
+		return `${notificationId}:${delayInMinutes}`;
+	}
+
+	private sendEscalatedNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const configuredEscalations = monitor.escalatedNotifications ?? [];
+		if (configuredEscalations.length === 0) {
+			return false;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return false;
+		}
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(incidentStart)) {
+			return false;
+		}
+
+		const elapsedMs = Date.now() - incidentStart;
+		const alreadySent = new Set(activeIncident.sentEscalations ?? []);
+
+		const dueEscalations = configuredEscalations.filter((escalation) => {
+			if (!escalation?.notificationId || escalation.delayInMinutes < 1) {
+				return false;
+			}
+			const key = this.getEscalationKey(escalation.notificationId, escalation.delayInMinutes);
+			const thresholdMs = escalation.delayInMinutes * 60 * 1000;
+			return elapsedMs >= thresholdMs && !alreadySent.has(key);
+		});
+
+		if (dueEscalations.length === 0) {
+			return false;
+		}
+
+		const escalationByNotificationId = new Map<string, number[]>();
+		for (const escalation of dueEscalations) {
+			const delays = escalationByNotificationId.get(escalation.notificationId) ?? [];
+			delays.push(escalation.delayInMinutes);
+			escalationByNotificationId.set(escalation.notificationId, delays);
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(Array.from(escalationByNotificationId.keys()));
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		const sentEscalationKeys: string[] = [];
+		for (const notification of notifications) {
+			const sent = await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+			if (!sent) {
+				continue;
+			}
+			const delays = escalationByNotificationId.get(notification.id) ?? [];
+			for (const delay of delays) {
+				sentEscalationKeys.push(this.getEscalationKey(notification.id, delay));
+			}
+		}
+
+		if (sentEscalationKeys.length > 0) {
+			const uniqueEscalations = Array.from(new Set([...(activeIncident.sentEscalations ?? []), ...sentEscalationKeys]));
+			await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, {
+				sentEscalations: uniqueEscalations,
+			});
+		}
+
+		return sentEscalationKeys.length === dueEscalations.length;
+	};
+
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
@@ -135,6 +208,10 @@ export class NotificationsService implements INotificationsService {
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
+		}
+
+		if (decision.notificationReason === "escalation") {
+			return await this.sendEscalatedNotifications(monitor, monitorStatusResponse, decision);
 		}
 
 		// Send notifications based on decision
