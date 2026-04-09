@@ -12,6 +12,11 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+
+	//my new code, sets default values for escalation related fields
+	escalationDelayMinutes: data?.escalationDelayMinutes ?? 0,
+	escalationNotificationIds: data?.escalationNotificationIds || [],
+
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,

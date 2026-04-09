@@ -189,6 +189,10 @@ const CreateMonitorPage = () => {
 	const { data: existingMonitor, refetch: refetchMonitor } = useGet<Monitor>(
 		isEditMode ? `/monitors/${monitorId}` : null
 	);
+	// Log whenever the monitor data is fetched/updated
+	useEffect(() => {
+		console.log("existing monitor JSON", JSON.stringify(existingMonitor, null, 2));
+	}, [existingMonitor]);
 
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
 	const { data: games } = useGet<GamesMap>("/monitors/games");
@@ -252,6 +256,9 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		console.log("monitor form submit", data);
+		console.log("sending payload JSON", JSON.stringify(data, null, 2));
+
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -762,6 +769,112 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			{/* ESCALATION RULES SECTION*/}
+			{/* UI section that allows users to edit delayed escalation notifications */}
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{/* ESCALATION DELAY INPUT */}
+						{/* takes in how many minutes to wait before sending escalation notifications */}
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? 0}
+									onChange={(e) => field.onChange(Number(e.target.value))}
+									type="number"
+									fieldLabel="Escalate after (minutes)"
+									placeholder="e.g. 5"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+
+						{/* ESCALATION CHANNEL SELECTOR */}
+						{/* lets users select which notification channels receive escalation alerts */}
+						<Controller
+							name="escalationNotificationIds"
+							control={control}
+							render={({ field }) => {
+								// transform notification data for use
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+
+								// determine which notifications are currently selected
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										{/* dropdown for selecting multiple escalation notification channels */}
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel="Escalation notification channels"
+										/>
+
+										{/* SELECTED CHANNELS DISPLAY */}
+										{/* displays selected escalation channels with option to remove them */}
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+
+														{/* Remove button for deselecting a notification */}
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+
+														{/* Divider between items for visual clarity */}
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 
