@@ -178,7 +178,7 @@ const CreateMonitorPage = () => {
 		return "uptime";
 	}, [location.pathname]);
 
-	const showTypeSelector = pageType === "uptime" && !isEditMode;
+	const showTypeSelector = false; 
 	const defaultType: MonitorType =
 		pageType === "pagespeed"
 			? "pagespeed"
@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchEscalationEnabled = watch("escalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -252,11 +253,28 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const hasEscalation =
+			Boolean(data.escalationChannelId) && Boolean(data.escalationDelayMinutes);
+
+		const payload = {
+			...data,
+			escalation: hasEscalation
+				? {
+						delayMinutes: data.escalationDelayMinutes,
+						channelId: data.escalationChannelId,
+					}
+				: undefined,
+		};
+
+		delete (payload as Partial<typeof payload>).escalationEnabled;
+		delete (payload as Partial<typeof payload>).escalationDelayMinutes;
+		delete (payload as Partial<typeof payload>).escalationChannelId;
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -291,216 +309,269 @@ const CreateMonitorPage = () => {
 					title={t("pages.createMonitor.form.type.title")}
 					subtitle={t("pages.createMonitor.form.type.description")}
 					rightContent={
-						<Controller
-							name="type"
-							control={control}
-							render={({ field, fieldState }) => (
-								<FormControl error={!!fieldState.error}>
-									<RadioGroup
-										{...field}
-										sx={{ gap: theme.spacing(LAYOUT.MD) }}
-									>
-										<RadioWithDescription
-											value="http"
-											label={t("pages.common.monitors.monitorTypes.optionHttp")}
-											description={t(
-												"pages.createMonitor.form.type.optionHttpDescription"
-											)}
-										/>
-										<RadioWithDescription
-											value="ping"
-											label={t("pages.common.monitors.monitorTypes.optionPing")}
-											description={t(
-												"pages.createMonitor.form.type.optionPingDescription"
-											)}
-										/>
-										<RadioWithDescription
-											value="docker"
-											label={t("pages.common.monitors.monitorTypes.optionDocker")}
-											description={t(
-												"pages.createMonitor.form.type.optionDockerDescription"
-											)}
-										/>
-										<RadioWithDescription
-											value="port"
-											label={t("pages.common.monitors.monitorTypes.optionPort")}
-											description={t(
-												"pages.createMonitor.form.type.optionPortDescription"
-											)}
-										/>
-										<RadioWithDescription
-											value="game"
-											label={t("pages.common.monitors.monitorTypes.optionGame")}
-											description={t(
-												"pages.createMonitor.form.type.optionGameDescription"
-											)}
-										/>
-										<RadioWithDescription
-											value="grpc"
-											label={t("pages.common.monitors.monitorTypes.optionGrpc")}
-											description={t(
-												"pages.createMonitor.form.type.optionGrpcDescription"
-											)}
-										/>
-										<RadioWithDescription
-											value="websocket"
-											label={t("pages.common.monitors.monitorTypes.optionWebSocket")}
-											description={t(
-												"pages.createMonitor.form.type.optionWebSocketDescription"
-											)}
-										/>
-									</RadioGroup>
-								</FormControl>
-							)}
+	<Stack spacing={theme.spacing(LAYOUT.MD)}>
+		<Controller
+			name="notifications"
+			control={control}
+			render={({ field }) => {
+				const notificationOptions = (notifications ?? []).map((n) => ({
+					...n,
+					name: n.notificationName,
+				}));
+				const selectedNotifications = notificationOptions.filter((n) =>
+					(field.value ?? []).includes(n.id)
+				);
+
+				return (
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Autocomplete
+							multiple
+							options={notificationOptions}
+							value={selectedNotifications}
+							getOptionLabel={(option) => option.name}
+							onChange={(_: unknown, newValue: typeof notificationOptions) => {
+								field.onChange(newValue.map((n) => n.id));
+							}}
+							isOptionEqualToValue={(option, value) => option.id === value.id}
 						/>
-					}
+						{selectedNotifications.length > 0 && (
+							<Stack
+								flex={1}
+								width="100%"
+							>
+								{selectedNotifications.map((notification, index) => (
+									<Stack
+										direction="row"
+										alignItems="center"
+										key={notification.id}
+										width="100%"
+									>
+										<Typography flexGrow={1}>
+											{notification.notificationName}
+										</Typography>
+										<IconButton
+											size="small"
+											onClick={() => {
+												field.onChange(
+													(field.value ?? []).filter(
+														(id: string) => id !== notification.id
+													)
+												);
+											}}
+											aria-label="Remove notification"
+										>
+											<Trash2 size={16} />
+										</IconButton>
+										{index < selectedNotifications.length - 1 && <Divider />}
+									</Stack>
+								))}
+							</Stack>
+						)}
+					</Stack>
+				);
+			}}
+		/>
+
+		<Controller
+			name="escalationEnabled"
+			control={control}
+			render={({ field }) => (
+				<Stack
+					direction="row"
+					alignItems="center"
+					spacing={theme.spacing(SPACING.LG)}
+				>
+					<Switch
+						checked={field.value ?? false}
+						onChange={(e) => field.onChange(e.target.checked)}
+					/>
+					<Typography>Enable escalated notification</Typography>
+				</Stack>
+			)}
+		/>
+
+		{watchEscalationEnabled && (
+			<Stack spacing={theme.spacing(LAYOUT.MD)}>
+				<Controller
+					name="escalationDelayMinutes"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							value={field.value ?? 1}
+							onChange={(e) => field.onChange(Number(e.target.value))}
+							type="number"
+							fieldLabel="Escalate after (minutes)"
+							fullWidth
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
+						/>
+					)}
+				/>
+
+				<Controller
+					name="escalationChannelId"
+					control={control}
+					render={({ field }) => (
+						<Select
+							{...field}
+							value={field.value ?? ""}
+							fieldLabel="Escalation channel"
+						>
+							<MenuItem value="">Select a notification channel</MenuItem>
+							{(notifications ?? []).map((notification) => (
+								<MenuItem
+									key={notification.id}
+									value={notification.id}
+								>
+									{notification.notificationName}
+								</MenuItem>
+							))}
+						</Select>
+					)}
+				/>
+			</Stack>
+		)}
+	</Stack>
+}
 				/>
 			)}
 
 			<ConfigBox
-				title={t("pages.createMonitor.form.general.title")}
-				subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
-				rightContent={
-					<Stack spacing={theme.spacing(LAYOUT.MD)}>
-						{/* URL/Host/Container field - not shown for hardware */}
-						{generalSettingsConfig.showUrl && (
-							<Controller
-								name="url"
-								control={control}
-								render={({ field, fieldState }) => (
-									<TextField
-										{...field}
-										type="text"
-										fieldLabel={generalSettingsConfig.urlLabel}
-										placeholder={generalSettingsConfig.urlPlaceholder}
-										fullWidth
-										disabled={isEditMode}
-										error={!!fieldState.error}
-										helperText={fieldState.error?.message ?? ""}
-									/>
-								)}
-							/>
-						)}
-
-						{/* Port field - only for port and game types */}
-						{generalSettingsConfig.showPort && (
-							<Controller
-								name="port"
-								control={control}
-								render={({ field, fieldState }) => (
-									<TextField
-										{...field}
-										value={field.value === 0 ? "" : field.value}
-										onChange={(e) => {
-											const val = e.target.value;
-											field.onChange(val === "" ? 0 : Number(val));
-										}}
-										type="number"
-										fieldLabel={t("pages.createMonitor.form.general.option.port.label")}
-										placeholder={t(
-											"pages.createMonitor.form.general.option.port.placeholder"
-										)}
-										fullWidth
-										error={!!fieldState.error}
-										helperText={fieldState.error?.message ?? ""}
-									/>
-								)}
-							/>
-						)}
-
-						{/* Game select - only for game type */}
-						{generalSettingsConfig.showGameSelect && (
-							<Controller
-								name="gameId"
-								control={control}
-								render={({ field, fieldState }) => (
-									<Select
-										{...field}
-										value={field.value ?? ""}
-										fieldLabel={t("pages.createMonitor.form.general.option.game.label")}
-										error={!!fieldState.error}
-									>
-										<MenuItem value="">
-											{t("pages.createMonitor.form.general.option.game.placeholder")}{" "}
-										</MenuItem>
-										{games &&
-											Object.entries(games).map(([key, game]) => (
-												<MenuItem
-													key={key}
-													value={key}
-												>
-													{game.name}
-												</MenuItem>
-											))}
-									</Select>
-								)}
-							/>
-						)}
-
-						{/* gRPC Service Name field - only for grpc type */}
-						{generalSettingsConfig.showGrpcServiceName && (
-							<Controller
-								name="grpcServiceName"
-								control={control}
-								render={({ field, fieldState }) => (
-									<TextField
-										{...field}
-										value={field.value ?? ""}
-										type="text"
-										fieldLabel={t(
-											"pages.createMonitor.form.general.option.grpcServiceName.label"
-										)}
-										placeholder={t(
-											"pages.createMonitor.form.general.option.grpcServiceName.placeholder"
-										)}
-										fullWidth
-										error={!!fieldState.error}
-										helperText={fieldState.error?.message ?? ""}
-									/>
-								)}
-							/>
-						)}
-
-						{/* Secret field - only for hardware type */}
-						{generalSettingsConfig.showSecret && (
-							<Controller
-								name="secret"
-								control={control}
-								render={({ field, fieldState }) => (
-									<TextField
-										{...field}
-										value={field.value ?? ""}
-										type="text"
-										fieldLabel={t("pages.createMonitor.form.general.option.secret.label")}
-										placeholder={t(
-											"pages.createMonitor.form.general.option.secret.placeholder"
-										)}
-										fullWidth
-										error={!!fieldState.error}
-										helperText={fieldState.error?.message ?? ""}
-									/>
-								)}
-							/>
-						)}
-
-						<Controller
-							name="name"
-							control={control}
-							render={({ field, fieldState }) => (
-								<TextField
-									{...field}
-									type="text"
-									fieldLabel={t("pages.createMonitor.form.general.option.name.label")}
-									placeholder={generalSettingsConfig.namePlaceholder}
-									fullWidth
-									error={!!fieldState.error}
-									helperText={fieldState.error?.message ?? ""}
-								/>
-							)}
+	title={t("pages.createMonitor.form.general.title")}
+	subtitle={t(`pages.createMonitor.form.general.description.${watchedType}`)}
+	rightContent={
+		<Stack spacing={theme.spacing(LAYOUT.MD)}>
+			{/* URL/Host/Container field - not shown for hardware */}
+			{generalSettingsConfig.showUrl && (
+				<Controller
+					name="url"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							type="text"
+							fieldLabel={generalSettingsConfig.urlLabel}
+							placeholder={generalSettingsConfig.urlPlaceholder}
+							fullWidth
+							disabled={isEditMode}
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
 						/>
-					</Stack>
-				}
+					)}
+				/>
+			)}
+
+			{/* Port field - only for port and game types */}
+			{generalSettingsConfig.showPort && (
+				<Controller
+					name="port"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							value={field.value === 0 ? "" : field.value}
+							onChange={(e) => {
+								const val = e.target.value;
+								field.onChange(val === "" ? 0 : Number(val));
+							}}
+							type="number"
+							fieldLabel={t("pages.createMonitor.form.general.option.port.label")}
+							placeholder={t("pages.createMonitor.form.general.option.port.placeholder")}
+							fullWidth
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
+						/>
+					)}
+				/>
+			)}
+
+			{/* Game select - only for game type */}
+			{generalSettingsConfig.showGameSelect && (
+				<Controller
+					name="gameId"
+					control={control}
+					render={({ field, fieldState }) => (
+						<Select
+							{...field}
+							value={field.value ?? ""}
+							fieldLabel={t("pages.createMonitor.form.general.option.game.label")}
+							error={!!fieldState.error}
+						>
+							<MenuItem value="">
+								{t("pages.createMonitor.form.general.option.game.placeholder")}
+							</MenuItem>
+							{games &&
+								Object.entries(games).map(([key, game]) => (
+									<MenuItem key={key} value={key}>
+										{game.name}
+									</MenuItem>
+								))}
+						</Select>
+					)}
+				/>
+			)}
+
+			{/* gRPC Service Name field - only for grpc type */}
+			{generalSettingsConfig.showGrpcServiceName && (
+				<Controller
+					name="grpcServiceName"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							value={field.value ?? ""}
+							type="text"
+							fieldLabel={t("pages.createMonitor.form.general.option.grpcServiceName.label")}
+							placeholder={t("pages.createMonitor.form.general.option.grpcServiceName.placeholder")}
+							fullWidth
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
+						/>
+					)}
+				/>
+			)}
+
+			{/* Secret field - only for hardware type */}
+			{generalSettingsConfig.showSecret && (
+				<Controller
+					name="secret"
+					control={control}
+					render={({ field, fieldState }) => (
+						<TextField
+							{...field}
+							value={field.value ?? ""}
+							type="text"
+							fieldLabel={t("pages.createMonitor.form.general.option.secret.label")}
+							placeholder={t("pages.createMonitor.form.general.option.secret.placeholder")}
+							fullWidth
+							error={!!fieldState.error}
+							helperText={fieldState.error?.message ?? ""}
+						/>
+					)}
+				/>
+			)}
+
+			{/* Display name */}
+			<Controller
+				name="name"
+				control={control}
+				render={({ field, fieldState }) => (
+					<TextField
+						{...field}
+						type="text"
+						fieldLabel={t("pages.createMonitor.form.general.option.name.label")}
+						placeholder={generalSettingsConfig.namePlaceholder}
+						fullWidth
+						error={!!fieldState.error}
+						helperText={fieldState.error?.message ?? ""}
+					/>
+				)}
 			/>
+		</Stack>
+	}
+/>
+			
 
 			<ConfigBox
 				title={t("pages.createMonitor.form.frequency.title")}
@@ -763,6 +834,53 @@ const CreateMonitorPage = () => {
 						}}
 					/>
 				}
+			/>
+
+			<ConfigBox
+	title="Escalation Rules"
+	subtitle="If the monitor stays down for the specified time, notify additional channels."
+	rightContent={
+		<Stack spacing={theme.spacing(LAYOUT.MD)}>
+			<Controller
+				name="escalationDelayMinutes"
+				control={control}
+				render={({ field, fieldState }) => (
+					<TextField
+						{...field}
+						value={field.value ?? 1}
+						onChange={(e) => field.onChange(Number(e.target.value))}
+						type="number"
+						fieldLabel="Escalate after (minutes)"
+						fullWidth
+						error={!!fieldState.error}
+						helperText={fieldState.error?.message ?? ""}
+					/>
+				)}
+			/>
+
+			<Controller
+				name="escalationChannelId"
+				control={control}
+				render={({ field }) => (
+					<Select
+						{...field}
+						value={field.value ?? ""}
+						fieldLabel="Escalation notification channels"
+					>
+						<MenuItem value="">Select a notification channel</MenuItem>
+						{(notifications ?? []).map((notification) => (
+							<MenuItem
+								key={notification.id}
+								value={notification.id}
+							>
+								{notification.notificationName}
+							</MenuItem>
+						))}
+					</Select>
+				)}
+			/>
+		</Stack>
+			}
 			/>
 
 			{(watchedType === "http" ||

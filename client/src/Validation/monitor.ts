@@ -13,6 +13,9 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationEnabled: z.boolean().optional(),
+	escalationDelayMinutes: z.number().min(1, "Escalation delay must be at least 1 minute").optional(),
+	escalationChannelId: z.string().optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -29,8 +32,18 @@ const baseSchema = z.object({
 		.optional(),
 });
 
+const baseSchemaWithEscalationValidation = baseSchema.refine(
+	(data) =>
+		!data.escalationEnabled ||
+		(!!data.escalationChannelId && !!data.escalationDelayMinutes),
+	{
+		message: "Escalation channel and delay are required when escalation is enabled",
+		path: ["escalationChannelId"],
+	}
+);
+
 // HTTP monitor schema
-const httpSchema = baseSchema.extend({
+const httpSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("http"),
 	url: urlSchema,
 	ignoreTlsErrors: z.boolean(),
@@ -41,13 +54,13 @@ const httpSchema = baseSchema.extend({
 });
 
 // Ping monitor schema
-const pingSchema = baseSchema.extend({
+const pingSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("ping"),
 	url: z.string().min(1, "Host is required"),
 });
 
 // Port monitor schema
-const portSchema = baseSchema.extend({
+const portSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("port"),
 	url: z.string().min(1, "Host is required"),
 	port: z
@@ -57,13 +70,13 @@ const portSchema = baseSchema.extend({
 });
 
 // Docker monitor schema
-const dockerSchema = baseSchema.extend({
+const dockerSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("docker"),
 	url: z.string().min(1, "Container ID is required"),
 });
 
 // Game server monitor schema
-const gameSchema = baseSchema.extend({
+const gameSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("game"),
 	url: z.string().min(1, "Host is required"),
 	port: z
@@ -74,7 +87,7 @@ const gameSchema = baseSchema.extend({
 });
 
 // gRPC monitor schema
-const grpcSchema = baseSchema.extend({
+const grpcSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("grpc"),
 	url: z.string().min(1, "Host is required"),
 	port: z
@@ -86,13 +99,13 @@ const grpcSchema = baseSchema.extend({
 });
 
 // PageSpeed monitor schema
-const pagespeedSchema = baseSchema.extend({
+const pagespeedSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("pagespeed"),
 	url: urlSchema,
 });
 
 // Hardware/Infrastructure monitor schema
-const hardwareSchema = baseSchema.extend({
+const hardwareSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("hardware"),
 	url: urlSchema,
 	secret: z.string({ message: "Secret is required" }).min(1, "Secret is required"),
@@ -116,7 +129,7 @@ const hardwareSchema = baseSchema.extend({
 });
 
 // WebSocket monitor schema
-const websocketSchema = baseSchema.extend({
+const websocketSchema = baseSchemaWithEscalationValidation.extend({
 	type: z.literal("websocket"),
 	url: z.string().min(1, "WebSocket URL is required"),
 	ignoreTlsErrors: z.boolean(),
