@@ -229,6 +229,16 @@ const CreateMonitorPage = () => {
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
+	const escalationDelayOptions = [
+    	{ value: 1, labelKey: "pages.createMonitor.form.escalation.option.delay.value.oneMinute" },
+    	{ value: 15, labelKey: "pages.createMonitor.form.escalation.option.delay.value.fifteenMinutes" },
+    	{ value: 30, labelKey: "pages.createMonitor.form.escalation.option.delay.value.thirtyMinutes" },
+    	{ value: 60, labelKey: "pages.createMonitor.form.escalation.option.delay.value.oneHour" },
+    	{ value: 120, labelKey: "pages.createMonitor.form.escalation.option.delay.value.twoHours" },
+    	{ value: 240, labelKey: "pages.createMonitor.form.escalation.option.delay.value.fourHours" },
+    	{ value: 1440, labelKey: "pages.createMonitor.form.escalation.option.delay.value.oneDay" },
+	];
+
 	const handleDeleteClick = () => {
 		setIsDeleteDialogOpen(true);
 	};
@@ -763,6 +773,92 @@ const CreateMonitorPage = () => {
 						}}
 					/>
 				}
+			/>
+
+			<ConfigBox
+    			title={t("pages.createMonitor.form.escalation.title")}
+    			subtitle={t("pages.createMonitor.form.escalation.description")}
+    			rightContent={
+        			<Stack spacing={theme.spacing(LAYOUT.MD)}>
+            			<Controller
+                			name="escalationDelayMinutes"
+                			control={control}
+                			render={({ field, fieldState }) => (
+                    			<Select
+                        			{...field}
+                        			value={field.value ?? ""}
+                        			onChange={(e: any) => field.onChange(e.target.value === "" ? null : Number(e.target.value))}
+                        			fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+                        			error={!!fieldState.error}
+                    			>
+                        			<MenuItem value="">
+                            			{t("pages.createMonitor.form.escalation.option.delay.placeholder")}
+                        			</MenuItem>
+                        			{escalationDelayOptions.map((option) => (
+                            			<MenuItem key={option.value} value={option.value}>
+                                			{t(option.labelKey)}
+                            			</MenuItem>
+                        			))}
+                    			</Select>
+                			)}
+            			/>
+            			<Controller
+                			name="escalationNotifications"
+                			control={control}
+                			render={({ field }) => {
+                    			const notificationOptions = (notifications ?? []).map((n) => ({
+                        			...n,
+                        			name: n.notificationName,
+                    			}));
+                    			const selectedNotifications = notificationOptions.filter((n) =>
+                        			(field.value ?? []).includes(n.id)
+                    			);
+                    			return (
+                        			<Stack spacing={theme.spacing(LAYOUT.MD)}>
+                            			<Autocomplete
+                                			multiple
+                                			options={notificationOptions}
+                                			value={selectedNotifications}
+                                			getOptionLabel={(option: any) => option.name}
+                                			onChange={(_: any, newValue: any[]) => {
+                                    			field.onChange(newValue.map((n) => n.id));
+                                			}}
+                                			isOptionEqualToValue={(option: any, value: any) => option.id === value.id}
+                            			/>
+                            			{selectedNotifications.length > 0 && (
+                                			<Stack flex={1} width="100%">
+                                    			{selectedNotifications.map((notification, index) => (
+                                        			<Stack
+                                            			direction="row"
+                                            			alignItems="center"
+                                            			key={notification.id}
+                                            			width="100%"
+                                        			>
+                                            			<Typography flexGrow={1}>{notification.notificationName}</Typography>
+                                            			<IconButton
+                                                			size="small"
+                                                			onClick={() => {
+                                                    			field.onChange(
+                                                        			(field.value ?? []).filter(
+                                                            			(id: string) => id !== notification.id
+                                                        			)
+                                                    			);
+                                                			}}
+                                                			aria-label="Remove escalation notification"
+                                            			>
+                                                			<Trash2 size={16} />
+                                            			</IconButton>
+                                            			{index < selectedNotifications.length - 1 && <Divider />}
+                                        			</Stack>
+                                    			))}
+                                			</Stack>
+                            			)}
+                        			</Stack>
+                    			);
+                			}}
+            			/>
+        			</Stack>
+    			}
 			/>
 
 			{(watchedType === "http" ||
