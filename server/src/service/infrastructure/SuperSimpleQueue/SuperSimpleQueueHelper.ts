@@ -1,6 +1,8 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
+import type { NotificationMessage } from "@/types/notificationMessage.js";
+import type { MonitorStatusResponse, Notification } from "@/types/index.js";
 import { AppError } from "@/utils/AppError.js";
 import {
 	ICheckService,
@@ -38,7 +40,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -161,6 +163,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 6.5. Reset escalation when monitor recovers
+				if (statusChangeResult.monitor.status === "up" && statusChangeResult.monitor.escalationSentAt) {
+					await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, { escalationSentAt: null });
+				}
+
+				// Step 6.7. Handle escalation for monitors that are down
+				if (statusChangeResult.monitor.status === "down") {
+					this.handleEscalation(statusChangeResult.monitor, status, statusChangeResult).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -455,4 +474,115 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private handleEscalation = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, statusChangeResult: StatusChangeResult) => {
+		const { escalationInterval, escalationNotifications, escalationSentAt } = monitor;
+
+		// Only handle escalation if monitor is down and escalation is configured
+		if (monitor.status !== "down" || !escalationInterval || !escalationNotifications || escalationNotifications.length === 0) {
+			return;
+		}
+
+		// Don't send if escalation was already sent for this incident
+		if (escalationSentAt) {
+			return;
+		}
+
+		// Get the current incident to check how long monitor has been down
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			// No active incident, shouldn't happen but be safe
+			return;
+		}
+
+		// Calculate time elapsed since incident started (in milliseconds)
+		const timeElapsedMs = Date.now() - new Date(activeIncident.startTime).getTime();
+		const escalationIntervalMs = escalationInterval * 60 * 1000; // Convert minutes to milliseconds
+
+		// Check if enough time has passed to send escalation
+		if (timeElapsedMs < escalationIntervalMs) {
+			return;
+		}
+
+		// Send escalation notification
+		try {
+			const escalationNotificationsList = await Promise.all(
+				monitor.escalationNotifications.map(async (notificationId) => {
+					try {
+						return await this.notificationsService.findById(notificationId, monitor.teamId);
+					} catch {
+						return null;
+					}
+				})
+			);
+
+			const validNotifications = escalationNotificationsList.filter(
+				(notification): notification is Notification => notification !== null
+			);
+			if (validNotifications.length === 0) {
+				return;
+			}
+
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+
+			const escalationMessage: NotificationMessage = {
+				type: "escalation",
+				severity: "warning",
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: monitor.url,
+					type: monitor.type,
+					status: monitor.status,
+				},
+				content: {
+					title: `Escalation: Monitor ${monitor.name} still down`,
+					summary: `Message from Checkmate Service Escalation: ${monitor.name} is still down.`,
+					details: [
+						`URL: ${monitor.url}`,
+						`Status: Down`,
+						`Type: ${monitor.type}`,
+						`Incident started at: ${new Date(activeIncident.startTime).toISOString()}`,
+					],
+					timestamp: new Date(),
+				},
+				clientHost,
+				metadata: {
+					teamId: monitor.teamId,
+					notificationReason: "escalation",
+				},
+			};
+
+			// Send to all escalation notification channels
+			const sendPromises = validNotifications.map((notification) =>
+				this.notificationsService.sendEscalationNotification(notification, escalationMessage).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				})
+			);
+
+			await Promise.all(sendPromises);
+
+			// Update monitor to mark escalation as sent
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, { escalationSentAt: new Date().toISOString() });
+
+			this.logger.info({
+				message: `Escalation notification sent for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+			});
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error handling escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
 }

@@ -8,7 +8,16 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		// Convert string IDs to ObjectIds for Mongoose
+		const processedMonitor = { ...monitor };
+		if (processedMonitor.notifications) {
+			(processedMonitor as any).notifications = processedMonitor.notifications.map((id) => new mongoose.Types.ObjectId(id));
+		}
+		if (processedMonitor.escalationNotifications) {
+			(processedMonitor as any).escalationNotifications = processedMonitor.escalationNotifications.map((id) => new mongoose.Types.ObjectId(id));
+		}
+
+		const monitorModel = new MonitorModel({ ...processedMonitor, teamId, userId });
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -17,7 +26,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => {
+			const processed = { ...monitor, notifications: undefined };
+			if (processed.escalationNotifications) {
+				(processed as any).escalationNotifications = processed.escalationNotifications.map((id) => new mongoose.Types.ObjectId(id));
+			}
+			return processed;
+		});
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -167,12 +182,19 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		// Convert string IDs to ObjectIds for Mongoose
+		const processedPatch = { ...patch };
+		if (processedPatch.notifications) {
+			(processedPatch as any).notifications = processedPatch.notifications.map((id) => new mongoose.Types.ObjectId(id));
+		}
+		if (processedPatch.escalationNotifications) {
+			(processedPatch as any).escalationNotifications = processedPatch.escalationNotifications.map((id) => new mongoose.Types.ObjectId(id));
+		}
+
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
 			{
-				$set: {
-					...patch,
-				},
+				$set: processedPatch,
 			},
 			{ new: true, runValidators: true }
 		);
@@ -374,6 +396,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationInterval: doc.escalationInterval ?? undefined,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification) => toStringId(notification)),
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +458,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationInterval: doc.escalationInterval ?? undefined,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification)),
+			escalationSentAt: doc.escalationSentAt ? toDateString(doc.escalationSentAt) : null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

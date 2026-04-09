@@ -1,5 +1,6 @@
 import Select from "@mui/material/Select";
 import type { SelectProps } from "@mui/material/Select";
+import FormHelperText from "@mui/material/FormHelperText";
 import React, { forwardRef } from "react";
 import { useTheme } from "@mui/material/styles";
 import Stack from "@mui/material/Stack";
@@ -12,10 +13,11 @@ interface SelectInputProps<T> extends Omit<SelectProps<T>, "label"> {
 	required?: boolean;
 	placeholder?: string;
 	placeholderColor?: string;
+	helperText?: string;
 }
 
 const SelectInputInner = <T,>(
-	{ fieldLabel, required, placeholder, placeholderColor, ...props }: SelectInputProps<T>,
+	{ fieldLabel, required, placeholder, placeholderColor, helperText, ...props }: SelectInputProps<T>,
 	ref: React.ForwardedRef<HTMLDivElement>
 ) => {
 	const theme = useTheme();
@@ -98,6 +100,14 @@ const SelectInputInner = <T,>(
 			<Stack spacing={theme.spacing(2)}>
 				<FieldLabel required={required}>{fieldLabel}</FieldLabel>
 				{select}
+				{helperText && (
+					<FormHelperText
+						error={props.error}
+						sx={{ marginLeft: 0, marginTop: theme.spacing(0.5) }}
+					>
+						{helperText}
+					</FormHelperText>
+				)}
 			</Stack>
 		);
 	}
