@@ -27,6 +27,12 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	notificationInterval: z
+		.number({ message: "Notification interval must be a number" })
+		.int("Notification interval must be a whole number")
+		.min(1, "Notification interval must be at least 1 minute")
+		.max(1440, "Notification interval must be at most 1440 minutes (24 hours)")
+		.optional(),
 });
 
 // HTTP monitor schema

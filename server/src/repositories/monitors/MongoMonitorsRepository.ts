@@ -8,7 +8,7 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const monitorModel = new MonitorModel({ ...monitor, teamId, userId, owner: userId });
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -356,6 +356,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
 			teamId: toStringId(doc.teamId),
+			owner: toStringId(doc.owner),
 			name: doc.name,
 			description: doc.description ?? undefined,
 			status: doc.status ?? "initializing",
@@ -391,6 +392,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			notificationInterval: doc.notificationInterval ?? 5,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -415,6 +417,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
 			teamId: toStringId(doc.teamId),
+			owner: toStringId(doc.owner),
 			name: doc.name,
 			description: doc.description ?? undefined,
 			status: doc.status ?? "initializing",
@@ -450,6 +453,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			notificationInterval: doc.notificationInterval ?? 5,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

@@ -48,3 +48,14 @@ export interface IncidentSummary {
 	topMonitor: IncidentSummaryTopMonitor | null;
 	latestIncidents: IncidentSummaryItem[];
 }
+
+export interface EscalationEntry {
+	notificationSentAt: string;
+	intervalMinutes: number;
+}
+
+export interface IncidentEscalation {
+	intervalMinutes: number;
+	scheduledNextNotification: string | null;
+	escalationHistory: EscalationEntry[];
+}

@@ -6,13 +6,14 @@ import { BaseBox, ValueLabel } from "@/Components/design-elements";
 import { LAYOUT } from "@/Utils/Theme/constants";
 
 import { useTranslation } from "react-i18next";
-import type { Incident } from "@/Types/Incident";
+import type { Incident, IncidentEscalation, EscalationEntry } from "@/Types/Incident";
 import type { Monitor } from "@/Types/Monitor";
 import { useTheme } from "@mui/material";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/Types/state";
 import { formatDateWithTz } from "@/Utils/TimeUtils";
 import { getIncidentsDuration } from "@/Pages/Incidents/utils";
+import { useGet } from "@/Hooks/UseApi";
 
 interface CardDetailsProps {
 	incident: Incident | null;
@@ -24,6 +25,9 @@ export const CardDetails = ({ incident, monitor, sx }: CardDetailsProps) => {
 	const { t } = useTranslation();
 	const theme = useTheme();
 	const uiTimezone = useSelector((state: RootState) => state.ui.timezone);
+	const { data: escalation } = useGet<IncidentEscalation>(
+		incident ? `/incidents/${incident.id}/escalations` : null
+	);
 
 	if (!incident) {
 		return null;
@@ -187,6 +191,82 @@ export const CardDetails = ({ incident, monitor, sx }: CardDetailsProps) => {
 									</Grid>
 								</>
 							)}
+						</Grid>
+					</Stack>
+				</BaseBox>
+			)}
+			{incident.status && escalation && (
+				<BaseBox padding={LAYOUT.MD}>
+					<Stack gap={theme.spacing(LAYOUT.MD)}>
+						<Typography textTransform={"uppercase"}>
+							{t("pages.incidents.dialog.details.escalation.title")}
+						</Typography>
+						<Divider />
+						<Grid
+							container
+							spacing={theme.spacing(LAYOUT.MD)}
+						>
+							<Grid size={6}>
+								<Typography>
+									{t("pages.incidents.dialog.details.escalation.interval")}
+								</Typography>
+							</Grid>
+							<Grid size={6}>
+								<Typography>
+									{escalation.intervalMinutes}{" "}
+									{t("pages.incidents.dialog.details.escalation.minutes")}
+								</Typography>
+							</Grid>
+							{escalation.scheduledNextNotification && (
+								<>
+									<Grid size={6}>
+										<Typography>
+											{t("pages.incidents.dialog.details.escalation.nextNotification")}
+										</Typography>
+									</Grid>
+									<Grid size={6}>
+										<Typography>
+											{formatDateWithTz(
+												escalation.scheduledNextNotification,
+												"D MMM YYYY, h:mm A",
+												uiTimezone
+											)}
+										</Typography>
+									</Grid>
+								</>
+							)}
+							{escalation.escalationHistory &&
+								escalation.escalationHistory.length > 0 && (
+									<>
+										<Grid size={12}>
+											<Typography sx={{ mt: theme.spacing(1) }}>
+												{t("pages.incidents.dialog.details.escalation.history")}
+											</Typography>
+										</Grid>
+										<Grid size={12}>
+											<Stack gap={theme.spacing(LAYOUT.SM)}>
+												{escalation.escalationHistory.map(
+													(entry: EscalationEntry, index: number) => (
+														<Stack
+															key={index}
+															direction="row"
+															justifyContent="space-between"
+														>
+															<Typography variant="body2">{`#${index + 1}`}</Typography>
+															<Typography variant="body2">
+																{formatDateWithTz(
+																	entry.notificationSentAt,
+																	"D MMM YYYY, h:mm A",
+																	uiTimezone
+																)}
+															</Typography>
+														</Stack>
+													)
+												)}
+											</Stack>
+										</Grid>
+									</>
+								)}
 						</Grid>
 					</Stack>
 				</BaseBox>

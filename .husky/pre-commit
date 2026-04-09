@@ -1,4 +1,4 @@
 #!/bin/sh
-echo "Running lint-staged..."
-cd client && npx lint-staged && cd ..
-cd server && npx lint-staged && cd ..
+. "$(dirname "$0")/_/husky.sh"
+
+node "$(dirname "$0")/pre-commit.js"

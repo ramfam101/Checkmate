@@ -765,6 +765,77 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="notificationInterval"
+						control={control}
+						render={({ field }) => (
+							<Select
+								{...field}
+								value={field.value ?? 5}
+								fieldLabel={t(
+									"pages.createMonitor.form.escalation.notificationInterval.label"
+								)}
+							>
+								<MenuItem value={1}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.1min"
+									)}
+								</MenuItem>
+								<MenuItem value={5}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.5min"
+									)}
+								</MenuItem>
+								<MenuItem value={10}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.10min"
+									)}
+								</MenuItem>
+								<MenuItem value={15}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.15min"
+									)}
+								</MenuItem>
+								<MenuItem value={30}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.30min"
+									)}
+								</MenuItem>
+								<MenuItem value={60}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.1hour"
+									)}
+								</MenuItem>
+								<MenuItem value={120}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.2hours"
+									)}
+								</MenuItem>
+								<MenuItem value={240}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.4hours"
+									)}
+								</MenuItem>
+								<MenuItem value={480}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.8hours"
+									)}
+								</MenuItem>
+								<MenuItem value={1440}>
+									{t(
+										"pages.createMonitor.form.escalation.notificationInterval.option.1day"
+									)}
+								</MenuItem>
+							</Select>
+						)}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

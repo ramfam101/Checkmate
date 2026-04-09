@@ -10,6 +10,7 @@ export interface IIncidentController {
 	getIncidentsByTeam: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getIncidentSummary: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getIncidentById: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	getIncidentEscalations: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	resolveIncidentManually: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class IncidentController implements IIncidentController {
@@ -96,6 +97,36 @@ class IncidentController implements IIncidentController {
 				success: true,
 				msg: "Incident resolved successfully",
 				data: resolvedIncident,
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	getIncidentEscalations = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const teamId = requireTeamId(req.user?.teamId);
+			const incidentId = req.params.incidentId as string;
+			if (!incidentId) {
+				throw new AppError({ message: "Incident ID is required", service: SERVICE_NAME, status: 400 });
+			}
+
+			const incident = await this.incidentService.getIncidentById(incidentId, teamId);
+
+			if (!incident.incident) {
+				throw new AppError({ message: "Incident not found", service: SERVICE_NAME, status: 404 });
+			}
+
+			const escalationData = {
+				intervalMinutes: incident.monitor.notificationInterval,
+				scheduledNextNotification: incident.incident.scheduledNextNotification || null,
+				escalationHistory: incident.incident.escalationHistory || [],
+			};
+
+			return res.status(200).json({
+				success: true,
+				msg: "Incident escalation information retrieved successfully",
+				data: escalationData,
 			});
 		} catch (error) {
 			next(error);
