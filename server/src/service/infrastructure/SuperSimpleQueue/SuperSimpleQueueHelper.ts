@@ -158,10 +158,10 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 				
 				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
-				if (activeIncident && !activeIncident.escalationSentAt && statusChangeResult.monitor.delayMinutes > 0) {
+				if (activeIncident && !activeIncident.escalationSentAt && statusChangeResult.monitor.escalationDelay > 0) {
 					const timeSinceDown = Date.now() - parseInt(activeIncident.startTime);
-					console.log(`Time since down: ${timeSinceDown} ms, Escalation delay: ${statusChangeResult.monitor.delayMinutes} minutes`);
-					if (timeSinceDown >= (statusChangeResult.monitor.delayMinutes * 60000)) {
+					console.log(`Time since down: ${timeSinceDown} ms, Escalation delay: ${statusChangeResult.monitor.escalationDelay} minutes`);
+					if (timeSinceDown >= (statusChangeResult.monitor.escalationDelay * 60000)) {
 						decision.shouldEscalate = true;
 					}
 				}
