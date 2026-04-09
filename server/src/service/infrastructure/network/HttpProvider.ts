@@ -73,6 +73,7 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 
 		try {
 			const response = await this.got<string>(url, options);
+			const isSuccessfulStatus = response.statusCode >= 200 && response.statusCode < 300;
 			const contentType = response.headers["content-type"] || "";
 			const isJson = contentType.includes("application/json");
 
@@ -106,7 +107,7 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 				monitorId: monitor.id,
 				teamId: monitor.teamId,
 				type: monitor.type,
-				status: response.ok && matchResult.ok,
+				status: isSuccessfulStatus && matchResult.ok,
 				code: response.statusCode,
 				message: matchResult.ok ? (response.statusMessage ?? "OK") : matchResult.message,
 				responseTime: response.timings.phases.total ?? 0,

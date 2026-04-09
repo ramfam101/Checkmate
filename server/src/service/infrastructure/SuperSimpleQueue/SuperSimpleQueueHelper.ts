@@ -240,15 +240,22 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				// Step 7. Handle incidents and schedule escalations when a new incident is created
+				this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.then((incident) => {
+						if (incident && decision.shouldCreateIncident) {
+							return this.handleEscalations(statusChangeResult.monitor, incident.id);
+						}
+					})
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -537,11 +544,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const teamId = monitor.teamId; // Ensure teamId is passed
 				const incident = await this.incidentsRepository.findById(incidentId, teamId);
 				if (incident && !incident.acknowledged) {
-					await this.notificationsService.sendTestNotification({
-						type: "webhook",
-						notificationName: `Escalation for Incident ${incidentId}`,
-						address: escalation.channelId, // Using address for channelId
-					});
+					const notification = await this.notificationsService.findById(escalation.channelId, teamId);
+					await this.notificationsService.sendTestNotification(notification);
 				}
 			}, escalation.delayMinutes * 60 * 1000);
 		}

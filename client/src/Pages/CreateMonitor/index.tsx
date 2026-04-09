@@ -808,14 +808,35 @@ const CreateMonitorPage = () => {
 									name={`escalations.${index}.channelId`}
 									control={control}
 									render={({ field: escalationField, fieldState }) => (
-										<TextField
-											{...escalationField}
-											fieldLabel="Channel ID"
-											placeholder="Webhook URL or channel identifier"
-											error={!!fieldState.error}
-											helperText={fieldState.error?.message ?? ""}
-											fullWidth
-										/>
+										<Stack spacing={theme.spacing(1)}>
+											<Select
+												{...escalationField}
+												value={escalationField.value ?? ""}
+												fieldLabel="Notification Channel"
+												error={!!fieldState.error}
+												fullWidth
+											>
+												<MenuItem value="">
+													Select a notification channel
+												</MenuItem>
+												{(notifications ?? []).map((notification) => (
+													<MenuItem
+														key={notification.id}
+														value={notification.id}
+													>
+														{notification.notificationName}
+													</MenuItem>
+												))}
+											</Select>
+											{fieldState.error?.message && (
+												<Typography
+													variant="caption"
+													color="error"
+												>
+													{fieldState.error.message}
+												</Typography>
+											)}
+										</Stack>
 									)}
 								/>
 								<IconButton
