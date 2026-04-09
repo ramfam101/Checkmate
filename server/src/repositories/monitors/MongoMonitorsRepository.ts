@@ -8,7 +8,7 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const monitorModel = new MonitorModel({ ...monitor, escalatedNotifications: monitor.escalatedNotifications ?? [],teamId, userId });
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -393,8 +393,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
-		};
+			escalatedNotifications: ((doc as any).escalatedNotifications ?? []).map((step: any) => ({
+				delayMinutes: step.delayMinutes,
+				notificationIds: (step.notificationIds ?? []).map((id: any) => toStringId(id)),
+		})),
 	};
+};
 
 	private toEntityWithChecks = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
@@ -452,7 +456,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
-		};
+			escalatedNotifications: ((doc as any).escalatedNotifications ?? []).map((step: any) => ({
+                delayMinutes: step.delayMinutes,
+                notificationIds: (step.notificationIds ?? []).map((id: any) => toStringId(id)),
+            })),
+        };
 	};
 
 	private toCheckSnapshot = (doc: CheckSnapshotDocument): CheckSnapshot => {

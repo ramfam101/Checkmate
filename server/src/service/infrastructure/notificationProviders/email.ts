@@ -77,6 +77,9 @@ export class EmailProvider implements INotificationProvider {
 		return true;
 	}
 
+
+	//old one in case
+	/*
 	private buildSubject(message: NotificationMessage): string {
 		switch (message.type) {
 			case "monitor_down":
@@ -90,7 +93,24 @@ export class EmailProvider implements INotificationProvider {
 			default:
 				return `Alert: ${message.monitor.name}`;
 		}
-	}
+	}*/
+
+	private buildSubject(message: NotificationMessage): string {
+  const prefix = message.metadata.isEscalated ? "Escalation: " : "";
+
+  switch (message.type) {
+    case "monitor_down":
+      return `${prefix}Monitor ${message.monitor.name} is down`;
+    case "monitor_up":
+      return `Monitor ${message.monitor.name} recovered`;
+    case "threshold_breach":
+      return `Threshold exceeded: ${message.monitor.name}`;
+    case "threshold_resolved":
+      return `Thresholds resolved: ${message.monitor.name}`;
+    default:
+      return `${prefix}Monitor ${message.monitor.name}`;
+  }
+}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
 		const context = {

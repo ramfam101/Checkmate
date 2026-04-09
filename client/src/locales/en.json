@@ -445,6 +445,13 @@
 					},
 					"title": "Advanced settings"
 				},
+				"escalatedNotifications": {
+					"title": "Escalated notifications",
+					"description": "Define notification steps that escalate over time",
+					"step": "Step {{number}}",
+					"delay": "Delay (minutes)",
+					"addStep": "Add Escalationstep"
+				},
 				"frequency": {
 					"description": "How often do you want to check the status of this monitor?",
 					"option": {
