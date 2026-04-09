@@ -4,6 +4,7 @@ import { sendTestEmailBodyValidation } from "@/validation/notificationValidation
 import { AppError } from "@/utils/AppError.js";
 import { IEmailService, ISettingsService } from "@/service/index.js";
 import { Settings } from "@/types/settings.js";
+import { ILogger } from "@/utils/logger.js";
 
 const SERVICE_NAME = "SettingsController";
 
@@ -18,9 +19,11 @@ class SettingsController implements ISettingsController {
 	static SERVICE_NAME = SERVICE_NAME;
 	private settingsService: ISettingsService;
 	private emailService: IEmailService;
-	constructor(settingsService: ISettingsService, emailService: IEmailService) {
+	private logger: ILogger;
+	constructor(settingsService: ISettingsService, emailService: IEmailService, logger: ILogger) {
 		this.settingsService = settingsService;
 		this.emailService = emailService;
+			this.logger = logger;
 	}
 
 	get serviceName() {
@@ -100,13 +103,63 @@ class SettingsController implements ISettingsController {
 				systemEmailTLSServername,
 			} = req.body;
 
+			// Validate required SMTP fields
+			if (!systemEmailHost || !systemEmailPort || !systemEmailPassword || !systemEmailAddress) {
+				this.logger.error({
+					message: "Test email failed: Missing required SMTP configuration",
+					service: "SettingsController",
+					method: "sendTestEmail",
+					details: {
+						hasHost: !!systemEmailHost,
+						hasPort: !!systemEmailPort,
+						hasPassword: !!systemEmailPassword,
+						hasAddress: !!systemEmailAddress,
+						recipient: to,
+					},
+				});
+				throw new AppError({
+					message: "Missing required email configuration: Host, Port, Address, and Password are required.",
+					status: 400,
+					service: "SettingsController",
+					method: "sendTestEmail",
+				});
+			}
+
 			const subject = "This is a test email from Checkmate";
 			const context = { testName: "Monitoring System" };
 
+			this.logger.debug({
+				message: "Building test email template",
+				service: "SettingsController",
+				method: "sendTestEmail",
+			});
+
 			const html = await this.emailService.buildEmail("testEmailTemplate", context);
 			if (!html) {
-				throw new AppError({ message: "Failed to build email template.", status: 500 });
+				this.logger.error({
+					message: "Failed to build email template",
+					service: "SettingsController",
+					method: "sendTestEmail",
+				});
+				throw new AppError({
+					message: "Failed to build email template.",
+					status: 500,
+					service: "SettingsController",
+					method: "sendTestEmail",
+				});
 			}
+
+			this.logger.debug({
+				message: "Sending test email",
+				service: "SettingsController",
+				method: "sendTestEmail",
+				details: {
+					recipient: to,
+					host: systemEmailHost,
+					port: systemEmailPort,
+				},
+			});
+
 			const messageId = await this.emailService.sendEmail(to, subject, html, {
 				systemEmailHost,
 				systemEmailPort,
@@ -123,16 +176,65 @@ class SettingsController implements ISettingsController {
 			});
 
 			if (!messageId) {
-				throw new AppError({ message: "Failed to send test email.", status: 500 });
+				this.logger.error({
+					message: "Test email failed to send",
+					service: "SettingsController",
+					method: "sendTestEmail",
+					details: { recipient: to, host: systemEmailHost },
+				});
+				throw new AppError({
+					message: "Failed to send test email. Check server logs for detailed error.",
+					status: 500,
+					service: "SettingsController",
+					method: "sendTestEmail",
+					details: {
+						recipient: to,
+						host: systemEmailHost,
+						port: systemEmailPort,
+					},
+				});
 			}
+
+			this.logger.info({
+				message: "Test email sent successfully",
+				service: "SettingsController",
+				method: "sendTestEmail",
+				details: { messageId, recipient: to },
+			});
 
 			return res.status(200).json({
 				success: true,
 				msg: "Test email sent successfully",
 				data: { messageId },
 			});
-		} catch (error) {
-			next(error);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error in sendTestEmail: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: "SettingsController",
+				method: "sendTestEmail",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			if (error instanceof AppError) {
+				next(error);
+			} else if (error instanceof Error) {
+				next(
+					new AppError({
+						message: error.message || "Failed to send test email",
+						status: 500,
+						service: "SettingsController",
+						method: "sendTestEmail",
+					})
+				);
+			} else {
+				next(
+					new AppError({
+						message: "Unknown error occurred while sending test email",
+						status: 500,
+						service: "SettingsController",
+						method: "sendTestEmail",
+					})
+				);
+			}
 		}
 	};
 }

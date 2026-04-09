@@ -4,11 +4,20 @@ import { z } from "zod";
 // Notification Validations
 //****************************************
 
+const alertTimesValidation = z
+	.array(z.number().int().min(1, "Alert times must be at least 1 minute").max(10080, "Alert times must be at most 10080 minutes"))
+	.max(20, "Cannot configure more than 20 alert times")
+	.refine((times) => new Set(times).size === times.length, {
+		message: "Alert times must be unique",
+	})
+	.optional();
+
 export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	// Email notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("email"),
+		alertTimes: alertTimesValidation,
 		address: z.email("Please enter a valid e-mail address"),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -18,6 +27,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("webhook"),
+		alertTimes: alertTimesValidation,
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -27,6 +37,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("slack"),
+		alertTimes: alertTimesValidation,
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -36,6 +47,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("discord"),
+		alertTimes: alertTimesValidation,
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -45,6 +57,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("pager_duty"),
+		alertTimes: alertTimesValidation,
 		address: z.string().min(1, "PagerDuty integration key is required"),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
@@ -54,6 +67,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("matrix"),
+		alertTimes: alertTimesValidation,
 		address: z.union([z.string(), z.literal("")]).optional(),
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
 		roomId: z.string().min(1, "Room ID is required"),
@@ -63,6 +77,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("teams"),
+		alertTimes: alertTimesValidation,
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 	}),
 ]);
@@ -86,7 +101,7 @@ export const testAllNotificationsBodyValidation = z.object({
 export const sendTestEmailBodyValidation = z.object({
 	to: z.string().min(1, "To field is required"),
 	systemEmailHost: z.string().optional(),
-	systemEmailPort: z.number().optional(),
+	systemEmailPort: z.coerce.number().optional(),
 	systemEmailSecure: z.boolean().optional(),
 	systemEmailPool: z.boolean().optional(),
 	systemEmailAddress: z.string().optional(),

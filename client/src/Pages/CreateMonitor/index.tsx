@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalationAfterMinutes = watch("escalationAfterMinutes") as number;
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +763,66 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationAfterMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? 0}
+									onChange={(e) => {
+										const value = Number(e.target.value);
+										field.onChange(Number.isNaN(value) ? 0 : value);
+									}}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+									placeholder={t("pages.createMonitor.form.escalation.option.delay.placeholder")}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.channels.label"
+										)}
+										disabled={(watchedEscalationAfterMinutes ?? 0) <= 0}
+									/>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

@@ -13,6 +13,7 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 				? {
 						type: "matrix" as const,
 						notificationName: data.notificationName || "",
+						alertTimes: data.alertTimes || [],
 						homeserverUrl: data.homeserverUrl || "",
 						roomId: data.roomId || "",
 						accessToken: data.accessToken || "",
@@ -20,6 +21,7 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 				: {
 						type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
 						notificationName: data?.notificationName || "",
+						alertTimes: data?.alertTimes || [],
 						address: data?.address || "",
 					};
 

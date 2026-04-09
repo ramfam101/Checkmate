@@ -6,6 +6,28 @@ import mongoose from "mongoose";
 import { AppError } from "@/utils/AppError.js";
 
 class MongoIncidentRepository implements IIncidentsRepository {
+	private toEscalationProgress = (value: unknown): Record<string, number> => {
+		if (!value) {
+			return {};
+		}
+
+		if (typeof value === "object" && value !== null) {
+			const maybeMap = value as { entries?: unknown };
+			if (typeof maybeMap.entries === "function") {
+				return Object.fromEntries((value as Map<string, number>).entries());
+			}
+
+			return Object.entries(value as Record<string, unknown>).reduce<Record<string, number>>((acc, [key, raw]) => {
+				if (typeof raw === "number" && Number.isFinite(raw)) {
+					acc[key] = raw;
+				}
+				return acc;
+			}, {});
+		}
+
+		return {};
+	};
+
 	private toStringId = (value?: mongoose.Types.ObjectId | string | null): string => {
 		if (!value) {
 			return "";
@@ -54,6 +76,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			startTime: this.toDateString(doc.startTime),
 			endTime: doc.endTime ? this.toDateString(doc.endTime) : null,
 			status: doc.status,
+			escalationProgress: this.toEscalationProgress(doc.escalationProgress),
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
 			resolutionType: doc.resolutionType ?? null,

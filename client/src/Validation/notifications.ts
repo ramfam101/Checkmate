@@ -5,6 +5,13 @@ const baseSchema = z.object({
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	alertTimes: z
+		.array(z.number().int().min(1, "Alert times must be at least 1 minute").max(10080, "Alert times must be at most 10080 minutes"))
+		.max(20, "Cannot configure more than 20 alert times")
+		.refine((times) => new Set(times).size === times.length, {
+			message: "Alert times must be unique",
+		})
+		.optional(),
 });
 
 const emailSchema = baseSchema.extend({

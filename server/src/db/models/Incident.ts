@@ -45,6 +45,11 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			default: true,
 			index: true,
 		},
+		escalationProgress: {
+			type: Map,
+			of: Number,
+			default: {},
+		},
 		message: {
 			type: String,
 			default: null,
