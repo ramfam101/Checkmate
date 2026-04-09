@@ -107,14 +107,26 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationNotificationIds?: string[]
+	) => {
+		// Use escalation notification IDs if provided, otherwise use regular monitor notifications
+		const notificationIds = escalationNotificationIds ?? monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			clientHost,
+			decision.isEscalation ?? false
+		);
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -137,7 +149,27 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Send notifications based on decision
+		// If this is an escalation with specific channels, route only to those
+		if (decision.isEscalation && decision.escalationNotificationIds?.length) {
+			this.logger.info({
+				message: `🚨 ESCALATION NOTIFICATION - routing to ${decision.escalationNotificationIds.length} escalation channels for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleNotifications",
+				details: { escalationNotificationIds: decision.escalationNotificationIds },
+			});
+			return await this.sendNotifications(monitor, monitorStatusResponse, decision, decision.escalationNotificationIds);
+		}
+
+		// If escalation with no specific channels, fall back to regular monitor notifications
+		if (decision.isEscalation) {
+			this.logger.info({
+				message: `🚨 ESCALATION NOTIFICATION - routing to regular notification channels for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleNotifications",
+			});
+		}
+
+		// Send notifications based on decision (uses monitor.notifications by default)
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
 

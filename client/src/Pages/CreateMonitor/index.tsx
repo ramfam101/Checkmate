@@ -32,6 +32,7 @@ import {
 import { SPACING, LAYOUT } from "@/Utils/Theme/constants";
 import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
 import { useMonitorForm } from "@/Hooks/useMonitorForm";
+import { EscalationRulesCard } from "@/Pages/CreateMonitor/components/EscalationRulesCard";
 import {
 	type Monitor,
 	type MonitorType,
@@ -763,6 +764,30 @@ const CreateMonitorPage = () => {
 						}}
 					/>
 				}
+			/>
+
+			<Controller
+				name="escalationRules"
+				control={control}
+				render={({ field }) => {
+					const escalationValues = field.value;
+					const isConfigured = !!escalationValues?.escapeAfterMinutes;
+
+					return (
+						<EscalationRulesCard
+							escapeAfterMinutes={escalationValues?.escapeAfterMinutes}
+							onEscapeAfterMinutesChange={(value) => {
+								field.onChange(
+									value !== undefined ? { escapeAfterMinutes: value } : undefined
+								);
+							}}
+							isConfigured={isConfigured}
+							onClear={() => {
+								field.onChange(undefined);
+							}}
+						/>
+					);
+				}}
 			/>
 
 			{(watchedType === "http" ||

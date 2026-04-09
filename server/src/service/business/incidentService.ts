@@ -86,7 +86,7 @@ export class IncidentService implements IIncidentService {
 				const incident = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
+					startTime: new Date().toISOString(),
 					status: true,
 					statusCode,
 					message,
@@ -100,7 +100,7 @@ export class IncidentService implements IIncidentService {
 				return null;
 			}
 			activeIncident.status = false;
-			activeIncident.endTime = Date.now().toString();
+			activeIncident.endTime = new Date().toISOString();
 			activeIncident.resolutionType = "automatic";
 			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 		}
@@ -151,7 +151,7 @@ export class IncidentService implements IIncidentService {
 			incident.resolvedBy = userId;
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;
-			incident.endTime = Date.now().toString();
+			incident.endTime = new Date().toISOString();
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
 
