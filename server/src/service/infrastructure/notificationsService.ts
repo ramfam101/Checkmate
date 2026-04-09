@@ -1,3 +1,7 @@
+// made sendEscalatedNotification()
+
+
+
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
@@ -14,6 +18,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalatedNotification: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision, notificationId: string, delayMinutes: number) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +144,49 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalatedNotification = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationType: string,
+		delayMinutes: number
+	): Promise<boolean> => {
+		const allTeamNotifications = await this.notificationsRepository.findByTeamId(monitor.teamId);
+		const notifications = allTeamNotifications.filter((n) => n.type === notificationType);
+		if (!notifications.length) {
+			this.logger.warn({
+				message: `No escalation notifications of type "${notificationType}" found for team ${monitor.teamId}`,
+				service: SERVICE_NAME,
+				method: "sendEscalatedNotification",
+			});
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		// Build an escalation-specific decision so the message reads as "still down"
+		const escalationDecision: MonitorActionDecision = {
+			...decision,
+			shouldSendNotification: true,
+			notificationReason: "status_change",
+		};
+
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, escalationDecision, clientHost);
+
+		// Append escalation context to the message summary
+		if (notificationMessage?.content) {
+			notificationMessage.content.summary = `[Escalation: ${delayMinutes} min] ${notificationMessage.content.summary}`;
+		}
+
+		let success = false;
+		for (const notification of notifications) {
+			const result = await this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage);
+			if (result) success = true;
+		}
+		return success;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

@@ -1,3 +1,9 @@
+
+//added escalations array to mongose schema
+
+
+
+
 import { Schema, model, Types } from "mongoose";
 import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
@@ -18,11 +24,12 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "escalations" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalations: { delayMinutes: number; notificationId: Types.ObjectId }[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -282,6 +289,12 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			{
 				type: Schema.Types.ObjectId,
 				ref: "Notification",
+			},
+		],
+		escalations: [
+			{
+				delayMinutes: { type: Number, required: true },
+				notificationType: { type: String, required: true },
 			},
 		],
 		secret: {

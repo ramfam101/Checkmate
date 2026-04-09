@@ -1,3 +1,10 @@
+
+
+// added step 8
+
+
+
+
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
@@ -11,7 +18,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -171,7 +178,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						message: `Error handling incident for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Check escalated notifications (best effort, don't wait)
+				this.checkEscalations(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error checking escalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -416,6 +433,80 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private checkEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision): Promise<void> => {
+		// Only check escalations when monitor is actively down or breached
+		this.logger.debug({
+			message: `[Escalation] Checking monitor ${monitor.id} status=${monitor.status} escalations=${JSON.stringify(monitor.escalations)}`,
+			service: SERVICE_NAME,
+			method: "checkEscalations",
+		});
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			this.logger.debug({
+				message: `[Escalation] Skipping — monitor status is "${monitor.status}", not down/breached`,
+				service: SERVICE_NAME,
+				method: "checkEscalations",
+			});
+			return;
+		}
+
+		const escalations = monitor.escalations ?? [];
+		if (escalations.length === 0) {
+			this.logger.debug({
+				message: `[Escalation] Skipping — no escalation rules configured`,
+				service: SERVICE_NAME,
+				method: "checkEscalations",
+			});
+			return;
+		}
+
+		const incident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!incident) {
+			this.logger.debug({
+				message: `[Escalation] Skipping — no active incident found for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "checkEscalations",
+			});
+			return;
+		}
+
+		const incidentStartMs = new Date(incident.startTime).getTime();
+		const nowMs = Date.now();
+		const elapsedMinutes = ((nowMs - incidentStartMs) / 60000).toFixed(2);
+		const firedEscalations = incident.firedEscalations ?? [];
+
+		this.logger.debug({
+			message: `[Escalation] Incident active for ${elapsedMinutes} min, firedEscalations=${JSON.stringify(firedEscalations)}`,
+			service: SERVICE_NAME,
+			method: "checkEscalations",
+		});
+
+		for (const rule of escalations) {
+			const thresholdMs = rule.delayMinutes * 60 * 1000;
+			const alreadyFired = firedEscalations.includes(rule.delayMinutes);
+
+			this.logger.debug({
+				message: `[Escalation] Rule: delay=${rule.delayMinutes}min type=${rule.notificationType} alreadyFired=${alreadyFired} elapsed=${elapsedMinutes}min`,
+				service: SERVICE_NAME,
+				method: "checkEscalations",
+			});
+
+			if (!alreadyFired && nowMs - incidentStartMs >= thresholdMs) {
+				// Mark as fired before sending to prevent duplicate sends
+				await this.incidentsRepository.addFiredEscalation(incident.id, rule.delayMinutes);
+
+				// Send escalation notification
+				await this.notificationsService.sendEscalatedNotification(monitor, monitorStatusResponse, decision, rule.notificationType, rule.delayMinutes);
+
+				this.logger.info({
+					message: `[Escalation] Fired for monitor ${monitor.id} at ${rule.delayMinutes} minutes via ${rule.notificationType}`,
+					service: SERVICE_NAME,
+					method: "checkEscalations",
+				});
+			}
+		}
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {

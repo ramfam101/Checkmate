@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev": "docker compose -f docker/dev/docker-compose.yaml up -d && npm --prefix server install && npm --prefix client install && (npm --prefix server run dev & npm --prefix client run dev)"
   },
   "repository": {
     "type": "git",

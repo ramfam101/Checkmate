@@ -1,3 +1,9 @@
+
+// Added Escalation Rule
+
+
+
+
 import type { GroupedCheck, CheckSnapshot } from "@/Types/Check";
 import type { PageSpeedGroupedCheck } from "@/Types/Check";
 import type { GeoContinent } from "@/Types/GeoCheck";
@@ -38,6 +44,11 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 
 export type MonitorMatchMethod = "equal" | "include" | "regex" | "";
 
+export interface EscalationRule {
+	delayMinutes: number;
+	notificationType: string;
+}
+
 export interface Monitor {
 	id: string;
 	userId: string;
@@ -60,6 +71,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalations: EscalationRule[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
