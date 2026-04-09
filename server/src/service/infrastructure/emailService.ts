@@ -106,69 +106,78 @@ export class EmailService implements IEmailService {
 		}
 	};
 
-	sendEmail = async (to: string, subject: string, html: string, transportConfig?: EmailTransportConfig) => {
-		let config: EmailTransportConfig;
-		if (typeof transportConfig !== "undefined") {
-			config = transportConfig;
-		} else {
-			config = await this.settingsService.getDBSettings();
-		}
-		const {
-			systemEmailHost,
-			systemEmailPort,
-			systemEmailSecure,
-			systemEmailPool,
-			systemEmailUser,
-			systemEmailAddress,
-			systemEmailPassword,
-			systemEmailConnectionHost,
-			systemEmailTLSServername,
-			systemEmailIgnoreTLS,
-			systemEmailRequireTLS,
-			systemEmailRejectUnauthorized,
-		} = config;
+	sendEmail = async (
+	to: string,
+	subject: string,
+	html: string,
+	transportConfig?: EmailTransportConfig
+) => {
+	let config: EmailTransportConfig;
+	if (typeof transportConfig !== "undefined") {
+		config = transportConfig;
+	} else {
+		config = await this.settingsService.getDBSettings();
+	}
 
-		const emailConfig = {
-			host: systemEmailHost,
-			port: Number(systemEmailPort),
-			secure: systemEmailSecure,
-			auth: {
-				user: systemEmailUser || systemEmailAddress,
-				pass: systemEmailPassword,
-			},
-			name: systemEmailConnectionHost || "localhost",
-			connectionTimeout: 5000,
-			pool: systemEmailPool,
-			tls: {
-				rejectUnauthorized: systemEmailRejectUnauthorized,
-				ignoreTLS: systemEmailIgnoreTLS,
-				requireTLS: systemEmailRequireTLS,
-				servername: systemEmailTLSServername,
-			},
-		};
-		this.transporter = this.nodemailer.createTransport(emailConfig);
+	const {
+		systemEmailHost,
+		systemEmailPort,
+		systemEmailSecure,
+		systemEmailPool,
+		systemEmailUser,
+		systemEmailAddress,
+		systemEmailPassword,
+		systemEmailConnectionHost,
+		systemEmailTLSServername,
+		systemEmailIgnoreTLS,
+		systemEmailRequireTLS,
+		systemEmailRejectUnauthorized,
+	} = config;
 
-		try {
-			await this.transporter.verify();
+	const emailConfig = {
+		host: systemEmailHost,
+		port: Number(systemEmailPort),
+		secure: systemEmailSecure,
+		auth: {
+			user: systemEmailUser || systemEmailAddress,
+			pass: systemEmailPassword,
+		},
+		name: systemEmailConnectionHost || "localhost",
+		connectionTimeout: 5000,
+		pool: systemEmailPool,
+		tls: {
+			rejectUnauthorized: systemEmailRejectUnauthorized,
+			ignoreTLS: systemEmailIgnoreTLS,
+			requireTLS: systemEmailRequireTLS,
+			servername: systemEmailTLSServername,
+		},
+	};
+
+	this.transporter = this.nodemailer.createTransport(emailConfig);
+
+	try {
+		await this.transporter.verify();
+	} catch (error: unknown) {
+		console.error("SMTP VERIFY ERROR:", error);
+		this.logger.warn({
+			message: error instanceof Error ? error.message : "Email transporter verification failed",
+			service: SERVICE_NAME,
+			method: "verifyTransporter",
+			stack: error instanceof Error ? error.stack : undefined,
+		});
+		return false;
+	}
+
+	try {
+		const info = await this.transporter.sendMail({
+			to,
+			from: systemEmailAddress,
+			subject,
+			html,
+		});
+		return info?.messageId;
 		} catch (error: unknown) {
-			this.logger.warn({
-				message: "Email transporter verification failed",
-				service: SERVICE_NAME,
-				method: "verifyTransporter",
-				stack: error instanceof Error ? error.stack : undefined,
-			});
-			return false;
-		}
-
-		try {
-			const info = await this.transporter.sendMail({
-				to: to,
-				from: systemEmailAddress,
-				subject: subject,
-				html: html,
-			});
-			return info?.messageId;
-		} catch (error: unknown) {
+			console.error("SEND MAIL ERROR:", error);
 			this.logger.error({
 				message: error instanceof Error ? error.message : "Unknown error",
 				service: SERVICE_NAME,
@@ -177,4 +186,5 @@ export class EmailService implements IEmailService {
 			});
 		}
 	};
+
 }
