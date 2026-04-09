@@ -26,11 +26,11 @@ const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimp
 };
 
 describe("SuperSimpleQueueHelper", () => {
-	describe("getMonitorJob", () => {
+	describe("getHeartbeatJob", () => {
 		it("skips execution when monitor is in maintenance window", async () => {
 			const { helper } = createHelper();
 			const spy = jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(true);
-			const job = helper.getMonitorJob();
+			const job = helper.getHeartbeatJob();
 			await job({ id: "m1", teamId: "team", interval: 60000 } as Monitor);
 			expect(helper["networkService"].requestStatus).not.toHaveBeenCalled();
 			expect(helper["logger"].debug).toHaveBeenCalledWith(
@@ -42,25 +42,53 @@ describe("SuperSimpleQueueHelper", () => {
 		it("processes monitor status and notifications when active", async () => {
 			const networkResponse = { monitor: { id: "m1" }, status: true };
 			const updatedMonitor = { id: "m1", status: true };
+			const liveMonitor = { id: "m1", teamId: "team", status: "up", interval: 60000 } as Monitor;
 			const { helper } = createHelper({
 				networkService: { requestStatus: jest.fn().mockResolvedValue(networkResponse) },
 				statusService: {
 					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: updatedMonitor, statusChanged: true, prevStatus: false, code: 200 }),
 				},
+				monitorsRepository: { findById: jest.fn().mockResolvedValue(liveMonitor) },
 				notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
 			});
 			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
-			const job = helper.getMonitorJob();
-			const monitor = { id: "m1", teamId: "team" } as Monitor;
-			await job(monitor);
-			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(monitor);
+			const job = helper.getHeartbeatJob();
+			const jobMonitor = { id: "m1", teamId: "team" } as Monitor;
+			await job(jobMonitor);
+			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(liveMonitor);
 		});
 
 		it("throws when monitor id is missing", async () => {
 			const { helper } = createHelper();
-			const job = helper.getMonitorJob();
+			const job = helper.getHeartbeatJob();
 			await expect(job({} as Monitor)).rejects.toThrow("No monitor id");
 			expect(helper["logger"].warn).toHaveBeenCalled();
+		});
+
+		it("reloads the latest monitor before running the heartbeat", async () => {
+			const networkResponse = { monitor: { id: "m1" }, status: true };
+			const updatedMonitor = { id: "m1", status: true };
+			const liveMonitor = {
+				id: "m1",
+				teamId: "team",
+				status: "up",
+				interval: 60000,
+				escalationMinutes: 5,
+				escalationNotificationIds: ["n1"],
+			} as Monitor;
+			const { helper } = createHelper({
+				networkService: { requestStatus: jest.fn().mockResolvedValue(networkResponse) },
+				statusService: {
+					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: updatedMonitor, statusChanged: true, prevStatus: false, code: 200 }),
+				},
+				monitorsRepository: { findById: jest.fn().mockResolvedValue(liveMonitor) },
+				notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+			});
+			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
+			const job = helper.getHeartbeatJob();
+			await job({ id: "m1", teamId: "team" } as Monitor);
+			expect(helper["monitorsRepository"].findById).toHaveBeenCalledWith("m1", "team");
+			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(liveMonitor);
 		});
 	});
 

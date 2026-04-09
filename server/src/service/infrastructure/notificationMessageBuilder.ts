@@ -53,6 +53,11 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		// Escalation has highest priority
+		if (decision.shouldSendEscalation) {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -81,6 +86,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return "critical";
+			case "escalation":
+				return "critical";
 			case "threshold_breach":
 				return "warning";
 			case "monitor_up":
@@ -97,6 +104,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "escalation":
+				return this.buildEscalationContent(monitor);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -135,6 +144,25 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor): NotificationContent {
+		const title = `Escalation: ${monitor.name}`;
+		const downDurationMinutes = monitor.downSince ? Math.floor((Date.now() - monitor.downSince) / (1000 * 60)) : 0;
+		const summary = `Monitor "${monitor.name}" has been down for ${downDurationMinutes} minutes. Escalation triggered.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Duration: ${downDurationMinutes} minutes`,
+		];
 
 		return {
 			title,

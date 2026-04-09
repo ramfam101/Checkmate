@@ -541,7 +541,20 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"escalation": {
+						"title": "Escalation Configuration",
+						"option": {
+							"notification": {
+								"label": "Escalation notification channel",
+								"placeholder": "Select a notification channel"
+							},
+							"delay": {
+								"label": "Escalation delay (minutes)",
+								"placeholder": "Enter minutes until escalation"
+							}
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",

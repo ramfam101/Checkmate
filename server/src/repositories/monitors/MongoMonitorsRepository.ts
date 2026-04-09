@@ -351,6 +351,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = Array.from(
+			new Set([
+				...(doc.escalationNotificationIds ?? []).map((notification) => toStringId(notification)),
+				...(doc.escalationNotificationId ? [toStringId(doc.escalationNotificationId)] : []),
+			])
+		);
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +380,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationMinutes: doc.escalationMinutes ?? undefined,
+			escalationNotificationIds,
+			downSince: doc.downSince ?? undefined,
+			escalationSentAt: doc.escalationSentAt ?? undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +420,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = Array.from(
+			new Set([
+				...(doc.escalationNotificationIds ?? []).map((notification: unknown) => toStringId(notification)),
+				...(doc.escalationNotificationId ? [toStringId(doc.escalationNotificationId)] : []),
+			])
+		);
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +449,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationMinutes: doc.escalationMinutes ?? undefined,
+			escalationNotificationIds,
+			downSince: doc.downSince ?? undefined,
+			escalationSentAt: doc.escalationSentAt ?? undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

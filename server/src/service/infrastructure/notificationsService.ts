@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, MonitorType, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalation: (monitor: Monitor, decision: MonitorActionDecision) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,53 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalation = async (monitor: Monitor, decision: MonitorActionDecision) => {
+		const notificationIds = [...(decision.escalationNotificationIds ?? [])].filter(Boolean);
+
+		if (!decision.shouldSendEscalation || notificationIds.length === 0) {
+			return false;
+		}
+
+		try {
+			// Send escalation to all selected notifications
+			const sendPromises = notificationIds.map(async (notificationId) => {
+				const notification = await this.notificationsRepository.findById(notificationId, monitor.teamId);
+
+				// Build escalation message (reuse existing builder with escalation context)
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+
+				// Create a mock MonitorStatusResponse for escalation message building
+				const mockStatusResponse: MonitorStatusResponse = {
+					monitorId: monitor.id,
+					teamId: monitor.teamId,
+					type: monitor.type as MonitorType,
+					status: false,
+					code: 0,
+					message: "Escalation notification - monitor remains down",
+					payload: undefined,
+				};
+
+				// Build message with escalation context
+				const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, mockStatusResponse, decision, clientHost);
+
+				// Send escalation notification
+				return await this.send(notification, monitor, mockStatusResponse, decision, notificationMessage);
+			});
+
+			const results = await Promise.all(sendPromises);
+			return results.some(result => result); // Return true if at least one notification was sent successfully
+		} catch (error) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

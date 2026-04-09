@@ -204,9 +204,11 @@ const CreateMonitorPage = () => {
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
 
+	const monitorResetKey = existingMonitor?.id ?? defaultType;
+
 	useEffect(() => {
 		form.reset(defaults);
-	}, [defaults, form]);
+	}, [monitorResetKey, form]);
 
 	const watchedType = watch("type") as MonitorType;
 
@@ -726,10 +728,7 @@ const CreateMonitorPage = () => {
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
 									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
+										<Stack flex={1} width="100%">
 											{selectedNotifications.map((notification, index) => (
 												<Stack
 													direction="row"
@@ -762,6 +761,71 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.notifications.escalation.title")}
+				subtitle={t("pages.createMonitor.form.notifications.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationNotificationIds"
+							control={control}
+							render={({ field, fieldState }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedEscalationNotifications = notificationOptions.filter(
+									(n) => field.value?.includes(n.id)
+								) ?? [];
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedEscalationNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue) => {
+											field.onChange(newValue.map((v: { id: string }) => v.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										renderInput={(params) => (
+											<TextField
+												{...params}
+												fieldLabel={t("pages.createMonitor.form.notifications.escalation.option.notification.label")}
+												placeholder={t("pages.createMonitor.form.notifications.escalation.option.notification.placeholder")}
+												fullWidth
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message ?? ""}
+											/>
+										)}
+									/>
+								);
+							}}
+						/>
+						<Controller
+							name="escalationMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									value={field.value?.toString() ?? ""}
+									onChange={(e) => {
+										const value = e.target.value;
+										const numValue = value === "" ? undefined : parseInt(value, 10);
+										field.onChange(numValue);
+									}}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.notifications.escalation.option.delay.label")}
+									placeholder={t("pages.createMonitor.form.notifications.escalation.option.delay.placeholder")}
+									fullWidth
+									inputProps={{ min: 1 }}
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+					</Stack>
 				}
 			/>
 
