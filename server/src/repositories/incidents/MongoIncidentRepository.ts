@@ -56,6 +56,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			status: doc.status,
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
+			sentEscalationIndexes: doc.sentEscalationIndexes ?? [],
 			resolutionType: doc.resolutionType ?? null,
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
@@ -113,6 +114,11 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			return null;
 		}
 		return this.toEntity(incident);
+	};
+
+	findActiveIncidents = async (): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({ status: true });
+		return this.mapDocuments(incidents);
 	};
 
 	findByTeamId = async (
