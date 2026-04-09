@@ -374,6 +374,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations: (doc.escalations ?? []).map((escalation) => ({
+				notificationId: escalation.notificationId,
+				delayMinutes: escalation.delayMinutes,
+			})),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +437,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations: (doc.escalations ?? []).map((escalation) => ({
+				notificationId: escalation.notificationId,
+				delayMinutes: escalation.delayMinutes,
+			})),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
