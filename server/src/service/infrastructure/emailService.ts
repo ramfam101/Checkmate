@@ -107,6 +107,12 @@ export class EmailService implements IEmailService {
 	};
 
 	sendEmail = async (to: string, subject: string, html: string, transportConfig?: EmailTransportConfig) => {
+		this.logger.info({
+			message: `[EMAIL DEBUG] sendEmail called: to="${to}", subject="${subject}", htmlLength=${html?.length ?? 0}`,
+			service: SERVICE_NAME,
+			method: "sendEmail",
+		});
+
 		let config: EmailTransportConfig;
 		if (typeof transportConfig !== "undefined") {
 			config = transportConfig;
@@ -166,6 +172,11 @@ export class EmailService implements IEmailService {
 				from: systemEmailAddress,
 				subject: subject,
 				html: html,
+			});
+			this.logger.info({
+				message: `[EMAIL DEBUG] sendMail success: to="${to}", from="${systemEmailAddress}", messageId="${info?.messageId}", response="${info?.response}"`,
+				service: SERVICE_NAME,
+				method: "sendEmail",
 			});
 			return info?.messageId;
 		} catch (error: unknown) {

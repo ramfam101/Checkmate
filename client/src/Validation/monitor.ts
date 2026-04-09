@@ -27,6 +27,11 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+
+	// Escalation rules: if the monitor stays down for the specified minutes,
+	// notify additional channels configured here.
+	escalateAfterMinutes: z.number().min(0, "Must be at least 0 minutes").optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 // HTTP monitor schema
