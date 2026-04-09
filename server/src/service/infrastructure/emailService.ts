@@ -128,6 +128,40 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		// Validate required email settings
+		if (!systemEmailHost) {
+			this.logger.error({
+				message: "Email sending failed: systemEmailHost is not configured",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
+		if (!systemEmailPort) {
+			this.logger.error({
+				message: "Email sending failed: systemEmailPort is not configured",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
+		if (!systemEmailAddress) {
+			this.logger.error({
+				message: "Email sending failed: systemEmailAddress is not configured",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
+		if (!systemEmailPassword) {
+			this.logger.error({
+				message: "Email sending failed: systemEmailPassword is not configured",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
+
 		const emailConfig = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
@@ -148,13 +182,27 @@ export class EmailService implements IEmailService {
 		};
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
+		this.logger.info({
+			message: "Attempting to send email",
+			service: SERVICE_NAME,
+			method: "sendEmail",
+			details: {
+				to,
+				subject,
+				smtpHost: emailConfig.host,
+				smtpPort: emailConfig.port,
+				secure: emailConfig.secure,
+				hasAuth: !!(emailConfig.auth?.user && emailConfig.auth?.pass),
+			},
+		});
+
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
-			this.logger.warn({
-				message: "Email transporter verification failed",
+			this.logger.error({
+				message: `Email transporter verification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
-				method: "verifyTransporter",
+				method: "sendEmail",
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
@@ -167,13 +215,20 @@ export class EmailService implements IEmailService {
 				subject: subject,
 				html: html,
 			});
+			this.logger.info({
+				message: "Email sent successfully",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: { messageId: info?.messageId, to, subject },
+			});
 			return info?.messageId;
 		} catch (error: unknown) {
 			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
+				message: `Email sending failed: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
 				method: "sendEmail",
 				stack: error instanceof Error ? error.stack : undefined,
+				details: { to, subject, smtpHost: emailConfig.host, smtpPort: emailConfig.port },
 			});
 		}
 	};

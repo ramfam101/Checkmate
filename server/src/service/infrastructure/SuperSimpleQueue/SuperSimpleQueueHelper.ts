@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, MonitorStatusResponse, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -166,6 +166,14 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+
+					if (statusChangeResult.monitor.status === "down") {
+						this.scheduleEscalationNotification(
+							statusChangeResult.monitor,
+							status,
+							decision
+						);
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -187,6 +195,121 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	// private scheduleEscalationNotification = (monitor: Monitor) => {
+	// 	if (!monitor.escalation?.delayMinutes || !monitor.escalation?.channelId) {
+	// 		return;
+	// 	}
+
+	// 	const delayMs = monitor.escalation.delayMinutes * 60 * 1000;
+
+	// 	setTimeout(() => {
+	// 		void (async () => {
+	// 			try {
+	// 				const latestMonitor = await this.monitorsRepository.findById(
+	// 					monitor.id,
+	// 					monitor.teamId
+	// 				);
+
+	// 				if (!latestMonitor) return;
+	// 				if (latestMonitor.status !== "down") return;
+
+	// 				const escalationMonitor: Monitor = {
+	// 					...latestMonitor,
+	// 					notifications: [monitor.escalation!.channelId],
+	// 				};
+
+	// 				const escalationDecision = {
+	// 					shouldCreateIncident: false,
+	// 					shouldResolveIncident: false,
+	// 					shouldSendNotification: true,
+						
+	// 				};
+
+	// 				const escalationStatus = {
+	// 					code: 0,
+	// 					message: `Escalation: Monitor ${latestMonitor.name} is still down after ${monitor.escalation!.delayMinutes} minute(s).`,
+	// 				};
+
+	// 				await this.notificationsService.handleNotifications(
+	// 					escalationMonitor,
+	// 					escalationStatus,
+	// 					escalationDecision
+	// 				);
+	// 			} catch (error: unknown) {
+	// 				this.logger.warn({
+	// 					message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+	// 					service: SERVICE_NAME,
+	// 					method: "scheduleEscalationNotification",
+	// 					stack: error instanceof Error ? error.stack : undefined,
+	// 				});
+	// 			}
+	// 		})();
+	// 	}, delayMs);
+	// };
+
+	private scheduleEscalationNotification = (
+		monitor: Monitor,
+		originalStatus: MonitorStatusResponse,
+		originalDecision: MonitorActionDecision
+	) => {
+		if (!monitor.escalation?.delayMinutes || !monitor.escalation?.channelId) {
+			return;
+		}
+
+		const delayMs = monitor.escalation.delayMinutes * 60 * 1000;
+
+		setTimeout(() => {
+			void (async () => {
+				try {
+					const latestMonitor = await this.monitorsRepository.findById(
+						monitor.id,
+						monitor.teamId
+					);
+
+					if (!latestMonitor) return;
+					if (latestMonitor.status !== "down") return;
+
+					const escalationMonitor: Monitor = {
+						...latestMonitor,
+						notifications: [monitor.escalation!.channelId],
+					};
+
+					const escalationDecision: MonitorActionDecision = {
+						...originalDecision,
+						shouldCreateIncident: false,
+						shouldResolveIncident: false,
+						shouldSendNotification: true,
+						notificationReason: "escalation",
+					};
+
+					const escalationStatus: MonitorStatusResponse = {
+						...originalStatus,
+						monitorId: latestMonitor.id,
+						teamId: latestMonitor.teamId,
+						type: latestMonitor.type,
+						status: latestMonitor.status,
+						message: `Escalation: Monitor ${latestMonitor.name} is still down after ${monitor.escalation.delayMinutes} minute(s).`,
+					};
+
+					await this.notificationsService.handleNotifications(
+						escalationMonitor,
+						escalationStatus,
+						escalationDecision
+					);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Error sending escalation notification for monitor ${monitor.id}: ${
+							error instanceof Error ? error.message : "Unknown error"
+						}`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalationNotification",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			})();
+		}, delayMs);
 	};
 
 	getCleanupOrphanedJob = () => {
