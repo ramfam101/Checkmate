@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
 import { useForm, Controller } from "react-hook-form";
@@ -14,7 +13,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -39,6 +38,7 @@ import {
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
+import type { EscalationPolicy, EscalationRule } from "@/Types/Escalation";
 import type { MonitorFormData } from "@/Validation/monitor";
 
 interface GeneralSettingsConfig {
@@ -193,6 +193,53 @@ const CreateMonitorPage = () => {
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
 	const { data: games } = useGet<GamesMap>("/monitors/games");
 
+	// Escalation policy state
+	const { data: existingEscalationPolicy } = useGet<EscalationPolicy | null>(
+		isEditMode && monitorId ? `/escalation/policies/monitor/${monitorId}` : null
+	);
+	const [escalationEnabled, setEscalationEnabled] = useState(false);
+	const [escalationRules, setEscalationRules] = useState<EscalationRule[]>([]);
+	const { post: postEscalation } = usePost<object, EscalationPolicy>();
+	const { patch: patchEscalation } = usePatch<object, EscalationPolicy>();
+
+	// Sync escalation state from loaded policy
+	useEffect(() => {
+		if (existingEscalationPolicy) {
+			setEscalationEnabled(existingEscalationPolicy.isActive);
+			setEscalationRules(existingEscalationPolicy.escalationRules ?? []);
+		} else {
+			setEscalationEnabled(false);
+			setEscalationRules([]);
+		}
+	}, [existingEscalationPolicy]);
+
+	const addEscalationRule = useCallback(() => {
+		setEscalationRules((prev) => [
+			...prev,
+			{
+				level: prev.length + 1,
+				durationMinutes: 5,
+				notificationIds: [],
+			},
+		]);
+	}, []);
+
+	const removeEscalationRule = useCallback((index: number) => {
+		setEscalationRules((prev) => {
+			const next = prev.filter((_, i) => i !== index);
+			return next.map((r, i) => ({ ...r, level: i + 1 }));
+		});
+	}, []);
+
+	const updateEscalationRule = useCallback(
+		(index: number, field: keyof EscalationRule, value: unknown) => {
+			setEscalationRules((prev) =>
+				prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
+			);
+		},
+		[]
+	);
+
 	const { schema, defaults } = useMonitorForm({
 		data: existingMonitor ?? null,
 		defaultType,
@@ -260,6 +307,30 @@ const CreateMonitorPage = () => {
 		}
 
 		if (result?.success) {
+			// Save escalation policy if enabled and rules are defined
+			if (escalationEnabled && escalationRules.length > 0) {
+				const savedMonitorId = (result.data as Monitor)?.id ?? monitorId;
+				const policyPayload = {
+					name: `${data.name} Escalation Policy`,
+					monitorId: savedMonitorId,
+					isActive: true,
+					escalationRules,
+				};
+				if (existingEscalationPolicy?.id) {
+					await patchEscalation(
+						`/escalation/policies/${existingEscalationPolicy.id}`,
+						policyPayload
+					);
+				} else {
+					await postEscalation("/escalation/policies", policyPayload);
+				}
+			} else if (existingEscalationPolicy?.id) {
+				// Disable existing policy
+				await patchEscalation(`/escalation/policies/${existingEscalationPolicy.id}`, {
+					isActive: false,
+				});
+			}
+
 			if (pageType === "pagespeed") {
 				navigate("/pagespeed");
 			} else if (pageType === "hardware") {
@@ -762,6 +833,131 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			{/* Escalation Policy Section */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Stack
+							direction="row"
+							alignItems="center"
+							spacing={theme.spacing(SPACING.LG)}
+						>
+							<Switch
+								checked={escalationEnabled}
+								onChange={(e) => setEscalationEnabled(e.target.checked)}
+							/>
+							<Typography>
+								{t("pages.createMonitor.form.escalation.enable")}
+							</Typography>
+						</Stack>
+
+						{escalationEnabled && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								{escalationRules.length === 0 && (
+									<Typography
+										variant="body2"
+										color="text.secondary"
+									>
+										{t("pages.createMonitor.form.escalation.noRules")}
+									</Typography>
+								)}
+								{escalationRules.map((rule, index) => {
+									const notificationOptions = (notifications ?? []).map(
+										(n) => ({ ...n, name: n.notificationName })
+									);
+									const selectedNotifications = notificationOptions.filter(
+										(n) => rule.notificationIds.includes(n.id)
+									);
+									return (
+										<Stack
+											key={index}
+											spacing={theme.spacing(LAYOUT.SM)}
+											sx={{
+												border: `1px solid`,
+												borderColor: "divider",
+												borderRadius: 1,
+												p: theme.spacing(LAYOUT.SM),
+											}}
+										>
+											<Stack
+												direction="row"
+												alignItems="center"
+												justifyContent="space-between"
+											>
+												<Typography variant="subtitle2">
+													{t(
+														"pages.createMonitor.form.escalation.rule.level",
+														{ level: rule.level }
+													)}
+												</Typography>
+												<IconButton
+													size="small"
+													onClick={() => removeEscalationRule(index)}
+													aria-label={t(
+														"pages.createMonitor.form.escalation.rule.remove"
+													)}
+												>
+													<Trash2 size={16} />
+												</IconButton>
+											</Stack>
+
+											<TextField
+												type="number"
+												fieldLabel={t(
+													"pages.createMonitor.form.escalation.rule.duration"
+												)}
+												value={rule.durationMinutes}
+												onChange={(e) =>
+													updateEscalationRule(
+														index,
+														"durationMinutes",
+														Number(e.target.value)
+													)
+												}
+												inputProps={{ min: 1 }}
+											/>
+
+											<Autocomplete
+												multiple
+												fieldLabel={t(
+													"pages.createMonitor.form.escalation.rule.notifications"
+												)}
+												options={notificationOptions}
+												value={selectedNotifications}
+												getOptionLabel={(option) => option.name}
+												onChange={(
+													_: unknown,
+													newValue: typeof notificationOptions
+												) => {
+													updateEscalationRule(
+														index,
+														"notificationIds",
+														newValue.map((n) => n.id)
+													);
+												}}
+												isOptionEqualToValue={(option, value) =>
+													option.id === value.id
+												}
+											/>
+										</Stack>
+									);
+								})}
+
+								<Button
+									variant="outlined"
+									onClick={addEscalationRule}
+									startIcon={<Plus size={16} />}
+								>
+									{t("pages.createMonitor.form.escalation.addRule")}
+								</Button>
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 

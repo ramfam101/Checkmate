@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotification: (notificationIds: string[], escalationLevel: number, incidentDurationMinutes: number, monitorName: string) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -172,6 +173,64 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 		return true;
+	};
+
+	sendEscalationNotification = async (
+		notificationIds: string[],
+		escalationLevel: number,
+		incidentDurationMinutes: number,
+		monitorName: string
+	): Promise<boolean> => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		const message: NotificationMessage = {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: "",
+				name: monitorName,
+				url: "",
+				type: "unknown",
+				status: "down",
+			},
+			content: {
+				title: `Escalation Level ${escalationLevel}: ${monitorName} is still down`,
+				summary: `${monitorName} has been down for ${incidentDurationMinutes} minute${incidentDurationMinutes !== 1 ? "s" : ""}. Escalation level ${escalationLevel} triggered.`,
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: "",
+				notificationReason: `escalation_level_${escalationLevel}`,
+			},
+		};
+
+		const tasks = notifications.map((notification) => {
+			switch (notification.type) {
+				case "webhook":
+					return this.webhookProvider.sendMessage!(notification, message);
+				case "slack":
+					return this.slackProvider.sendMessage!(notification, message);
+				case "matrix":
+					return this.matrixProvider.sendMessage!(notification, message);
+				case "pager_duty":
+					return this.pagerDutyProvider.sendMessage!(notification, message);
+				case "discord":
+					return this.discordProvider.sendMessage!(notification, message);
+				case "email":
+					return this.emailProvider.sendMessage!(notification, message);
+				case "teams":
+					return this.teamsProvider.sendMessage!(notification, message);
+				default:
+					return Promise.resolve(false);
+			}
+		});
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		return succeeded > 0;
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

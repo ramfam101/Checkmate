@@ -1,12 +1,14 @@
 import { Schema, model, type Types } from "mongoose";
 import { IncidentResolutionTypes, type Incident } from "@/types/incident.js";
 
-type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt"> & {
+type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt" | "escalationPolicyId" | "nextEscalationTime"> & {
 	monitorId: Types.ObjectId;
 	teamId: Types.ObjectId;
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	escalationPolicyId?: Types.ObjectId | null;
+	nextEscalationTime?: Date | null;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -70,6 +72,19 @@ const IncidentSchema = new Schema<IncidentDocument>(
 		},
 		comment: {
 			type: String,
+			default: null,
+		},
+		escalationPolicyId: {
+			type: Schema.Types.ObjectId,
+			ref: "EscalationPolicy",
+			default: null,
+		},
+		lastEscalationLevel: {
+			type: Number,
+			default: 0,
+		},
+		nextEscalationTime: {
+			type: Date,
 			default: null,
 		},
 	},

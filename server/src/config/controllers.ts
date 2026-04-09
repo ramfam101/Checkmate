@@ -11,6 +11,7 @@ import StatusPageController from "../controllers/statusPageController.js";
 import NotificationController from "../controllers/notificationController.js";
 import DiagnosticController from "../controllers/diagnosticController.js";
 import IncidentController from "../controllers/incidentController.js";
+import EscalationController from "../controllers/escalationController.js";
 import type { InitializedServices } from "@/config/services.js";
 
 export interface InitializedControllers {
@@ -27,6 +28,7 @@ export interface InitializedControllers {
 	notificationController: NotificationController;
 	diagnosticController: DiagnosticController;
 	incidentController: IncidentController;
+	escalationController: EscalationController;
 }
 export const initializeControllers = (services: InitializedServices): InitializedControllers => {
 	return {
@@ -43,5 +45,6 @@ export const initializeControllers = (services: InitializedServices): Initialize
 		notificationController: new NotificationController(services.notificationsService, services.monitorsRepository),
 		diagnosticController: new DiagnosticController(services.diagnosticService),
 		incidentController: new IncidentController(services.incidentService),
+		escalationController: new EscalationController(services.escalationService),
 	};
 };

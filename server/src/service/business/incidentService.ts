@@ -8,6 +8,7 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { IEscalationService } from "@/service/business/escalationService.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationService?: IEscalationService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationService?: IEscalationService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -91,7 +95,19 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const created = await this.incidentsRepository.create(incident);
+				// Assign escalation policy (best-effort, don't block incident creation)
+				if (this.escalationService) {
+					this.escalationService.assignPolicyToIncident(created.id, monitor.teamId, monitor.id).catch((error: unknown) => {
+						this.logger.warn({
+							message: error instanceof Error ? error.message : "Failed to assign escalation policy to incident",
+							service: SERVICE_NAME,
+							method: "handleIncident",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+				return created;
 			}
 		}
 

@@ -3,7 +3,9 @@ import { ILogger } from "@/utils/logger.js";
 import Scheduler from "super-simple-scheduler";
 import { ISuperSimpleQueueHelper } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import { Monitor, MonitorType, supportsGeoCheck } from "@/types/monitor.js";
+import type { IEscalationService } from "@/service/business/escalationService.js";
 const SERVICE_NAME = "JobQueue";
+const ESCALATION_CHECK_INTERVAL_MS = 60 * 1000; // Check for escalation triggers every 60 seconds
 
 type QueueJobFailure = {
 	monitorId: string | number;
@@ -61,26 +63,28 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 	private helper: ISuperSimpleQueueHelper;
 	private monitorsRepository: IMonitorsRepository;
 	private readonly scheduler: Scheduler;
+	private escalationService?: IEscalationService;
 
-	constructor(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, scheduler: Scheduler) {
+	constructor(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, scheduler: Scheduler, escalationService?: IEscalationService) {
 		this.logger = logger;
 		this.helper = helper;
 		this.monitorsRepository = monitorsRepository;
 		this.scheduler = scheduler;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
 		return SuperSimpleQueue.SERVICE_NAME;
 	}
 
-	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository) {
+	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository, escalationService?: IEscalationService) {
 		const scheduler = new Scheduler({
 			// storeType: "mongo",
 			// storeType: "redis",
 			logLevel: "debug",
 			// dbUri: envSettings.dbConnectionString,
 		});
-		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler);
+		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler, escalationService);
 		await instance.init();
 		return instance;
 	}
@@ -93,6 +97,14 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
+
+			// Escalation evaluation job — checks active incidents every 60 seconds
+			if (this.escalationService) {
+				const escalationSvc = this.escalationService;
+				this.scheduler.addTemplate("check-escalations", async () => {
+					await escalationSvc.evaluateIncidentEscalations();
+				});
+			}
 			const monitors = await this.monitorsRepository.findAll();
 			if (!monitors) {
 				return true;
@@ -106,6 +118,11 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addJob({ id: "cleanup-orphaned", template: "cleanup-orphaned", active: true });
 			this.scheduler.addJob({ id: "cleanup-retention", template: "cleanup-retention-job", active: true, repeat: 24 * 60 * 60 * 1000 });
+
+			// Add escalation evaluation job if escalation service is available
+			if (this.escalationService) {
+				this.scheduler.addJob({ id: "check-escalations", template: "check-escalations", active: true, repeat: ESCALATION_CHECK_INTERVAL_MS });
+			}
 
 			return true;
 		} catch (error: unknown) {
