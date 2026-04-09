@@ -570,6 +570,10 @@ export class MonitorService implements IMonitorService {
 			recentChecks: [],
 			createdAt: "",
 			updatedAt: "",
+			escalationEnabled: false,
+			escalationDelayMinutes: 30,
+			escalationNotifications: [],
+			escalationMessage: undefined,
 		}));
 
 		const createdMonitors = await this.createMonitors(cleanedMonitors);

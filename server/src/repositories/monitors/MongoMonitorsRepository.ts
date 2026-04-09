@@ -391,6 +391,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationEnabled: doc.escalationEnabled ?? false,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? 30,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification) => toStringId(notification)),
+			escalationMessage: doc.escalationMessage ?? undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -450,6 +454,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationEnabled: doc.escalationEnabled ?? false,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? 30,
+			escalationNotifications: (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification)),
+			escalationMessage: doc.escalationMessage ?? undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

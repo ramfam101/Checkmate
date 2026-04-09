@@ -14,6 +14,7 @@ import {
 	getUptimeDetailsByIdParamValidation,
 	getUptimeDetailsByIdQueryValidation,
 	importMonitorsBodyValidation,
+	updateEscalationBodyValidation,
 } from "@/validation/monitorValidation.js";
 import sslChecker from "ssl-checker";
 import { fetchMonitorCertificate, requireTeamId, requireUserId } from "@/controllers/controllerUtils.js";
@@ -43,6 +44,7 @@ export interface IMonitorController {
 	getAllGames: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getGroupsByTeamId: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	updateNotifications: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	updateEscalation: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class MonitorController implements IMonitorController {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -448,6 +450,63 @@ class MonitorController implements IMonitorController {
 				success: true,
 				msg: `Notifications updated successfully on ${modifiedCount} monitor(s)`,
 				data: { modifiedCount },
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	updateEscalation = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+			const validatedBody = updateEscalationBodyValidation.parse(req.body);
+			const teamId = requireTeamId(req.user?.teamId);
+			const monitorId = validatedParams.monitorId;
+			const { escalationEnabled, escalationDelayMinutes, escalationNotifications, escalationMessage } = validatedBody;
+
+			// Validate escalation settings
+			if (escalationEnabled && (!escalationNotifications || escalationNotifications.length === 0)) {
+				throw new AppError({
+					message: "Escalation notifications are required when escalation is enabled",
+					status: 400,
+				});
+			}
+
+			if (escalationDelayMinutes && (escalationDelayMinutes < 1 || escalationDelayMinutes > 1440)) {
+				throw new AppError({
+					message: "Escalation delay must be between 1 and 1440 minutes (24 hours)",
+					status: 400,
+				});
+			}
+
+			// Verify all requested notification IDs actually belong to this team
+			if (escalationNotifications && escalationNotifications.length > 0) {
+				const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+				const validNotificationIds = teamNotifications.map((n) => n.id);
+
+				const invalidIds = escalationNotifications.filter((id: string) => !validNotificationIds.includes(id));
+				if (invalidIds.length > 0) {
+					throw new AppError({
+						message: `The following notification IDs are invalid or do not belong to your team: ${invalidIds.join(", ")}`,
+						status: 403,
+					});
+				}
+			}
+
+			// Update the monitor with escalation settings
+			const updateData = {
+				escalationEnabled: escalationEnabled ?? false,
+				escalationDelayMinutes: escalationDelayMinutes ?? 30,
+				escalationNotifications: escalationNotifications ?? [],
+				escalationMessage: escalationMessage ?? "ESCALATION: Issue has persisted for {{minutes}} minutes without resolution.",
+			};
+
+			const updatedMonitor = await this.monitorService.editMonitor({ teamId, monitorId, body: updateData });
+
+			return res.status(200).json({
+				success: true,
+				msg: "Escalation settings updated successfully",
+				data: updatedMonitor,
 			});
 		} catch (error) {
 			next(error);

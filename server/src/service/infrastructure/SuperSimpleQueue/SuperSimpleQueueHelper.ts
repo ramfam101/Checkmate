@@ -9,6 +9,7 @@ import {
 	ISettingsService,
 	IStatusService,
 	IncidentService,
+	type IEscalationService,
 	type IGeoChecksService,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
@@ -30,6 +31,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationCheckJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -58,6 +60,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private settingsService: ISettingsService;
 	private buffer: IBufferService;
 	private incidentService: IncidentService;
+	private escalationService: IEscalationService;
 	private maintenanceWindowsRepository: IMaintenanceWindowsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private teamsRepository: ITeamsRepository;
@@ -76,6 +79,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		settingsService: ISettingsService,
 		buffer: IBufferService,
 		incidentService: IncidentService,
+		escalationService: IEscalationService,
 		maintenanceWindowsRepository: IMaintenanceWindowsRepository,
 		monitorsRepository: IMonitorsRepository,
 		teamsRepository: ITeamsRepository,
@@ -93,6 +97,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.buffer = buffer;
 		this.notificationsService = notificationsService;
 		this.incidentService = incidentService;
+		this.escalationService = escalationService;
 		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.teamsRepository = teamsRepository;
@@ -455,4 +460,32 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationCheckJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Running escalation check job",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+
+				await this.escalationService.checkAndTriggerEscalations();
+
+				this.logger.debug({
+					message: "Escalation check job completed",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: "Error in escalation check job",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				throw error;
+			}
+		};
+	};
 }

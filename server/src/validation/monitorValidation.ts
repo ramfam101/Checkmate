@@ -177,3 +177,10 @@ export const getHardwareDetailsByIdParamValidation = z.object({
 export const getHardwareDetailsByIdQueryValidation = z.object({
 	dateRange: z.enum(["recent", "hour", "day", "week", "month", "all"]).optional(),
 });
+
+export const updateEscalationBodyValidation = z.object({
+	escalationEnabled: z.boolean().optional(),
+	escalationDelayMinutes: z.number().min(1).max(1440).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationMessage: z.string().max(500).optional(),
+});

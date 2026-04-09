@@ -102,6 +102,10 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
+			// Reset escalation status when incident is automatically resolved
+			activeIncident.escalated = false;
+			activeIncident.escalatedAt = null;
+			activeIncident.escalationLevel = 0;
 			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
 		}
 
@@ -152,6 +156,10 @@ export class IncidentService implements IIncidentService {
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;
 			incident.endTime = Date.now().toString();
+			// Reset escalation status when incident is resolved
+			incident.escalated = false;
+			incident.escalatedAt = null;
+			incident.escalationLevel = 0;
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
 
