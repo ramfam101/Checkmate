@@ -7,6 +7,7 @@ import type {
 	ThresholdBreach,
 	NotificationContent,
 } from "@/types/notificationMessage.js";
+import type { Incident } from "@/types/index.js";
 
 export interface INotificationMessageBuilder {
 	buildMessage(
@@ -15,6 +16,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string, delayMinutes: number): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -271,4 +273,53 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 		return breaches;
 	}
-}
+
+	public buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string, delayMinutes: number): NotificationMessage {
+		const incidentStartTime = new Date(incident.startTime);
+		const incidentDuration = this.formatDuration(new Date(), incidentStartTime);
+
+		const content: NotificationContent = {
+			title: `Escalation: Monitor ${monitor.name} is still down`,
+			summary: `The server has remained down for ${delayMinutes} minutes.`,
+			details: [
+				`Monitor: ${monitor.name}`,
+				`URL: ${monitor.url}`,
+				`Status: Down`,
+				`Started: ${incidentStartTime.toISOString()}`,
+				`Duration: ${incidentDuration}`,
+				incident.message ? `Error: ${incident.message}` : undefined,
+			].filter(Boolean) as string[],
+			timestamp: new Date(),
+		};
+
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
+	private formatDuration(endTime: Date, startTime: Date): string {
+		const ms = endTime.getTime() - startTime.getTime();
+		const totalSeconds = Math.floor(ms / 1000);
+		const hours = Math.floor(totalSeconds / 3600);
+		const minutes = Math.floor((totalSeconds % 3600) / 60);
+		const seconds = totalSeconds % 60;
+
+		if (hours > 0) {
+			return `${hours}h ${minutes}m`;
+		}
+		return `${minutes}m ${seconds}s`;
+	}}

@@ -765,6 +765,69 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+			title={t("pages.createMonitor.form.escalations.title")}
+			subtitle={t("pages.createMonitor.form.escalations.description")}
+			rightContent={
+				<Controller
+					name="escalation"
+					control={control}
+					render={({ field }) => {
+					const escalation = field.value ?? {
+						delayMinutes: 30,
+						channelId: "",
+					};
+					const notificationOptions = (notifications ?? []).map((n) => ({
+						...n,
+						name: n.notificationName,
+					}));
+					const selectedChannel = notificationOptions.find(
+						(option) => option.id === escalation.channelId
+					) ?? null;
+
+					return (
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							<TextField
+								type="number"
+								label={t(
+									"pages.createMonitor.form.escalations.option.delay.label"
+								)}
+								value={escalation.delayMinutes}
+								onChange={(e) => {
+									const delayMinutes = Math.max(
+										1,
+										parseInt(e.target.value, 10) || 1
+									);
+									field.onChange({ ...escalation, delayMinutes });
+								}}
+								inputProps={{ min: 1, step: 1 }}
+								fullWidth
+							/>
+							<Autocomplete
+								options={notificationOptions}
+								value={selectedChannel}
+								getOptionLabel={(option) => option.name}
+								onChange={(_: unknown, newValue) => {
+									field.onChange({
+										...escalation,
+										channelId:
+											(newValue as typeof notificationOptions[number] | null)
+												?.id ?? "",
+									});
+								}}
+								isOptionEqualToValue={(option, value) =>
+									option.id === value?.id
+								}
+								fieldLabel={t(
+									"pages.createMonitor.form.escalations.option.channel.label"
+								)}
+							/>
+						</Stack>
+					);
+				}}
+				/>
+			}
+		/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
@@ -1044,6 +1107,7 @@ const CreateMonitorPage = () => {
 				/>
 			)}
 
+			
 			<Stack
 				direction="row"
 				justifyContent="flex-end"

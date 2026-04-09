@@ -78,6 +78,10 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalation: z.object({
+		delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+		channelId: z.string().min(1, "Channel ID is required"),
+	}).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +111,10 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalation: z.object({
+		delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+		channelId: z.string().min(1, "Channel ID is required"),
+	}).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -160,6 +168,10 @@ const importedMonitorSchema = z.object({
 	geoCheckEnabled: z.boolean().default(false),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
 	geoCheckInterval: z.number().min(300000).default(300000),
+	escalation: z.object({
+		delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+		channelId: z.string().min(1, "Channel ID is required"),
+	}).optional(),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
 });

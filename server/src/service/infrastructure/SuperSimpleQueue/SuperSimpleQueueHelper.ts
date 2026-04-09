@@ -177,6 +177,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalations (best effort, don't wait)
+				this.handleEscalations(statusChangeResult.monitor, statusChangeResult.statusChanged, status.status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalations for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -417,6 +427,153 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async handleEscalations(monitor: Monitor, statusChanged: boolean, currentCheckStatus: boolean): Promise<void> {
+		// Exit early if no escalation rule
+		if (!monitor.escalation) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} has no escalation rule, skipping`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+			return;
+		}
+
+		// Only process if current check status is failed (false)
+		if (currentCheckStatus !== false) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} check status is not failed, skipping escalations`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+			return;
+		}
+
+		// Skip if status just changed (avoid immediate escalation)
+		if (statusChanged) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} status just changed, skipping escalations`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+			return;
+		}
+
+		// Ensure monitor status is currently "down"
+		if (monitor.status !== "down") {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} status is not 'down', current status: ${monitor.status}, skipping escalations`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+			return;
+		}
+
+		// Fetch the active incident for the monitor
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+		// Exit if no active incident exists
+		if (!activeIncident) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} has no active incident, skipping escalations`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+			return;
+		}
+
+		// Exit if incident is acknowledged
+		if (activeIncident.status === false) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} incident is acknowledged/resolved, skipping escalations`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+			return;
+		}
+
+		// Compute how long the incident has been active (in minutes)
+		const startTime = new Date(activeIncident.startTime);
+		const now = new Date();
+		const incidentDurationMs = now.getTime() - startTime.getTime();
+		const incidentDurationMinutes = Math.floor(incidentDurationMs / (1000 * 60));
+
+		this.logger.debug({
+			message: `Monitor ${monitor.id} incident duration: ${incidentDurationMinutes} minutes`,
+			service: SERVICE_NAME,
+			method: "handleEscalations",
+		});
+
+		// Initialize or get sentEscalations array
+		if (!activeIncident.sentEscalations) {
+			activeIncident.sentEscalations = [];
+		}
+
+		// Check if the escalation rule should trigger
+		const rule = monitor.escalation;
+		if (incidentDurationMinutes >= rule.delayMinutes && !activeIncident.sentEscalations.includes(rule.delayMinutes)) {
+			this.logger.info({
+				message: `Escalation triggered for monitor ${monitor.id} at ${rule.delayMinutes} minutes delay`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				details: { channelId: rule.channelId, durationMinutes: incidentDurationMinutes },
+			});
+
+			// Send escalation notification
+			this.notificationsService
+				.sendEscalationNotification(monitor, activeIncident, rule.channelId, rule.delayMinutes)
+				.then((success) => {
+					if (success) {
+						this.logger.info({
+							message: `Escalation notification sent for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "handleEscalations",
+							details: { channelId: rule.channelId, delayMinutes: rule.delayMinutes },
+						});
+					} else {
+						this.logger.warn({
+							message: `Failed to send escalation notification for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "handleEscalations",
+							details: { channelId: rule.channelId, delayMinutes: rule.delayMinutes },
+						});
+					}
+				})
+				.catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+			// Track that this escalation has been sent
+			activeIncident.sentEscalations.push(rule.delayMinutes);
+		}
+
+		// Persist the updated sentEscalations array back to the database
+		if (activeIncident.sentEscalations.length > 0) {
+			try {
+				await this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, {
+					sentEscalations: activeIncident.sentEscalations,
+				});
+				this.logger.debug({
+					message: `Updated incident escalation tracking for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+					details: { sentEscalations: activeIncident.sentEscalations },
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error updating incident sentEscalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
