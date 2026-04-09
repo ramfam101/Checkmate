@@ -765,6 +765,102 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("Escalation Rules")}
+				subtitle={t("If the monitor is down for a certain amount of time, trigger escalation notifications.")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+						const rules = field.value ?? [];
+						const rule = rules[0] || { afterMinutes: 5, notificationIds: [] };
+						const notificationOptions = (notifications ?? []).map((n) => ({
+							...n,
+							name: n.notificationName,
+						}));
+						const selectedRuleNotifications = notificationOptions.filter((n) =>
+							rule.notificationIds.includes(n.id)
+						);
+						return (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Stack direction="row" spacing={theme.spacing(SPACING.MD)} alignItems="center">
+									<TextField
+										fieldLabel={t("Escalate after (minutes)")}
+										type="number"
+										value={rule.afterMinutes}
+										onChange={(e) => {
+											const updatedRule = {
+												...rule,
+												afterMinutes: Number(e.target.value) || 0,
+											};
+											field.onChange([updatedRule]);
+										}}
+									/>
+								</Stack>
+								<Autocomplete
+									multiple
+									options={notificationOptions}
+									value={selectedRuleNotifications}
+									getOptionLabel={(option) => option.name}
+									onChange={(_: unknown, newValue: typeof notificationOptions) => {
+										const updatedRule = {
+											...rule,
+											notificationIds: newValue.map((n) => n.id),
+										};
+										field.onChange([updatedRule]);
+									}}
+									isOptionEqualToValue={(option, value) => option.id === value.id}
+									renderInput={(params) => (
+										<TextField
+											{...params}
+											fieldLabel={t("Escalatation notification channel")}
+											placeholder={t(
+												"Type to search"
+											)}
+										/>
+									)}
+								/>
+								{selectedRuleNotifications.length > 0 && (
+									<Stack
+										flex={1}
+										width="100%"
+									>
+										{selectedRuleNotifications.map((notification, index) => (
+											<Stack
+												direction="row"
+												alignItems="center"
+												key={notification.id}
+												width="100%"
+											>
+												<Typography flexGrow={1}>
+													{notification.name}
+												</Typography>
+												<IconButton
+													size="small"
+													onClick={() => {
+														const updatedRule = {
+															...rule,
+															notificationIds: rule.notificationIds.filter(id => id !== notification.id),
+														};
+														field.onChange([updatedRule]);
+													}}
+													aria-label="Remove notification"
+												>
+													<Trash2 size={16} />
+												</IconButton>
+												{index < selectedRuleNotifications.length - 1 && <Divider />}
+											</Stack>
+										))}
+									</Stack>
+								)}
+							</Stack>
+						);
+					}}
+					/>
+			}
+		/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

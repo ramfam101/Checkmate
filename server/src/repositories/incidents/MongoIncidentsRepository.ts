@@ -5,7 +5,7 @@ import type { IIncidentsRepository } from "@/repositories/index.js";
 import mongoose from "mongoose";
 import { AppError } from "@/utils/AppError.js";
 
-class MongoIncidentsRepository implements IIncidentsRepository {
+class MongoIncidentRepository implements IIncidentsRepository {
 	private toStringId = (value?: mongoose.Types.ObjectId | string | null): string => {
 		if (!value) {
 			return "";
@@ -56,6 +56,7 @@ class MongoIncidentsRepository implements IIncidentsRepository {
 			status: doc.status,
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
+			escalationsSent: doc.escalationsSent ?? [],
 			resolutionType: doc.resolutionType ?? null,
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
@@ -288,4 +289,5 @@ class MongoIncidentsRepository implements IIncidentsRepository {
 		return result.deletedCount ?? 0;
 	};
 }
-export default MongoIncidentsRepository;
+export default MongoIncidentRepository;
+

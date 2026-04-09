@@ -1021,6 +1021,7 @@ export class TimescaleMonitorsRepository implements IMonitorsRepository {
 		interval: row.interval_ms,
 		uptimePercentage: row.uptime_percentage ?? undefined,
 		notifications: [],
+		escalationRules: [],
 		secret: row.secret ?? undefined,
 		cpuAlertThreshold: row.cpu_alert_threshold,
 		cpuAlertCounter: row.cpu_alert_counter,

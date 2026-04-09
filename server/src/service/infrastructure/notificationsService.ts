@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -112,9 +112,14 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds?: string[]
+	) => {
+		const idsToUse = notificationIds ?? monitor.notifications ?? [];
+		const notifications = await this.notificationsRepository.findNotificationsByIds(idsToUse);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -144,6 +149,15 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => {
+		return await this.sendNotifications(
+			monitor,
+			monitorStatusResponse,
+			{ ...({} as MonitorActionDecision), shouldSendNotification: true, notificationReason: "escalation" },
+			notificationIds
+		);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

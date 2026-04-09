@@ -269,6 +269,7 @@ export const initializeServices = async ({
 		webSocketProvider,
 	]);
 	const emailService = new EmailService(settingsService, fs, path, compile, mjml2html, nodemailer, logger);
+	emailService.init();
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
