@@ -41,6 +41,13 @@ import {
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
 
+type MonitorPayload = MonitorFormData & {
+	escalation?: {
+		delayMinutes: number;
+		channelId: string;
+	} | null;
+};
+
 interface GeneralSettingsConfig {
 	urlLabel: string;
 	urlPlaceholder: string;
@@ -222,9 +229,19 @@ const CreateMonitorPage = () => {
 		[watchedType, t]
 	);
 
-	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
-	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
+	const { post, loading: isCreating } = usePost<MonitorPayload, Monitor>();
+	const { patch, loading: isUpdating } = usePatch<MonitorPayload, Monitor>();
 	const isSubmitting = isCreating || isUpdating;
+
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
+	);
+
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
@@ -252,11 +269,26 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const escalation = data.escalation?.channelId
+			? {
+					delayMinutes: Math.max(
+						0,
+						Math.trunc(Number(data.escalation.delayMinutes) || 0)
+					),
+					channelId: data.escalation.channelId,
+				}
+			: null;
+
+		const payload: MonitorPayload = {
+			...data,
+			escalation,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -705,11 +737,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -764,6 +791,70 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			{pageType === "uptime" && (
+				<ConfigBox
+					title={t("pages.createMonitor.form.escalation.title")}
+					subtitle={t("pages.createMonitor.form.escalation.description")}
+					rightContent={
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							<Controller
+								name="escalation.delayMinutes"
+								control={control}
+								render={({ field, fieldState }) => (
+									<TextField
+										{...field}
+										type="number"
+										value={field.value ?? 0}
+										onChange={(e) => {
+											const val = e.target.value;
+											field.onChange(val === "" ? 0 : Number(val));
+										}}
+										inputProps={{ min: 0, step: 1 }}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.delayMinutes.label"
+										)}
+										placeholder={t(
+											"pages.createMonitor.form.escalation.option.delayMinutes.placeholder"
+										)}
+										fullWidth
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+									/>
+								)}
+							/>
+							<Controller
+								name="escalation.channelId"
+								control={control}
+								render={({ field }) => {
+									const selectedEscalationNotification =
+										notificationOptions.find(
+											(notification) => notification.id === field.value
+										) ?? null;
+
+									return (
+										<Autocomplete
+											options={notificationOptions}
+											value={selectedEscalationNotification}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channel.label"
+											)}
+											getOptionLabel={(option) => option.name}
+											onChange={(
+												_: unknown,
+												newValue: (Notification & { name: string }) | null
+											) => {
+												field.onChange(newValue?.id ?? "");
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+									);
+								}}
+							/>
+						</Stack>
+					}
+				/>
+			)}
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
