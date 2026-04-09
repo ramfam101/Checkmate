@@ -31,7 +31,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 	findById = async (monitorId: string, teamId: string): Promise<Monitor> => {
 		const match: { _id: string; teamId: string } = { _id: monitorId, teamId };
-		const monitor = await MonitorModel.findOne(match);
+		const monitor = await MonitorModel.findOne({
+			_id: new mongoose.Types.ObjectId(monitorId),
+			teamId: new mongoose.Types.ObjectId(teamId),
+		});
 		if (!monitor) {
 			throw new AppError({ message: `Monitor with ID ${monitorId} not found`, status: 404 });
 		}
@@ -167,8 +170,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const match = {
+			_id: new mongoose.Types.ObjectId(monitorId),
+			teamId: new mongoose.Types.ObjectId(teamId),
+		};
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
-			{ _id: monitorId, teamId },
+			match,
 			{
 				$set: {
 					...patch,
@@ -183,8 +190,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	togglePauseById = async (monitorId: string, teamId: string) => {
-		const monitor = await MonitorModel.findOneAndUpdate(
-			{ _id: monitorId, teamId },
+			const match = {
+				_id: new mongoose.Types.ObjectId(monitorId),
+				teamId: new mongoose.Types.ObjectId(teamId),
+			};
+			const monitor = await MonitorModel.findOneAndUpdate(
+				match,
 			[
 				{
 					$set: {
@@ -208,7 +219,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	deleteById = async (monitorId: string, teamId: string) => {
-		const deletedMonitor = await MonitorModel.findOneAndDelete({ _id: monitorId, teamId });
+		const deletedMonitor = await MonitorModel.findOneAndDelete({
+			_id: new mongoose.Types.ObjectId(monitorId),
+			teamId: new mongoose.Types.ObjectId(teamId),
+		});
 
 		if (!deletedMonitor) {
 			throw new AppError({ message: `Monitor with ID ${monitorId} not found for the given team.`, status: 404 });
@@ -351,6 +365,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +389,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationAfterMinutes: doc.escalationAfterMinutes ?? 0,
+			escalationNotifications: escalationNotificationIds,
+			escalationNotifiedAt: doc.escalationNotifiedAt ?? 0,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +428,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +452,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationAfterMinutes: doc.escalationAfterMinutes ?? 0,
+			escalationNotifications: escalationNotificationIds,
+			escalationNotifiedAt: doc.escalationNotifiedAt ?? 0,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

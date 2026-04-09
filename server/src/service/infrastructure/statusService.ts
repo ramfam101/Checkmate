@@ -238,11 +238,19 @@ export class StatusService implements IStatusService {
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				// Before the sliding window is full, allow brand-new monitors to leave
+				// "initializing" immediately on their first real result.
+				// Existing monitors keep their previous state until the window is full.
+				if (prevStatus === "initializing") {
+					monitor.status = newStatus;
+					statusChanged = newStatus === "down";
+				} else {
+					monitor.status = prevStatus;
+				}
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
-					statusChanged: false,
+					statusChanged,
 					prevStatus,
 					code,
 					timestamp: Date.now(),

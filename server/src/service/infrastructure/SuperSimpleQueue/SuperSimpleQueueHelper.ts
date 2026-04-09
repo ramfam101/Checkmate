@@ -28,6 +28,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationSweepJob(): () => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -38,7 +39,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -156,6 +157,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				if (
+					statusChangeResult.monitor.escalationNotifiedAt &&
+					statusChangeResult.monitor.status === "up" &&
+					(statusChangeResult.prevStatus === "down" || statusChangeResult.prevStatus === "breached")
+				) {
+					statusChangeResult.monitor = await this.monitorsRepository.updateById(monitorId, teamId, {
+						escalationNotifiedAt: 0,
+					});
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -185,6 +196,45 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				throw error;
+			}
+		};
+	};
+
+	getEscalationSweepJob = () => {
+		return async () => {
+			try {
+				const monitors = await this.monitorsRepository.findAll();
+				if (!monitors?.length) {
+					return;
+				}
+
+				const eligibleMonitors = monitors.filter(
+					(monitor) =>
+						monitor.isActive &&
+						(monitor.status === "down" || monitor.status === "breached") &&
+						(monitor.escalationAfterMinutes ?? 0) > 0 &&
+						(monitor.escalationNotifications?.length ?? 0) > 0
+				);
+
+				for (const monitor of eligibleMonitors) {
+					try {
+						await this.notificationsService.handleEscalationNotifications(monitor);
+					} catch (error: unknown) {
+						this.logger.error({
+							message: `Error running escalation sweep for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getEscalationSweepJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationSweepJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
 			}
 		};
 	};
