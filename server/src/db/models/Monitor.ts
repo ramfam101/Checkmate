@@ -198,6 +198,14 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationSchema = new Schema(
+	{
+		notificationId: { type: String, required: true },
+		delayMinutes: { type: Number, required: true, min: 1 },
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +292,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalations: {
+			type: [escalationSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

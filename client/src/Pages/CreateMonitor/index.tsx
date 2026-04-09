@@ -202,13 +202,14 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const watchedEscalations = watch("escalations") ?? [];
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
@@ -272,6 +273,41 @@ const CreateMonitorPage = () => {
 
 	const onError = (errors: unknown) => {
 		logger.debug("Monitor creation validation errors", errors);
+	};
+
+	const updateEscalation = (
+		index: number,
+		field: "notificationId" | "delayMinutes",
+		value: string | number
+	) => {
+		const updated = [...watchedEscalations];
+		updated[index] = {
+			...updated[index],
+			[field]: value,
+		};
+		setValue("escalations", updated, { shouldDirty: true, shouldValidate: true });
+	};
+
+	const addEscalation = () => {
+		setValue(
+			"escalations",
+			[
+				...watchedEscalations,
+				{
+					notificationId: "",
+					delayMinutes: 1,
+				},
+			],
+			{ shouldDirty: true, shouldValidate: true }
+		);
+	};
+
+	const removeEscalation = (index: number) => {
+		setValue(
+			"escalations",
+			watchedEscalations.filter((_, currentIndex) => currentIndex !== index),
+			{ shouldDirty: true, shouldValidate: true }
+		);
 	};
 
 	return (
@@ -762,6 +798,94 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{watchedEscalations.map((escalation, index) => (
+							<Stack
+								key={`escalation-${index}`}
+								spacing={theme.spacing(LAYOUT.SM)}
+								sx={{
+									border: `1px solid ${theme.palette.divider}`,
+									borderRadius: 1,
+									p: theme.spacing(LAYOUT.MD),
+								}}
+							>
+								<Select
+									value={escalation.notificationId}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalations.option.notification.label"
+									)}
+									onChange={(e) =>
+										updateEscalation(index, "notificationId", e.target.value)
+									}
+								>
+									<MenuItem value="">
+										{t(
+											"pages.createMonitor.form.escalations.option.notification.placeholder"
+										)}
+									</MenuItem>
+									{(notifications ?? []).map((notification) => (
+										<MenuItem
+											key={notification.id}
+											value={notification.id}
+										>
+											{notification.notificationName}
+										</MenuItem>
+									))}
+								</Select>
+
+								<TextField
+									type="number"
+									fieldLabel={t(
+										"pages.createMonitor.form.escalations.option.delayMinutes.label"
+									)}
+									placeholder={t(
+										"pages.createMonitor.form.escalations.option.delayMinutes.placeholder"
+									)}
+									value={escalation.delayMinutes}
+									onChange={(e) =>
+										updateEscalation(
+											index,
+											"delayMinutes",
+											Number(e.target.value || 1)
+										)
+									}
+									fullWidth
+								/>
+
+								<Stack
+									direction="row"
+									justifyContent="flex-end"
+								>
+									<Button
+										variant="outlined"
+										color="error"
+										onClick={() => removeEscalation(index)}
+									>
+										{t("pages.createMonitor.form.escalations.option.remove")}
+									</Button>
+								</Stack>
+							</Stack>
+						))}
+
+						<Stack
+							direction="row"
+							justifyContent="flex-start"
+						>
+							<Button
+								variant="outlined"
+								onClick={addEscalation}
+							>
+								{t("pages.createMonitor.form.escalations.option.add")}
+							</Button>
+						</Stack>
+					</Stack>
 				}
 			/>
 
