@@ -27,6 +27,22 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationRules: z
+		.array(
+			z
+				.object({
+					delayMinutes: z
+						.number({ message: "Delay time is required" })
+						.min(0, "Delay must be at least 0 minutes")
+						.max(1440, "Delay must be at most 1440 minutes"),
+					notificationId: z.string().optional(),
+					email: z.string().email("Valid email address is required").optional(),
+				})
+				.refine((rule) => rule.notificationId || rule.email, {
+					message: "Either notification channel or email address is required",
+				})
+		)
+		.default([]),
 });
 
 // HTTP monitor schema
