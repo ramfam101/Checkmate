@@ -17,6 +17,7 @@ import QueueRoutes from "../routes/queueRoute.js";
 import LogRoutes from "../routes/logRoutes.js";
 import DiagnosticRoutes from "../routes/diagnosticRoute.js";
 import NotificationRoutes from "../routes/notificationRoute.js";
+import TestRoutes from "../routes/testRoute.js";
 
 import IncidentRoutes from "../routes/incidentRoute.js";
 
@@ -35,6 +36,7 @@ export const setupRoutes = (app: Application, controllers: InitializedController
 	const statusPageRoutes = new StatusPageRoutes(controllers.statusPageController, verifyJWT, verifyStatusPageAccess);
 	const notificationRoutes = new NotificationRoutes(controllers.notificationController);
 	const diagnosticRoutes = new DiagnosticRoutes(controllers.diagnosticController, verifyJWT);
+	const testRoutes = new TestRoutes(services.monitorService, services.notificationsService, verifyJWT);
 	const incidentRoutes = new IncidentRoutes(controllers.incidentController);
 
 	app.use("/api/v1/auth", authApiLimiter, authRoutes.getRouter());
@@ -49,5 +51,6 @@ export const setupRoutes = (app: Application, controllers: InitializedController
 	app.use("/api/v1/status-page", statusPageRoutes.getRouter());
 	app.use("/api/v1/notifications", verifyJWT, notificationRoutes.getRouter());
 	app.use("/api/v1/diagnostic", verifyJWT, diagnosticRoutes.getRouter());
+	app.use("/api/v1/test", verifyJWT, testRoutes.getRouter());
 	app.use("/api/v1/incidents", verifyJWT, incidentRoutes.getRouter());
 };

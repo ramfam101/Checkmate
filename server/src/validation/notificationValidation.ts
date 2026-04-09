@@ -13,6 +13,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 	// Webhook notification
 	z.object({
@@ -22,6 +23,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 	// Slack notification
 	z.object({
@@ -31,6 +33,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 	// Discord notification
 	z.object({
@@ -40,6 +43,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 	// PagerDuty notification
 	z.object({
@@ -49,6 +53,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 	// Matrix notification
 	z.object({
@@ -58,12 +63,14 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
 		roomId: z.string().min(1, "Room ID is required"),
 		accessToken: z.string().min(1, "Access Token is required"),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 	// Teams notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("teams"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
+		escalationDelayMs: z.number().int().positive("Escalation delay must be a positive integer").optional(),
 	}),
 ]);
 

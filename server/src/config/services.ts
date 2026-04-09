@@ -8,6 +8,7 @@ import {
 	GlobalPingService,
 	SuperSimpleQueue,
 	SuperSimpleQueueHelper,
+	EscalationScheduler,
 	NotificationsService,
 	StatusService,
 	NotificationMessageBuilder,
@@ -222,6 +223,9 @@ export const initializeServices = async ({
 
 	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
 
+	// Escalation scheduler for delayed notifications
+	const escalationScheduler = new EscalationScheduler(monitorsRepository, logger);
+
 	// Notification providers
 	const webhookProvider = new WebhookProvider(logger);
 	const slackProvider = new SlackProvider(logger);
@@ -243,7 +247,8 @@ export const initializeServices = async ({
 		teamsProvider,
 		settingsService,
 		logger,
-		notificationMessageBuilder
+		notificationMessageBuilder,
+		escalationScheduler
 	);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
@@ -262,7 +267,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationScheduler
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
@@ -304,6 +310,7 @@ export const initializeServices = async ({
 		monitorStatsRepository,
 		statusPagesRepository,
 		incidentsRepository,
+		notificationsRepository,
 	});
 
 	const statusPageService = new StatusPageService(statusPagesRepository);

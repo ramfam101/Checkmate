@@ -6,6 +6,8 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { IEscalationScheduler, EscalationContext } from "@/service/infrastructure/escalationScheduler.js";
+import { escalationLog } from "@/utils/escalationLogger.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,6 +16,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	scheduleEscalations: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<void>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -36,6 +39,7 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationScheduler: IEscalationScheduler;
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -49,7 +53,8 @@ export class NotificationsService implements INotificationsService {
 		teamsProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationScheduler: IEscalationScheduler
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -63,6 +68,7 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationScheduler = escalationScheduler;
 	}
 
 	private send = async (
@@ -197,4 +203,141 @@ export class NotificationsService implements INotificationsService {
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
 	};
+
+	scheduleEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision): Promise<void> => {
+			// Use escalationNotifications array, not regular notifications array
+			const notificationIds = monitor.escalationNotifications ?? [];
+
+			escalationLog.pipelineStart(monitor.id, notificationIds.length);
+			this.logger.info({
+				message: `[ESCALATION SCHEDULER] scheduleEscalations invoked for monitor ${monitor.id} with escalationNotifications=${notificationIds.length}`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalations",
+			});
+
+			if (notificationIds.length === 0) {
+				return;
+			}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		this.logger.info({
+			message: `[ESCALATION SCHEDULER] Fetched ${notifications.length} notifications: ${notifications.map((n) => `{id: ${n.id}, escalationDelayMs: ${n.escalationDelayMs}}`).join(", ")}`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalations",
+		});
+
+		// Filter for notifications that have escalationDelayMs set
+		const escalatingNotifications = notifications.filter((n) => n.escalationDelayMs !== undefined && n.escalationDelayMs >= 0);
+
+		if (escalatingNotifications.length === 0) {
+			escalationLog.noEligibleNotifications(monitor.id, notifications.length);
+			this.logger.info({
+				message: `No escalation-enabled notifications found for monitor ${monitor.id} (fetched ${notifications.length}, none had escalationDelayMs >= 0)`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalations",
+			});
+			return;
+		}
+
+		this.logger.info({
+			message: `[ESCALATION SCHEDULER] ${escalatingNotifications.length} notifications will be escalated: ${escalatingNotifications.map((n) => `{id: ${n.id}, delayMs: ${n.escalationDelayMs}}`).join(", ")}`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalations",
+		});
+
+		// Schedule each escalation with a callback to send it
+			for (const notification of escalatingNotifications) {
+				const delayMs = notification.escalationDelayMs!;
+
+				this.logger.info({
+					message: `[ESCALATION SCHEDULER] Scheduling escalation for notification ${notification.id} with delayMs=${delayMs} on monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalations",
+				});
+
+				try {
+					await this.escalationScheduler.scheduleEscalation(
+						notification,
+						monitor,
+						monitorStatusResponse,
+						decision,
+						delayMs,
+						this.handleEscalationReady
+					);
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Error scheduling escalation for notification ${notification.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}
+	};
+
+	private handleEscalationReady = async (context: EscalationContext): Promise<void> => {
+		escalationLog.callbackInvoked(context.monitor.id, context.notification.id, context.notification.type);
+		this.logger.info({
+			message: `[ESCALATION CALLBACK] handleEscalationReady invoked for monitor ${context.monitor.id}, notification ${context.notification.id}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationReady",
+		});
+
+		try {
+			// Build message with escalation prefix
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(
+				context.monitor,
+				context.monitorStatusResponse,
+				context.decision,
+				clientHost,
+				true // isEscalation = true
+			);
+
+			escalationLog.sendAttempt(context.monitor.id, context.notification.id, context.notification.type);
+			this.logger.debug({
+				message: `[ESCALATION] About to call send() with notification type: ${context.notification.type}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationReady",
+			});
+
+			// Send the escalation notification
+			const sendResult = await this.send(context.notification, context.monitor, context.monitorStatusResponse, context.decision, notificationMessage);
+
+			escalationLog.sendResult(context.monitor.id, context.notification.id, sendResult);
+			this.logger.debug({
+				message: `[ESCALATION] send() returned: ${sendResult}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationReady",
+			});
+
+			if (!sendResult) {
+				this.logger.warn({
+					message: `Escalation notification FAILED for monitor ${context.monitor.id}, notification ${context.notification.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationReady",
+				});
+				return;
+			}
+
+			this.logger.info({
+				message: `Escalation notification sent for monitor ${context.monitor.id}, notification ${context.notification.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationReady",
+			});
+		} catch (error: unknown) {
+			const errMsg = error instanceof Error ? error.message : "Unknown error";
+			escalationLog.error(context.monitor.id, context.notification.id, errMsg);
+			this.logger.error({
+				message: `Error sending escalation notification: ${errMsg}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationReady",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
 }
+

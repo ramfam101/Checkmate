@@ -18,6 +18,7 @@ import type {
 	IMonitorsRepository,
 	IMonitorStatsRepository,
 	IStatusPagesRepository,
+	INotificationsRepository,
 } from "@/repositories/index.js";
 import demoMonitorsData from "@/utils/demoMonitors.json" with { type: "json" };
 import { AppError } from "@/utils/AppError.js";
@@ -100,6 +101,7 @@ export class MonitorService implements IMonitorService {
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private statusPagesRepository: IStatusPagesRepository;
 	private incidentsRepository: IIncidentsRepository;
+	private notificationsRepository: INotificationsRepository;
 
 	constructor({
 		jobQueue,
@@ -112,6 +114,7 @@ export class MonitorService implements IMonitorService {
 		monitorStatsRepository,
 		statusPagesRepository,
 		incidentsRepository,
+		notificationsRepository,
 	}: {
 		jobQueue: ISuperSimpleQueue;
 		emailService: IEmailService;
@@ -123,6 +126,7 @@ export class MonitorService implements IMonitorService {
 		monitorStatsRepository: IMonitorStatsRepository;
 		statusPagesRepository: IStatusPagesRepository;
 		incidentsRepository: IIncidentsRepository;
+		notificationsRepository: INotificationsRepository;
 	}) {
 		this.jobQueue = jobQueue;
 		this.emailService = emailService;
@@ -134,6 +138,7 @@ export class MonitorService implements IMonitorService {
 		this.monitorStatsRepository = monitorStatsRepository;
 		this.statusPagesRepository = statusPagesRepository;
 		this.incidentsRepository = incidentsRepository;
+		this.notificationsRepository = notificationsRepository;
 	}
 
 	get serviceName(): string {
@@ -165,7 +170,67 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
+	private processEscalationFields = async (body: Partial<Monitor>): Promise<void> => {
+		// If escalation delay is provided, update the referenced notifications with the delay
+		if (
+			body.escalationDelayMinutes !== undefined &&
+			body.escalationDelayMinutes >= 0 &&
+			body.escalationNotifications &&
+			body.escalationNotifications.length > 0
+		) {
+			const escalationDelayMs = body.escalationDelayMinutes * 60000; // Convert minutes to milliseconds
+
+			this.logger.info({
+				message: `[ESCALATION SETUP] Processing escalation fields: delayMinutes=${body.escalationDelayMinutes}, delayMs=${escalationDelayMs}, notificationCount=${body.escalationNotifications.length}`,
+				service: SERVICE_NAME,
+				method: "processEscalationFields",
+			});
+
+			// Update each notification with the escalation delay
+			const notificationIds = body.escalationNotifications;
+			const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+			this.logger.info({
+				message: `[ESCALATION SETUP] Fetched ${notifications.length} notifications for update: ${notifications.map((n) => n.id).join(", ")}`,
+				service: SERVICE_NAME,
+				method: "processEscalationFields",
+			});
+
+			for (const notification of notifications) {
+				try {
+					await this.notificationsRepository.updateById(notification.id, notification.teamId, {
+						escalationDelayMs,
+					});
+
+					this.logger.info({
+						message: `[ESCALATION SETUP] Updated notification ${notification.id} with escalationDelayMs=${escalationDelayMs}`,
+						service: SERVICE_NAME,
+						method: "processEscalationFields",
+					});
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `[ESCALATION SETUP] Failed to update notification ${notification.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "processEscalationFields",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}
+		} else {
+			if (body.escalationDelayMinutes !== undefined) {
+				this.logger.debug({
+					message: `[ESCALATION SETUP] Skipping escalation setup - conditions not met: delayMinutes=${body.escalationDelayMinutes}, hasNotifications=${!!(body.escalationNotifications && body.escalationNotifications.length > 0)}`,
+					service: SERVICE_NAME,
+					method: "processEscalationFields",
+				});
+			}
+		}
+	};
+
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
+		// Process escalation fields (update notifications with escalation delay)
+		await this.processEscalationFields(body);
+
 		const monitor = await this.monitorsRepository.create(body, teamId, userId);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
@@ -437,6 +502,9 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
+		// Process escalation fields (update notifications with escalation delay)
+		await this.processEscalationFields(body);
+
 		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;

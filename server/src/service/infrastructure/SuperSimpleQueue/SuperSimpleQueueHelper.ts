@@ -10,6 +10,7 @@ import {
 	IStatusService,
 	IncidentService,
 	type IGeoChecksService,
+	type IEscalationScheduler,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
@@ -66,6 +67,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationScheduler: IEscalationScheduler;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +85,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationScheduler: IEscalationScheduler
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +104,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationScheduler = escalationScheduler;
 	}
 
 	get serviceName() {
@@ -166,6 +170,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+
+					// Schedule escalations for this notification event
+					if (decision.incidentReason === "status_down") {
+						this.notificationsService.scheduleEscalations(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error scheduling escalations for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -177,6 +193,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// If monitor recovered, cancel any pending escalations
+				if (decision.shouldResolveIncident) {
+					this.escalationScheduler.cancelEscalations(statusChangeResult.monitor.id).catch((error: unknown) => {
+						this.logger.debug({
+							message: `Note: Error canceling escalations for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

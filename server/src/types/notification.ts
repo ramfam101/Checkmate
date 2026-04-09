@@ -12,6 +12,7 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalationDelayMs?: number;
 	createdAt: string;
 	updatedAt: string;
 }

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content:*)",
+      "Bash(powershell:*)",
+      "Bash(dir \"C:/Users/gabri/Documents/Skool/Checkmate/server/\")",
+      "Bash(python3 -c ':*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); console.log\\(fs.readFileSync\\('C:/Users/gabri/Documents/Skool/Checkmate/server/escalations.log','utf8'\\)\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const d=fs.readFileSync\\('C:/Users/gabri/Documents/Skool/Checkmate/server/escalations.log','utf8'\\); process.stdout.write\\(d\\);\")",
+      "Read(//tmp/**)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const d=fs.readFileSync\\('C:/Users/gabri/Documents/Skool/Checkmate/server/escalations.log','utf8'\\); fs.writeFileSync\\('/tmp/escalations_copy.txt', d\\);\")"
+    ]
+  }
+}
