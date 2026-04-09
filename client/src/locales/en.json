@@ -602,6 +602,18 @@
 						}
 					}
 				},
+				"escalations": {
+					"title": "Escalation Rules",
+					"description": "If the monitor stays down for the specified time, notify an additional channel.",
+					"option": {
+						"delay": {
+							"label": "Escalate after (minutes)"
+						},
+						"channel": {
+							"label": "Escalation notification channel"
+						}
+					}
+				},
 				"url": {
 					"title": "Monitor IP/URL on Status Page",
 					"description": "Display the IP address or URL of monitor on the public Status page. If it's disabled, only the monitor name will be shown to protect sensitive information.",

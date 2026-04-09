@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotification: (monitor: Monitor, incident: Incident, channelId: string, delayMinutes: number) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,55 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (monitor: Monitor, incident: Incident, channelId: string, delayMinutes: number): Promise<boolean> => {
+		try {
+			// Find the notification channel by ID
+			const notification = await this.notificationsRepository.findById(channelId, monitor.teamId);
+
+			if (!notification) {
+				this.logger.warn({
+					message: `Escalation notification channel not found: ${channelId}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+
+			// Build escalation message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incident, clientHost, delayMinutes);
+
+			const placeholderMonitorStatusResponse: MonitorStatusResponse = {
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				type: monitor.type,
+				status: monitor.status === "up",
+				code: 0,
+				message: "",
+			};
+
+			const placeholderDecision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: false,
+				incidentReason: null,
+				notificationReason: null,
+			};
+
+			// Send through the escalation channel
+			return await this.send(notification, monitor, placeholderMonitorStatusResponse, placeholderDecision, notificationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
