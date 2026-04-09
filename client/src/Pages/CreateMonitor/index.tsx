@@ -765,6 +765,60 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalateAfterMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? 0}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? 0 : Number(val));
+									}}
+									type="number"
+									fieldLabel="Escalate after (minutes)"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel="Escalation notification channels"
+									/>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
