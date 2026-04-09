@@ -49,6 +49,7 @@ import Logs from "@/Pages/Logs";
 import { ProtectedRoute, RoleProtectedRoute } from "@/Components/routing/RouteProtected";
 
 import CreateMonitor from "@/Pages/CreateMonitor";
+import EscalationConfiguration from "@/Pages/EscalationConfiguration";
 
 const Routes = () => {
 	return (
@@ -82,7 +83,7 @@ const Routes = () => {
 				/>
 				<Route
 					path="/uptime/configure/:monitorId/"
-					element={<CreateMonitor />}
+					element={<EscalationConfiguration />}
 				/>
 
 				<Route
@@ -99,7 +100,7 @@ const Routes = () => {
 				/>
 				<Route
 					path="pagespeed/configure/:monitorId"
-					element={<CreateMonitor />}
+					element={<EscalationConfiguration />}
 				/>
 				<Route
 					path="infrastructure"
@@ -111,7 +112,7 @@ const Routes = () => {
 				/>
 				<Route
 					path="/infrastructure/configure/:monitorId"
-					element={<CreateMonitor />}
+					element={<EscalationConfiguration />}
 				/>
 				<Route
 					path="infrastructure/:monitorId"
@@ -143,7 +144,7 @@ const Routes = () => {
 
 				<Route
 					path="status/configure/:url"
-					element={<CreateStatus />}
+					element={<EscalationConfiguration />}
 				/>
 
 				<Route

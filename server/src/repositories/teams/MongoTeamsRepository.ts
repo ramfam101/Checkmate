@@ -32,6 +32,11 @@ class MongoTeamsRepository implements ITeamsRepository {
 		return this.toEntity(team);
 	};
 
+	findById = async (id: string): Promise<Team | null> => {
+		const team = await TeamModel.findById(id);
+		return team ? this.toEntity(team) : null;
+	};
+
 	findAllTeamIds = async (): Promise<string[]> => {
 		const teams = await TeamModel.find({}, { _id: 1 }).lean();
 		return teams.map((team) => this.toStringId(team._id));

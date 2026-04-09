@@ -15,3 +15,14 @@ export interface Notification {
 	createdAt: string;
 	updatedAt: string;
 }
+
+export interface EscalationNotification {
+	id: string;
+	monitorId: string;
+	escalationLevel: number;
+	delaySeconds: number;
+	notificationChannel: NotificationChannel;
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
