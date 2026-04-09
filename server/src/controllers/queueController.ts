@@ -8,6 +8,7 @@ export interface IJobQueueController {
 	getJobs(req: Request, res: Response, next: NextFunction): Promise<Response | void>;
 	getAllMetrics(req: Request, res: Response, next: NextFunction): Promise<Response | void>;
 	flushQueue(req: Request, res: Response, next: NextFunction): Promise<Response | void>;
+	testEscalationNotifications(req: Request, res: Response, next: NextFunction): Promise<Response | void>;
 }
 
 class JobQueueController implements IJobQueueController {
@@ -69,6 +70,58 @@ class JobQueueController implements IJobQueueController {
 				msg: "Queue flushed successfully",
 				data: result,
 			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	testEscalationNotifications = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			// Create a mock monitor with escalation notifications for testing
+			const mockMonitor = {
+				id: "test-monitor-escalation",
+				name: "Test Escalation Monitor",
+				url: "http://nonexistent-domain-12345.com",
+				status: "down",
+				type: "http",
+				teamId: "test-team",
+				escalationNotifications: [
+					{
+						delay: 1, // 1 minute for quick testing
+						contacts: [
+							{
+								type: "email",
+								address: "test@example.com"
+							}
+						],
+						enabled: true
+					}
+				]
+			};
+
+			// Create mock status response
+			const mockStatus = {
+				status: "down",
+				code: 500,
+				responseTime: 1000,
+				timestamp: new Date()
+			};
+
+			// Get the SuperSimpleQueueHelper and call scheduleEscalationNotifications
+			const queueHelper = (this.jobQueue as any).helper;
+			if (queueHelper && typeof queueHelper.scheduleEscalationNotifications === 'function') {
+				queueHelper.scheduleEscalationNotifications(mockMonitor, mockStatus);
+				return res.status(200).json({
+					success: true,
+					msg: "Test escalation notifications scheduled. Check server logs for debug output.",
+					data: { monitorId: mockMonitor.id, escalations: mockMonitor.escalationNotifications }
+				});
+			} else {
+				return res.status(500).json({
+					success: false,
+					msg: "Could not access queue helper for testing"
+				});
+			}
 		} catch (error) {
 			next(error);
 		}

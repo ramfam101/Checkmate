@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const escalationNotificationsFieldArray = useFieldArray({
+		control,
+		name: "escalationNotifications",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +766,98 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send a follow-up alert if the monitor remains down after a delay."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationNotificationsFieldArray.fields.map((item, index) => (
+							<Stack
+								key={item.id}
+								spacing={theme.spacing(LAYOUT.MD)}
+							>
+								<Controller
+									name={`escalationNotifications.${index}.delay`}
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											type="number"
+											fieldLabel="Escalate after (minutes)"
+											placeholder="Delay in minutes"
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+								<Typography color="text.secondary">
+									Escalation Notification Channels
+								</Typography>
+								<Controller
+									name={`escalationNotifications.${index}.contacts.0.address`}
+									control={control}
+									render={({ field, fieldState }) => (
+										<Select
+											{...field}
+											value={field.value ?? ""}
+											fieldLabel="Escalation Email"
+											fullWidth
+											error={!!fieldState.error}
+										>
+											<MenuItem value="">
+												{t("pages.createMonitor.form.notifications.selectPlaceholder")}
+											</MenuItem>
+											{(notifications ?? [])
+												.filter((notification) => notification.type === "email")
+												.map((notification) => (
+													<MenuItem key={notification.id} value={notification.address ?? ""}>
+														{notification.notificationName || notification.address}
+													</MenuItem>
+												))}
+											</Select>
+									)}
+								/>
+								<Stack direction="row" alignItems="center" spacing={theme.spacing(SPACING.LG)}>
+									<Controller
+										name={`escalationNotifications.${index}.enabled`}
+										control={control}
+										render={({ field }) => (
+											<Stack direction="row" alignItems="center" spacing={theme.spacing(SPACING.LG)}>
+												<Switch
+													checked={field.value ?? false}
+													onChange={(e) => field.onChange(e.target.checked)}
+												/>
+												<Typography>Enabled</Typography>
+											</Stack>
+										)}
+									/>
+									<IconButton
+										size="small"
+										onClick={() => escalationNotificationsFieldArray.remove(index)}
+										aria-label="Remove escalation notification"
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+							</Stack>
+						))}
+						<Button
+							variant="outlined"
+							onClick={() =>
+								escalationNotificationsFieldArray.append({
+									delay: 1,
+									contacts: [{ type: "email", address: "" }],
+									enabled: true,
+								})
+							}
+						>
+							Add escalation rule
+						</Button>
+					</Stack>
 				}
 			/>
 

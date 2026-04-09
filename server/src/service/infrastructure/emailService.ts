@@ -146,15 +146,21 @@ export class EmailService implements IEmailService {
 				servername: systemEmailTLSServername,
 			},
 		};
+		this.logger.info({
+			message: `Attempting to send email to ${to} via ${systemEmailHost}:${systemEmailPort} from ${systemEmailAddress}`,
+			service: SERVICE_NAME,
+			method: "sendEmail",
+		});
+
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: `Email transporter verification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
-				method: "verifyTransporter",
+				method: "sendEmail",
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;

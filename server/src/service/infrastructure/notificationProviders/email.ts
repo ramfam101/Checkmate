@@ -36,6 +36,11 @@ export class EmailProvider implements INotificationProvider {
 			return false;
 		}
 
+		this.logger.info({
+			message: `Sending test email to ${notification.address}`,
+			service: SERVICE_NAME,
+			method: "sendTestAlert",
+		});
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
 			this.logger.warn({
@@ -65,6 +70,11 @@ export class EmailProvider implements INotificationProvider {
 			return false;
 		}
 
+		this.logger.info({
+			message: `Sending email to ${notification.address} with subject: ${subject}`,
+			service: SERVICE_NAME,
+			method: "sendMessage",
+		});
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
 			this.logger.warn({
@@ -83,6 +93,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
+			case "escalation":
+				return `ESCALATION: Monitor ${message.monitor.name} is still down`;
 			case "threshold_breach":
 				return `Monitor ${message.monitor.name} threshold exceeded`;
 			case "threshold_resolved":
