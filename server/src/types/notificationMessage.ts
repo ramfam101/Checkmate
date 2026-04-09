@@ -32,6 +32,7 @@ export interface IncidentInfo {
 }
 
 export interface NotificationContent {
+	subject?: string;
 	title: string;
 	summary: string;
 	details?: string[];
