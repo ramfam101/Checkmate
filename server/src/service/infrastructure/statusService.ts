@@ -20,6 +20,7 @@ import type {
 import { AppError } from "@/utils/AppError.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "./bufferService.js";
+
 const SERVICE_NAME = "StatusService";
 
 export interface IStatusService {
@@ -86,7 +87,6 @@ export class StatusService implements IStatusService {
 			let stats: Omit<MonitorStats, "id" | "monitorId" | "createdAt" | "updatedAt">;
 
 			if (!existingStats) {
-				// Initialize new stats
 				stats = {
 					avgResponseTime: 0,
 					maxResponseTime: 0,
@@ -98,7 +98,6 @@ export class StatusService implements IStatusService {
 					lastCheckTimestamp: 0,
 				};
 			} else {
-				// Use existing stats (omit id, monitorId, createdAt, updatedAt)
 				stats = {
 					avgResponseTime: existingStats.avgResponseTime,
 					maxResponseTime: existingStats.maxResponseTime,
@@ -112,18 +111,14 @@ export class StatusService implements IStatusService {
 				};
 			}
 
-			// Update stats
 			stats.totalChecks++;
 
-			// Last response time
 			stats.lastResponseTime = responseTime ?? 0;
 
-			// Max response time
 			if (responseTime && responseTime > stats.maxResponseTime) {
 				stats.maxResponseTime = responseTime;
 			}
 
-			// Avg response time:
 			let avgResponseTime = stats.avgResponseTime;
 			if (typeof responseTime !== "undefined" && responseTime !== null) {
 				if (avgResponseTime === 0) {
@@ -134,10 +129,8 @@ export class StatusService implements IStatusService {
 			}
 			stats.avgResponseTime = avgResponseTime;
 
-			// Total checks
 			if (status === true) {
 				stats.totalUpChecks++;
-				// Update the timeSinceLastFailure if needed
 				if (stats.timeOfLastFailure === 0) {
 					stats.timeOfLastFailure = new Date().getTime();
 				}
@@ -146,7 +139,6 @@ export class StatusService implements IStatusService {
 				stats.timeOfLastFailure = 0;
 			}
 
-			// Calculate uptime percentage
 			let uptimePercentage;
 			if (stats.totalChecks > 0) {
 				uptimePercentage = stats.totalUpChecks / stats.totalChecks;
@@ -155,10 +147,8 @@ export class StatusService implements IStatusService {
 			}
 			stats.uptimePercentage = uptimePercentage;
 
-			// latest check
 			stats.lastCheckTimestamp = new Date().getTime();
 
-			// Create or update
 			if (!existingStats) {
 				await this.monitorStatsRepository.create({ monitorId, ...stats });
 			} else {
@@ -195,7 +185,6 @@ export class StatusService implements IStatusService {
 			const { monitorId, teamId, status, code } = statusResponse;
 			const monitor = await this.monitorsRepository.findById(monitorId, teamId);
 
-			// Update running stats
 			this.updateRunningStats(monitor, statusResponse);
 
 			monitor.statusWindow = monitor.statusWindow || [];
@@ -236,42 +225,42 @@ export class StatusService implements IStatusService {
 			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
-			// Return early if not enough data points
+			// FIX:
+			// During warm-up, if the visible status actually changes,
+			// return statusChanged: true so the real DOWN notification fires.
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
+				const didStatusChange = prevStatus !== newStatus;
+
 				monitor.status = newStatus;
+
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+
 				return {
 					monitor: updated,
-					statusChanged: false,
+					statusChanged: didStatusChange,
 					prevStatus,
 					code,
 					timestamp: Date.now(),
 				};
 			}
 
-			// Check if threshold has been met
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 
-			// If threshold has been met and the monitor is not already down, mark down:
 			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
-			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			} else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
 			}
 
-			// Evaluate hardware threshold breaches (only for hardware monitors)
 			let thresholdBreaches: { cpu: boolean; memory: boolean; disk: boolean; temp: boolean } | undefined;
 			if (monitor.type === "hardware" && statusResponse.payload) {
 				const payload = statusResponse.payload as HardwareStatusPayload;
 				const metrics = payload?.data;
 
 				if (metrics) {
-					// Evaluate threshold breaches
 					const cpuUsage = metrics.cpu?.usage_percent ?? -1;
 					const cpuBreach = cpuUsage !== -1 && cpuUsage > monitor.cpuAlertThreshold / 100;
 
@@ -292,7 +281,6 @@ export class StatusService implements IStatusService {
 						temp: tempBreach,
 					};
 
-					// Update counters: decrement if breached, reset to 5 if not breached
 					if (cpuBreach) {
 						monitor.cpuAlertCounter = Math.max(0, monitor.cpuAlertCounter - 1);
 					} else {
@@ -317,27 +305,19 @@ export class StatusService implements IStatusService {
 						monitor.tempAlertCounter = 5;
 					}
 
-					// Check if any counter has reached zero (initial breach)
 					const anyCounterZero =
 						monitor.cpuAlertCounter === 0 || monitor.memoryAlertCounter === 0 || monitor.diskAlertCounter === 0 || monitor.tempAlertCounter === 0;
 
 					const anyThresholdBreached = cpuBreach || memoryBreach || diskBreach || tempBreach;
 					const allThresholdsNormal = !cpuBreach && !memoryBreach && !diskBreach && !tempBreach;
 
-					// Update monitor status based on threshold breach state
 					if (newStatus !== "down") {
-						// Don't override "down" status - service unreachable takes precedence
-						// Check current monitor status, not newStatus for comparison
 						if (anyCounterZero && anyThresholdBreached && monitor.status !== "breached") {
-							// Initial breach: counter hit zero, change status to breached
 							newStatus = "breached";
 							statusChanged = true;
 						} else if (anyCounterZero && anyThresholdBreached && monitor.status === "breached") {
-							// Already breached, keep status but don't mark as changed
 							newStatus = "breached";
-							// statusChanged remains false
 						} else if (allThresholdsNormal && monitor.status === "breached") {
-							// All thresholds returned to normal, recover from breached state
 							newStatus = "up";
 							statusChanged = true;
 						}
@@ -345,7 +325,6 @@ export class StatusService implements IStatusService {
 				}
 			}
 
-			// Apply the final status
 			monitor.status = newStatus;
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
