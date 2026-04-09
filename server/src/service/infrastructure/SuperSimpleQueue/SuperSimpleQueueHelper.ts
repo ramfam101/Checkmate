@@ -39,6 +39,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	escalationMinutes?: number;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -168,6 +169,61 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				if (
+					statusChangeResult.monitor.status === "down" &&
+					statusChangeResult.monitor.escalationMinutes !== undefined &&
+					statusChangeResult.monitor.escalationNotifications &&
+					statusChangeResult.monitor.escalationNotifications.length > 0
+				) {
+					const now = new Date();
+					const lastEscalationSent = statusChangeResult.monitor.lastEscalationSent ? new Date(statusChangeResult.monitor.lastEscalationSent) : null;
+					const minutesElapsed = lastEscalationSent ? Math.floor((now.getTime() - lastEscalationSent.getTime()) / (1000 * 60)) : Infinity;
+
+					if (minutesElapsed >= statusChangeResult.monitor.escalationMinutes) {
+						// Add escalationMinutes to decision for the notification message
+						const escalationDecision = { ...decision, escalationMinutes: statusChangeResult.monitor.escalationMinutes };
+
+						this.notificationsService.sendEscalationNotifications(statusChangeResult.monitor, status, escalationDecision).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending escalation notifications for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+
+						// Update lastEscalationSent on the monitor
+						this.monitorsRepository
+							.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, {
+								lastEscalationSent: new Date().toISOString(),
+							})
+							.catch((error: unknown) => {
+								this.logger.warn({
+									message: `Error updating lastEscalationSent for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+					}
+				}
+
+				// Step 6.6 Reset escalation timestamp when monitor recovers
+				if (statusChangeResult.monitor.status === "up" && statusChangeResult.monitor.lastEscalationSent) {
+					this.monitorsRepository
+						.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, {
+							lastEscalationSent: null,
+						})
+						.catch((error: unknown) => {
+							this.logger.warn({
+								message: `Error resetting lastEscalationSent for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+				}
+				
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({

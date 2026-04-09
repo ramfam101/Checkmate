@@ -88,6 +88,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "success";
 			case "test":
 				return "info";
+			case "escalation":
+				return "critical";
 			default:
 				return "info";
 		}
