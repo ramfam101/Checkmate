@@ -765,6 +765,73 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalation.option.enabled.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						{watch("escalationEnabled") && (
+							<>
+								<Controller
+									name="escalationDelayMinutes"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.delay.label"
+											)}
+											placeholder="30"
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+
+								<Controller
+									name="escalationEmail"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											type="email"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.email.label"
+											)}
+											placeholder="escalation@example.com"
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+							</>
+						)}
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

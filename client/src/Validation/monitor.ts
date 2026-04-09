@@ -27,6 +27,15 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationDelayMinutes: z
+		.number()
+		.min(1, "Delay must be at least 1 minute")
+		.max(1440, "Delay must be at most 24 hours")
+		.optional(),
+	escalationEmail: z
+		.union([z.string().email("Invalid email format"), z.literal("")])
+		.optional(),
 });
 
 // HTTP monitor schema
