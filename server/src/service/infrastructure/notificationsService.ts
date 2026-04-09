@@ -14,6 +14,11 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationToContacts: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		contacts: { type: string; address: string }[]
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +144,83 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationToContacts = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		contacts: { type: string; address: string }[]
+	): Promise<boolean> => {
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		const escalationMessage: NotificationMessage = {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation Alert: ${monitor.name}`,
+				summary: `Monitor "${monitor.name}" is still down. This is an escalated notification because the monitor has not recovered within the configured escalation delay.`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: Down`,
+					`Type: ${monitor.type}`,
+					...(monitorStatusResponse.code ? [`Response Code: ${monitorStatusResponse.code}`] : []),
+					...(monitorStatusResponse.message ? [`Error: ${monitorStatusResponse.message}`] : []),
+				],
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+
+		const emailContacts = contacts.filter((c) => c.type === "email" && c.address);
+
+		const now = new Date().toISOString();
+		const tasks = emailContacts.map((contact) => {
+			const notification: Notification = {
+				id: "",
+				userId: "",
+				teamId: monitor.teamId,
+				type: "email",
+				notificationName: "Escalation",
+				address: contact.address,
+				createdAt: now,
+				updatedAt: now,
+			};
+			return this.send(notification, monitor, monitorStatusResponse, decision, escalationMessage);
+		});
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationToContacts",
+			});
+		}
+
+		return succeeded === emailContacts.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

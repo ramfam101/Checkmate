@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -66,6 +67,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTimeouts: Map<string, NodeJS.Timeout[]>;
 
 	constructor(
 		logger: ILogger,
@@ -101,6 +103,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationTimeouts = new Map();
 	}
 
 	get serviceName() {
@@ -166,6 +169,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// Step 6.5. Handle escalation notifications if monitor just went DOWN
+				if (statusChangeResult.statusChanged && statusChangeResult.monitor.status === "down") {
+					this.scheduleEscalationNotifications(statusChangeResult.monitor, status);
+				}
+
+				// Step 6.6. Clear escalation timeouts if monitor recovered
+				if (statusChangeResult.statusChanged && statusChangeResult.monitor.status === "up") {
+					this.clearEscalationTimeouts(statusChangeResult.monitor.id);
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -454,5 +467,81 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private scheduleEscalationNotifications(monitor: Monitor, status: MonitorStatusResponse): void {
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+			return;
+		}
+
+		const enabledEscalations = monitor.escalationNotifications.filter(esc => esc.enabled);
+		if (enabledEscalations.length === 0) {
+			return;
+		}
+
+		this.logger.info({
+			message: `Scheduling ${enabledEscalations.length} escalation(s) for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalationNotifications",
+		});
+
+		// Clear any existing timeouts for this monitor
+		this.clearEscalationTimeouts(monitor.id);
+
+		const timeouts: NodeJS.Timeout[] = [];
+
+		for (const escalation of enabledEscalations) {
+			const delayMs = escalation.delay * 60 * 1000; // Convert minutes to milliseconds
+
+			const timeout = setTimeout(async () => {
+				try {
+					const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+					if (!currentMonitor) {
+						this.logger.warn({
+							message: `Monitor ${monitor.id} not found during escalation check`,
+							service: SERVICE_NAME,
+							method: "scheduleEscalationNotifications",
+						});
+						return;
+					}
+
+					// Only send escalation if monitor is still down
+					if (currentMonitor.status === "down") {
+						await this.sendEscalationNotifications(currentMonitor, escalation.contacts, status);
+					}
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Error processing escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalationNotifications",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}, delayMs);
+
+			timeouts.push(timeout);
+		}
+
+		this.escalationTimeouts.set(monitor.id, timeouts);
+	}
+
+	private clearEscalationTimeouts(monitorId: string): void {
+		const timeouts = this.escalationTimeouts.get(monitorId);
+		if (timeouts) {
+			for (const timeout of timeouts) {
+				clearTimeout(timeout);
+			}
+			this.escalationTimeouts.delete(monitorId);
+		}
+	}
+
+	private async sendEscalationNotifications(monitor: Monitor, contacts: { type: string; address: string }[], status: MonitorStatusResponse): Promise<void> {
+		this.logger.info({
+			message: `Sending escalation notifications for monitor ${monitor.id} to ${contacts.length} contacts`,
+			service: SERVICE_NAME,
+			method: "sendEscalationNotifications",
+		});
+
+		await this.notificationsService.sendEscalationToContacts(monitor, status, contacts);
 	}
 }

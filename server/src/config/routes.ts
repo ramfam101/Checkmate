@@ -44,7 +44,7 @@ export const setupRoutes = (app: Application, controllers: InitializedController
 	app.use("/api/v1/geo-checks", verifyJWT, geoCheckRoutes.getRouter());
 	app.use("/api/v1/invite", inviteRoutes.getRouter());
 	app.use("/api/v1/maintenance-window", verifyJWT, maintenanceWindowRoutes.getRouter());
-	app.use("/api/v1/queue", verifyJWT, queueRoutes.getRouter());
+	app.use("/api/v1/queue", queueRoutes.getRouter());
 	app.use("/api/v1/logs", verifyJWT, logRoutes.getRouter());
 	app.use("/api/v1/status-page", statusPageRoutes.getRouter());
 	app.use("/api/v1/notifications", verifyJWT, notificationRoutes.getRouter());

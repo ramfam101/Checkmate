@@ -16,6 +16,7 @@ class QueueRoutes {
 		this.router.get("/metrics", isAllowed(["admin", "superadmin"]), this.queueController.getMetrics);
 		this.router.get("/all-metrics", isAllowed(["admin", "superadmin"]), this.queueController.getAllMetrics);
 		this.router.post("/flush", isAllowed(["admin", "superadmin"]), this.queueController.flushQueue);
+		this.router.post("/test-escalation", this.queueController.testEscalationNotifications);
 	}
 
 	getRouter() {
