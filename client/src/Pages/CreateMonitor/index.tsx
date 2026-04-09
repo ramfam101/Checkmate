@@ -764,6 +764,72 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+{/* ESCALATION */}
+		<ConfigBox
+			title="Escalation Settings"
+			subtitle="Optional alerts if issue continues"
+			rightContent={
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="escalationEnabled"
+						control={control}
+						render={({ field }) => (
+							<Stack direction="row" alignItems="center" spacing={1}>
+								<Switch
+									checked={field.value || false}
+									onChange={(e) => field.onChange(e.target.checked)}
+								/>
+								<Typography>Turn on escalation</Typography>
+							</Stack>
+						)}
+					/>
+
+					<Controller
+						name="escalationMinutes"
+						control={control}
+						render={({ field }) => (
+							<TextField
+								{...field}
+								type="number"
+								fieldLabel="Wait time (minutes)"
+								fullWidth
+							/>
+						)}
+					/>
+
+					<Controller
+						name="escalationNotifications"
+						control={control}
+						render={({ field }) => {
+							const opts =
+								notifications?.map((n) => ({
+									id: n.id,
+									label: n.notificationName,
+								})) || [];
+
+							const selected = opts.filter((o) =>
+								(field.value || []).includes(o.id)
+							);
+
+							return (
+								<Autocomplete
+  									options={notifications ?? []}
+  									getOptionLabel={(option) => option.notificationName || ""}
+  									onChange={(_, value) => {
+   								 setValue("escalationNotification", value?.id);
+  											}}
+ 									 renderInput={(params) => (
+   									 <TextField {...params} placeholder="Select notification" />
+							  )}
+						/>
+							);
+						}}
+					/>
+				</Stack>
+			}
+		/>
+
+
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
