@@ -67,6 +67,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
 
+	//my new code, keeps track of escalation timers for monitors
+	private escalationTimers = new Map<string, NodeJS.Timeout>();
+
 	constructor(
 		logger: ILogger,
 		networkService: INetworkService,
@@ -156,6 +159,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				//my new code, get the latest monitor state after update
+				const latestMonitorForDecision = statusChangeResult.monitor;
+
+				// Cancel pending escalation if the monitor recovered
+				if (decision.shouldResolveIncident) {
+					const existingTimer = this.escalationTimers.get(monitor.id);
+					if (existingTimer) {
+						clearTimeout(existingTimer);
+						this.escalationTimers.delete(monitor.id);
+					}
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -166,6 +181,60 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// Schedule delayed escalation when a new incident starts
+				if (
+					decision.shouldCreateIncident &&
+					monitor.escalationDelayMinutes &&
+					monitor.escalationDelayMinutes > 0 &&
+					monitor.escalationNotificationIds &&
+					monitor.escalationNotificationIds.length > 0
+				) {
+					// Clear any old timer for this monitor first
+					const existingTimer = this.escalationTimers.get(monitor.id);
+					if (existingTimer) {
+						clearTimeout(existingTimer);
+					}
+
+					const delayMs = monitor.escalationDelayMinutes * 60 * 1000;
+
+					const timer = setTimeout(async () => {
+						try {
+							//test
+							console.log("ESCALATION TIMER FIRED", {
+								monitorId: monitor.id,
+								delayMinutes: monitor.escalationDelayMinutes,
+							});
+							// Load the freshest monitor state from DB
+							const latestMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+							// Only escalate if the monitor is still in a failing state
+							const stillFailing = latestMonitor.status === "down" || latestMonitor.status === "breached";
+							if (!stillFailing) {
+								return;
+							}
+
+							await this.notificationsService.sendNotificationsToIds(
+								latestMonitor.escalationNotificationIds ?? [],
+								latestMonitor,
+								status,
+								decision,
+								true
+							);
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Escalation notification failed for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						} finally {
+							this.escalationTimers.delete(monitor.id);
+						}
+					}, delayMs);
+
+					this.escalationTimers.set(monitor.id, timer);
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)

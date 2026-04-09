@@ -1,4 +1,4 @@
-import { Schema, model, Types } from "mongoose";
+import mongoose, { Schema, model, Types } from "mongoose";
 import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
@@ -284,6 +284,19 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+
+		//my new code, adds escalation features to shema
+		escalationDelayMinutes: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotificationIds: [
+			{
+				type: mongoose.Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+
 		secret: {
 			type: String,
 		},

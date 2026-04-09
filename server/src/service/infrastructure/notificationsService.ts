@@ -17,6 +17,15 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+
+	//my new code, allows sending notifications to a custom list of notification IDs (used for escalation)
+	sendNotificationsToIds: (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation?: boolean
+	) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -107,14 +116,19 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation = false
+	) => {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost, isEscalation);
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -129,6 +143,37 @@ export class NotificationsService implements INotificationsService {
 			});
 		}
 		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
+	};
+
+	// my new code, sends notifications to a custom list of notification IDs (used for escalation)
+	sendNotificationsToIds = async (
+		notificationIds: string[], // list of notification IDs to send to (escalation targets)
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation = false
+	): Promise<boolean> => {
+		// gets the actual notification objects from the database using the IDs
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		// gets system settings
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		// builds ONE notification message (same message sent to all providers)
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost, isEscalation);
+
+		// sends the notification to each provider (email, slack, etc.)
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+
+		// waits for all sends to complete
+		const outcomes = await Promise.all(tasks);
+
+		// counts how many succeeded
+		const succeeded = outcomes.filter(Boolean).length;
+
+		// returns true only if ALL succeeded
 		return succeeded === notifications.length;
 	};
 
