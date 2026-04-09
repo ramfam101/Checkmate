@@ -574,6 +574,99 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalation.option.enabled.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+
+						<Controller
+							name="escalationTime"
+							control={control}
+							render={({ field }) => (
+								<Select
+									{...field}
+									value={field.value ?? 60000}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.time.label")}
+								>
+									<MenuItem value={60000}>{t("common.time.oneMinute")}</MenuItem>
+									<MenuItem value={300000}>{t("common.time.fiveMinutes")}</MenuItem>
+									<MenuItem value={600000}>{t("common.time.tenMinutes")}</MenuItem>
+									<MenuItem value={900000}>{t("common.time.fifteenMinutes")}</MenuItem>
+									<MenuItem value={1800000}>{t("common.time.thirtyMinutes")}</MenuItem>
+								</Select>
+							)}
+						/>
+
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack flex={1} width="100%">
+												{selectedNotifications.map((notification, index) => (
+													<Stack direction="row" alignItems="center" key={notification.id} width="100%">
+														<Typography flexGrow={1}>{notification.notificationName}</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+															field.onChange((field.value ?? []).filter((id: string) => id !== notification.id));
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+				/>
+
 			{/* Alert Thresholds - only for hardware type */}
 			{generalSettingsConfig.showSecret && (
 				<ConfigBox

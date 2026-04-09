@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+        // Escalation reason has its own notification type
+        if (decision.notificationReason === "escalation") {
+            return "escalation";
+        }
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -81,6 +85,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return "critical";
+			case "escalation":
+				return "critical";
 			case "threshold_breach":
 				return "warning";
 			case "monitor_up":
@@ -95,6 +101,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
@@ -178,6 +186,23 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			title: `Monitor: ${monitor.name}`,
 			summary: `Status update for monitor "${monitor.name}".`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const escalationMs = monitor.escalationTime ?? 0;
+		const minutes = escalationMs > 0 ? Math.round(escalationMs / 60000) : null;
+		const title = `ESCALATION: ${monitor.name}`;
+		const summary = minutes ? `Monitor "${monitor.name}" has been down for ${minutes} minute${minutes === 1 ? "" : "s"}.` : `Monitor "${monitor.name}" has been down for an extended period.`;
+		const details = [`URL: ${monitor.url}`, `Type: ${monitor.type}`];
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+		return {
+			title,
+			summary,
+			details,
 			timestamp: new Date(),
 		};
 	}

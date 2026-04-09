@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -172,6 +173,33 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 		return true;
+	};
+
+	public sendEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (!notifications || notifications.length === 0) {
+			this.logger.debug({ message: `No escalation notifications found for monitor ${monitor.id}`, service: SERVICE_NAME, method: "sendEscalationNotifications" });
+			return false;
+		}
+
+		const decisionStub = {
+			shouldSendNotification: true,
+			notificationReason: "escalation",
+		} as unknown as MonitorActionDecision;
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decisionStub, clientHost);
+
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decisionStub, notificationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({ message: `Escalation send completed with ${succeeded} success, ${failed} failure(s)`, service: SERVICE_NAME, method: "sendEscalationNotifications" });
+		}
+		return succeeded === notifications.length;
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

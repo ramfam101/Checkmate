@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -414,6 +414,50 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					method: "getCleanupRetentionJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({ message: "Running escalation job", service: SERVICE_NAME, method: "getEscalationJob" });
+				const incidents = await this.incidentsRepository.findActiveReadyForEscalation();
+				if (!incidents || incidents.length === 0) {
+					this.logger.debug({ message: "No incidents ready for escalation", service: SERVICE_NAME, method: "getEscalationJob" });
+					return;
+				}
+
+				for (const incident of incidents) {
+					try {
+						const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+						if (!monitor) continue;
+						if (!monitor.escalationEnabled) continue;
+						const escalationIds = monitor.escalationNotifications ?? [];
+						if (!escalationIds || escalationIds.length === 0) continue;
+
+						// Minimal monitorStatusResponse for message building
+						const monitorStatusResponse = {
+							monitorId: monitor.id,
+							teamId: monitor.teamId,
+							type: monitor.type,
+							status: monitor.status,
+							code: 0,
+							message: `Escalation for incident ${incident.id}`,
+						} as any;
+
+						await this.notificationsService.sendEscalationNotifications(monitor, monitorStatusResponse, escalationIds).catch((error: unknown) => {
+							this.logger.warn({ message: `Failed to send escalation notifications for incident ${incident.id}: ${error instanceof Error ? error.message : String(error)}`, service: SERVICE_NAME, method: "getEscalationJob", stack: error instanceof Error ? error.stack : undefined });
+						});
+
+						// Mark incident escalated
+						await this.incidentsRepository.updateById(incident.id, incident.teamId, { escalated: true, escalatedAt: new Date().toISOString() });
+					} catch (error: unknown) {
+						this.logger.warn({ message: error instanceof Error ? error.message : "Unknown error", service: SERVICE_NAME, method: "getEscalationJob", details: { incidentId: incident.id }, stack: error instanceof Error ? error.stack : undefined });
+					}
+				}
+			} catch (error: unknown) {
+				this.logger.error({ message: error instanceof Error ? error.message : "Unknown error", service: SERVICE_NAME, method: "getEscalationJob", stack: error instanceof Error ? error.stack : undefined });
 			}
 		};
 	};

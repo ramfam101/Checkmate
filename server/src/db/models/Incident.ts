@@ -40,6 +40,19 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: Date,
 			default: null,
 		},
+		escalated: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		escalatedAt: {
+			type: Date,
+			default: null,
+		},
+		escalationSentAt: {
+			type: Date,
+			default: null,
+		},
 		status: {
 			type: Boolean,
 			default: true,

@@ -60,6 +60,9 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalated: !!doc.escalated,
+			escalatedAt: doc.escalatedAt ? this.toDateString(doc.escalatedAt) : null,
+			escalationSentAt: doc.escalationSentAt ? this.toDateString(doc.escalationSentAt) : null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -131,6 +134,40 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			.skip(page * rowsPerPage)
 			.limit(rowsPerPage);
 		return this.mapDocuments(incidents);
+	};
+
+	findActiveReadyForEscalation = async (): Promise<Incident[]> => {
+		// Find active incidents that have not been escalated and where the monitor has escalation enabled
+		// and the startTime + monitor.escalationTime <= now
+		const now = new Date();
+		const pipeline = [
+			{ $match: { status: true, escalated: { $ne: true } } },
+			{
+				$lookup: {
+					from: "monitors",
+					localField: "monitorId",
+					foreignField: "_id",
+					as: "monitor",
+				},
+			},
+			{ $unwind: "$monitor" },
+			{
+				$match: {
+					"monitor.escalationEnabled": true,
+					"monitor.escalationNotifications": { $exists: true, $ne: [] },
+					"monitor.escalationTime": { $exists: true, $ne: null },
+				},
+			},
+			{
+				$addFields: {
+					escalationDeadline: { $add: ["$startTime", "$monitor.escalationTime"] },
+				},
+			},
+			{ $match: { $expr: { $lte: ["$escalationDeadline", now] } } },
+		];
+
+		const incidents = await (IncidentModel as any).aggregate(pipeline).exec();
+		return this.mapDocuments(incidents as IncidentDocument[]);
 	};
 
 	updateById = async (incidentId: string, teamId: string, patch: Partial<Incident>) => {

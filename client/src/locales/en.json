@@ -543,6 +543,29 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalated notifications",
+					"description": "Automatically send escalation alerts when an incident remains active longer than the configured time.",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation"
+						},
+						"time": {
+							"label": "Escalation time",
+							"value": {
+								"oneMinute": "1 minute",
+								"fiveMinutes": "5 minutes",
+								"tenMinutes": "10 minutes",
+								"fifteenMinutes": "15 minutes",
+								"thirtyMinutes": "30 minutes"
+							}
+						},
+						"notifications": {
+							"label": "Escalation channels",
+							"placeholder": "Select escalation channels"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
