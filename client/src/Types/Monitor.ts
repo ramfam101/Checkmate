@@ -17,6 +17,12 @@ export const MonitorTypes = [
 ] as const;
 export type MonitorType = (typeof MonitorTypes)[number];
 
+export interface EscalationRule {
+	delayMinutes: number;
+	notificationId?: string;
+	email?: string;
+}
+
 export const GeoCheckSupportedTypes: readonly MonitorType[] = ["http", "ping"] as const;
 
 export const supportsGeoCheck = (type: MonitorType | undefined): boolean => {
@@ -74,6 +80,7 @@ export interface Monitor {
 	grpcServiceName?: string;
 	group: string | null;
 	geoCheckEnabled?: boolean;
+	escalationRules?: EscalationRule[];
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;
 	recentChecks: CheckSnapshot[];

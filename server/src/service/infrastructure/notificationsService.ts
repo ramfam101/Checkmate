@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -130,6 +131,190 @@ export class NotificationsService implements INotificationsService {
 		}
 		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
+	};
+
+	private buildEscalationNotificationMessage = (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationMessage => {
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const message = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			{
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: false,
+				incidentReason: null,
+				notificationReason: "status_change",
+			},
+			clientHost
+		);
+		// Override content to make it clearly an escalation
+		message.content.title = `Escalation Alert: Monitor ${monitor.name} is still down`;
+		message.content.summary = `Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		return message;
+	};
+
+	private sendEscalationNotification = async (
+		rule: { delayMinutes: number; notificationId?: string; email?: string },
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse
+	): Promise<boolean> => {
+		this.logger.warn({
+			message: `[ESCALATION DEBUG] attempting to send escalation, notificationId: ${rule.notificationId}, email: ${rule.email}`,
+			service: SERVICE_NAME,
+			method: "sendEscalationNotification",
+		});
+		const notificationMessage = this.buildEscalationNotificationMessage(monitor, monitorStatusResponse);
+
+		if (rule.notificationId) {
+			// Use existing notification channel
+			const notifications = await this.notificationsRepository.findNotificationsByIds([rule.notificationId]);
+			if (!notifications.length) {
+				this.logger.warn({
+					message: `Escalation notification ${rule.notificationId} not found`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+
+			const notification = notifications[0];
+			return await this.send(
+				notification,
+				monitor,
+				monitorStatusResponse,
+				{
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: false,
+					incidentReason: null,
+					notificationReason: "status_change",
+				},
+				notificationMessage
+			);
+		} else if (rule.email) {
+			// Send directly to email address
+			const tempNotification: Notification = {
+				id: `escalation-${rule.email}`,
+				teamId: monitor.teamId,
+				userId: monitor.userId,
+				notificationName: "Escalation Alert",
+				type: "email",
+				address: rule.email,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			return await this.send(
+				tempNotification,
+				monitor,
+				monitorStatusResponse,
+				{
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: false,
+					incidentReason: null,
+					notificationReason: "status_change",
+				},
+				notificationMessage
+			);
+		} else {
+			this.logger.warn({
+				message: "Escalation rule has neither notificationId nor email",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+	};
+
+	handleEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		this.logger.warn({
+			message: `[ESCALATION DEBUG] called for monitor ${monitor.id}, status: ${monitor.status}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
+
+		if (monitor.status !== "down") {
+			this.logger.warn({
+				message: `[ESCALATION DEBUG] returning early - status is not down`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+			return false;
+		}
+
+		if (!monitor.escalationRules?.length) {
+			this.logger.warn({
+				message: `[ESCALATION DEBUG] returning early - no escalation rules`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+			return false;
+		}
+
+		// Fetch fresh monitor from DB to get latest downtimeStartedAt
+		const freshMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+		const now = Date.now();
+		const downtimeStartedAt = freshMonitor.downtimeStartedAt ?? now;
+		const sentNotifications = new Set(freshMonitor.escalationNotificationsSent ?? []);
+
+		this.logger.warn({
+			message: `[ESCALATION DEBUG] fresh downtimeStartedAt: ${downtimeStartedAt}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
+
+		// Save downtimeStartedAt if not set
+		if (!freshMonitor.downtimeStartedAt) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				downtimeStartedAt,
+				escalationNotificationsSent: [],
+			});
+		}
+
+		this.logger.warn({
+			message: `[ESCALATION DEBUG] sentNotifications: ${JSON.stringify(Array.from(sentNotifications))}, now: ${now}, downtimeStartedAt: ${downtimeStartedAt}, diff: ${now - downtimeStartedAt}, threshold: ${freshMonitor.escalationRules[0]?.delayMinutes * 60_000}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
+
+		const dueRules = freshMonitor.escalationRules.filter((rule) => {
+			const identifier = rule.notificationId || rule.email;
+			if (!identifier) return false;
+			if (sentNotifications.has(identifier)) return false;
+			return now - downtimeStartedAt >= rule.delayMinutes * 60_000;
+		});
+
+		this.logger.warn({
+			message: `[ESCALATION DEBUG] due rules: ${dueRules.length}, time elapsed: ${now - downtimeStartedAt}ms`,
+			service: SERVICE_NAME,
+			method: "handleEscalationNotifications",
+		});
+
+		if (!dueRules.length) return false;
+
+		const results = await Promise.all(
+			dueRules.map(async (rule) => {
+				const success = await this.sendEscalationNotification(rule, monitor, monitorStatusResponse);
+				if (success) {
+					const identifier = rule.notificationId || rule.email;
+					if (identifier) sentNotifications.add(identifier);
+				}
+				return success;
+			})
+		);
+
+		const successfulSends = results.filter(Boolean).length;
+		if (successfulSends > 0) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				downtimeStartedAt,
+				escalationNotificationsSent: Array.from(sentNotifications),
+			});
+		}
+
+		return successfulSends === dueRules.length;
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {

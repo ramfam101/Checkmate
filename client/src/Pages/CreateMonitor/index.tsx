@@ -199,7 +199,7 @@ const CreateMonitorPage = () => {
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema as any),
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
@@ -252,11 +252,20 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const sanitizedData = {
+			...data,
+			escalationRules: (data.escalationRules ?? []).filter(
+				(rule) =>
+					(rule.notificationId && rule.notificationId.trim().length > 0) ||
+					(rule.email && rule.email.trim().length > 0)
+			),
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, sanitizedData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", sanitizedData);
 		}
 
 		if (result?.success) {
@@ -757,6 +766,123 @@ const CreateMonitorPage = () => {
 												</Stack>
 											))}
 										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Configure escalation to send notifications after a delay when the monitor remains down."
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const escalationRules = (field.value ?? []) as {
+								delayMinutes: number;
+								notificationId?: string;
+								email?: string;
+							}[];
+							const rule = escalationRules[0] || { delayMinutes: 5 };
+
+							const updateRule = (updatedRule: Partial<typeof rule>) => {
+								const newRule = { ...rule, ...updatedRule };
+								// Clear the other field when one is set
+								if (updatedRule.notificationId) {
+									newRule.email = undefined;
+								} else if (updatedRule.email) {
+									newRule.notificationId = undefined;
+								}
+								field.onChange([newRule]);
+							};
+
+							// Map notifications to have 'name' property for Select
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								id: n.id,
+								name: n.notificationName || `${n.type} - ${n.address || "Unknown"}`,
+								type: "notification",
+							}));
+
+							// Add custom email option
+							const allOptions = [
+								...notificationOptions,
+								{ id: "custom-email", name: "Custom Email Address", type: "custom" },
+							];
+
+							const selectedOption = rule.notificationId
+								? allOptions.find((option) => option.id === rule.notificationId)
+								: rule.email
+									? allOptions.find((option) => option.id === "custom-email")
+									: null;
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										value={rule.delayMinutes}
+										onChange={(event) =>
+											updateRule({
+												delayMinutes: Number(event.target.value) || 0,
+											})
+										}
+										type="number"
+										fieldLabel="Escalate after (minutes)"
+										fullWidth
+										helperText="Time to wait before sending escalation notification"
+									/>
+									<Autocomplete
+										options={allOptions}
+										value={selectedOption ?? null}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue) => {
+											if (newValue?.type === "notification") {
+												updateRule({ notificationId: newValue.id });
+											} else if (newValue?.id === "custom-email") {
+												updateRule({ email: rule.email || "" });
+											} else {
+												field.onChange([]);
+											}
+										}}
+										fieldLabel="Escalation notification channel"
+										fullWidth
+									/>
+									{selectedOption?.id === "custom-email" && (
+										<TextField
+											value={rule.email || ""}
+											onChange={(event) => updateRule({ email: event.target.value })}
+											type="email"
+											fieldLabel="Email address"
+											fullWidth
+											helperText="Enter the email address to send escalation notifications to"
+										/>
+									)}
+									{selectedOption && selectedOption.type === "notification" && (
+										<Stack
+											direction="row"
+											alignItems="center"
+											width="100%"
+										>
+											<Typography flexGrow={1}>{selectedOption.name}</Typography>
+											<IconButton
+												size="small"
+												onClick={() => field.onChange([])}
+												aria-label="Remove escalation notification"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									)}
+									{notificationOptions.length === 0 && (
+										<Typography
+											variant="body2"
+											color="text.secondary"
+										>
+											No notification channels available. Create one first to enable
+											escalation.
+										</Typography>
 									)}
 								</Stack>
 							);
