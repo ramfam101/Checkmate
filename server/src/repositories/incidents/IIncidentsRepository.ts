@@ -26,4 +26,5 @@ export interface IIncidentsRepository {
 	deleteByMonitorId(monitorId: string, teamId: string): Promise<number>;
 	deleteByMonitorIdsNotIn(monitorIds: string[]): Promise<number>;
 	// other
+	addEscalationHistory(monitorId: string, teamId: string, escalationRecord: { escalationId: string; notificationId: string; sentAt: string; delayMinutes: number }): Promise<void>;
 }

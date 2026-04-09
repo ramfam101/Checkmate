@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type Incident, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -169,9 +169,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+
+				// Step 8. Handle escalations - check on every run for active incidents (best effort, don't wait)
+				this.checkAndHandleEscalations(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						message: `Error checking escalations for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -417,6 +429,97 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async checkAndHandleEscalations(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> {
+		if (!monitor.notificationEscalations?.length) {
+			return;
+		}
+
+		// Find active incident for this monitor
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident?.status) {
+			return;
+		}
+
+		// Handle escalations for the active incident
+		await this.handleNotificationEscalations(monitor, monitorStatusResponse, decision, activeIncident);
+	}
+
+	private async handleNotificationEscalations(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		activeIncident: Incident
+	): Promise<void> {
+		const now = new Date();
+		const incidentStart = new Date(activeIncident.createdAt);
+		const incidentDurationMs = now.getTime() - incidentStart.getTime();
+
+		this.logger.debug({
+			message: `Checking escalations for monitor ${monitor.id}, incident duration: ${incidentDurationMs}ms`,
+			service: SERVICE_NAME,
+			method: "handleNotificationEscalations",
+		});
+
+		for (const escalation of monitor.notificationEscalations!) {
+			const escalationDelayMs = escalation.delayMinutes * 60 * 1000;
+			const escalationDueTime = incidentStart.getTime() + escalationDelayMs;
+
+			// Check if escalation is due
+			if (now.getTime() >= escalationDueTime) {
+				// Generate a unique escalation ID (using channelId + delayMinutes)
+				const escalationId = `${escalation.channelId}_${escalation.delayMinutes}`;
+
+				// Check if this escalation has already been sent
+				const alreadySent = activeIncident.escalationHistory?.some(
+					(history) => history.escalationId === escalationId
+				);
+
+				if (!alreadySent) {
+					this.logger.debug({
+						message: `Sending escalation notification for monitor ${monitor.id}, escalation ${escalationId}`,
+						service: SERVICE_NAME,
+						method: "handleNotificationEscalations",
+					});
+
+					// Send the escalation notification
+					try {
+						// Create a decision object for escalation notifications
+						const escalationDecision: MonitorActionDecision = {
+							shouldCreateIncident: false,
+							shouldResolveIncident: false,
+							shouldSendNotification: true, // Always send escalation notifications
+							incidentReason: null,
+							notificationReason: "status_change", // Use status_change as the reason
+						};
+
+						await this.notificationsService.sendNotificationById(escalation.channelId, monitor.teamId, monitor, monitorStatusResponse, escalationDecision, escalation.delayMinutes);
+
+						// Record the escalation in incident history
+						const escalationRecord = {
+							escalationId,
+							notificationId: escalation.channelId,
+							sentAt: now.toISOString(),
+							delayMinutes: escalation.delayMinutes,
+						};
+
+						await this.incidentsRepository.addEscalationHistory(monitor.id, monitor.teamId, escalationRecord);
+					} catch (error) {
+						this.logger.error({
+							message: `Failed to send escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "handleNotificationEscalations",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
+			}
+		}
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

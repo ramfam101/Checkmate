@@ -13,7 +13,8 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalationDelayMinutes?: number
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -27,11 +28,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalationDelayMinutes?: number
 	): NotificationMessage {
-		const type = this.determineNotificationType(decision, monitor);
+		const type = escalationDelayMinutes !== undefined ? "escalation" : this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, escalationDelayMinutes);
 
 		return {
 			type,
@@ -83,6 +85,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "critical";
 			case "threshold_breach":
 				return "warning";
+			case "escalation":
+				return "warning";
 			case "monitor_up":
 			case "threshold_resolved":
 				return "success";
@@ -93,10 +97,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, escalationDelayMinutes?: number): NotificationContent {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse, escalationDelayMinutes!);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -112,6 +118,34 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Down: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, delayMinutes: number): NotificationContent {
+		const title = `ESCALATION: Monitor Still Down - ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for ${delayMinutes} minutes and requires immediate attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Escalation Delay: ${delayMinutes} minutes`
+		];
 
 		// Add response code if available
 		if (monitorStatusResponse.code) {
