@@ -17,7 +17,7 @@ export type MonitorMatchMethod = (typeof MonitorMatchMethods)[number] | "";
 
 export interface EscalationRule {
 	escapeAfterMinutes: number;
-	escalationNotificationIds: string[];
+	escalationNotificationIds?: string[];
 }
 
 export interface Monitor {

@@ -771,28 +771,16 @@ const CreateMonitorPage = () => {
 				control={control}
 				render={({ field }) => {
 					const escalationValues = field.value;
-					const isConfigured = !!(
-						escalationValues?.escapeAfterMinutes &&
-						escalationValues?.escalationNotificationIds?.length
-					);
+					const isConfigured = !!escalationValues?.escapeAfterMinutes;
 
 					return (
 						<EscalationRulesCard
 							escapeAfterMinutes={escalationValues?.escapeAfterMinutes}
-							escalationNotificationIds={escalationValues?.escalationNotificationIds}
 							onEscapeAfterMinutesChange={(value) => {
-								field.onChange({
-									...escalationValues,
-									escapeAfterMinutes: value,
-								});
+								field.onChange(
+									value !== undefined ? { escapeAfterMinutes: value } : undefined
+								);
 							}}
-							onEscalationNotificationIdsChange={(ids) => {
-								field.onChange({
-									...escalationValues,
-									escalationNotificationIds: ids,
-								});
-							}}
-							allNotifications={notifications ?? []}
 							isConfigured={isConfigured}
 							onClear={() => {
 								field.onChange(undefined);

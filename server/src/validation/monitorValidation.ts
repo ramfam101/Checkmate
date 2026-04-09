@@ -80,7 +80,7 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckInterval: z.number().min(300000).optional(),
 	escalationRules: z.object({
 		escapeAfterMinutes: z.number().min(1, "Escalation time must be at least 1 minute"),
-		escalationNotificationIds: z.array(z.string()).min(1, "At least one escalation notification is required"),
+		escalationNotificationIds: z.array(z.string()).optional(),
 	}).optional(),
 });
 
@@ -113,7 +113,7 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckInterval: z.number().min(300000).optional(),
 	escalationRules: z.object({
 		escapeAfterMinutes: z.number().min(1, "Escalation time must be at least 1 minute"),
-		escalationNotificationIds: z.array(z.string()).min(1, "At least one escalation notification is required"),
+		escalationNotificationIds: z.array(z.string()).optional(),
 	}).optional(),
 });
 
@@ -170,7 +170,7 @@ const importedMonitorSchema = z.object({
 	geoCheckInterval: z.number().min(300000).default(300000),
 	escalationRules: z.object({
 		escapeAfterMinutes: z.number().min(1, "Escalation time must be at least 1 minute"),
-		escalationNotificationIds: z.array(z.string()).min(1, "At least one escalation notification is required"),
+		escalationNotificationIds: z.array(z.string()).optional(),
 	}).optional(),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),

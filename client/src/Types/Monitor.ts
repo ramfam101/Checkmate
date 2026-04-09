@@ -40,7 +40,7 @@ export type MonitorMatchMethod = "equal" | "include" | "regex" | "";
 
 export interface EscalationRule {
 	escapeAfterMinutes: number;
-	escalationNotificationIds: string[];
+	escalationNotificationIds?: string[];
 }
 
 export interface Monitor {

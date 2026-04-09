@@ -1,5 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
+import type { MonitorStatusResponse } from "@/types/network.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
@@ -45,6 +46,8 @@ export interface MonitorActionDecision {
 		disk?: boolean;
 		temp?: boolean;
 	};
+	isEscalation?: boolean;
+	escalationNotificationIds?: string[];
 }
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
@@ -177,6 +180,24 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation (best effort, don't wait)
+				if (statusChangeResult.monitor.escalationRules && statusChangeResult.monitor.status === "down") {
+					this.logger.debug({
+						message: `Monitor ${monitor.id} is down and has escalation rules - checking for escalation`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						details: { thresholdMinutes: statusChangeResult.monitor.escalationRules.escapeAfterMinutes },
+					});
+					this.handleEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -454,5 +475,138 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async handleEscalation(monitor: Monitor, status: MonitorStatusResponse): Promise<void> {
+		if (!monitor.escalationRules) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} has no escalation rules configured`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+			});
+			return;
+		}
+
+		const teamId = monitor.teamId;
+		const monitorId = monitor.id;
+		const escalationThresholdMinutes = monitor.escalationRules.escapeAfterMinutes;
+
+		this.logger.debug({
+			message: `Checking escalation for monitor ${monitorId} with threshold ${escalationThresholdMinutes} minutes`,
+			service: SERVICE_NAME,
+			method: "handleEscalation",
+		});
+
+		try {
+			// Get active incident for this monitor
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+
+			if (!activeIncident) {
+				// No active incident, escalation not applicable
+				this.logger.debug({
+					message: `No active incident found for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				return;
+			}
+
+			this.logger.info({
+				message: `Found active incident ${activeIncident.id} for monitor ${monitorId}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				details: { escalationSent: activeIncident.escalationSent, startTime: activeIncident.startTime },
+			});
+
+			// Check if escalation was already sent
+			if (activeIncident.escalationSent) {
+				this.logger.debug({
+					message: `Escalation already sent for incident ${activeIncident.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+				return;
+			}
+
+			// Calculate downtime in minutes
+			const incidentStartTime = new Date(activeIncident.startTime).getTime();
+			const currentTime = Date.now();
+			const downtimeMs = currentTime - incidentStartTime;
+			const downtimeMinutes = downtimeMs / (1000 * 60);
+
+			this.logger.info({
+				message: `Monitor ${monitorId} downtime calculation: ${downtimeMinutes.toFixed(2)}min / ${escalationThresholdMinutes}min threshold`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				details: { downtimeMs, incidentStartTime, currentTime },
+			});
+
+			// Check if downtime exceeds escalation threshold
+			if (downtimeMinutes >= escalationThresholdMinutes) {
+				this.logger.error({
+					message: `🚨 ESCALATION TRIGGERED for monitor ${monitorId} - downtime: ${downtimeMinutes.toFixed(2)}min, threshold: ${escalationThresholdMinutes}min`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+
+				// Create escalation decision — use specific escalation channels if configured,
+				// otherwise fall back to the monitor's regular notification channels
+				const escalationNotificationIds =
+					monitor.escalationRules.escalationNotificationIds?.length
+						? monitor.escalationRules.escalationNotificationIds
+						: undefined;
+
+				const escalationDecision: MonitorActionDecision = {
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: true,
+					incidentReason: null,
+					notificationReason: "status_change",
+					isEscalation: true,
+					escalationNotificationIds,
+				};
+
+				const channelCount = escalationNotificationIds?.length ?? monitor.notifications?.length ?? 0;
+				this.logger.info({
+					message: `Sending escalation notifications to ${channelCount} channels`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+					details: { escalationNotificationIds },
+				});
+
+				// Send escalation notifications (best effort, use current status object)
+				this.notificationsService.handleNotifications(monitor, status, escalationDecision).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalation notifications for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Mark escalation as sent (non-blocking update)
+				this.incidentsRepository.updateById(activeIncident.id, teamId, { escalationSent: true }).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error marking escalation as sent for incident ${activeIncident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalation",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+			} else {
+				this.logger.debug({
+					message: `Monitor ${monitorId} downtime (${downtimeMinutes.toFixed(2)}min) has not reached escalation threshold (${escalationThresholdMinutes}min)`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error in escalation check for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	}
 }

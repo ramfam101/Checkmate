@@ -544,15 +544,11 @@
 					"title": "Notifications"
 				},
 				"escalation": {
-					"title": "Escalation Rules",
-					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"title": "Escalation Notifications",
+					"description": "If the monitor stays down for the specified time, a notification will be sent to the same channels configured above.",
 					"escapeAfterMinutes": {
-						"label": "Escalate after (minutes)",
+						"label": "Send escalation after (minutes)",
 						"placeholder": "Enter minutes"
-					},
-					"escalationNotificationChannels": {
-						"label": "Escalation notification channels",
-						"placeholder": "Select escalation channels"
 					},
 					"clearRules": "Clear escalation rules"
 				},

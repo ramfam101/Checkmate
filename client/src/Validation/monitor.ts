@@ -30,9 +30,6 @@ const baseSchema = z.object({
 	escalationRules: z
 		.object({
 			escapeAfterMinutes: z.number().min(1, "Escalation time must be at least 1 minute"),
-			escalationNotificationIds: z
-				.array(z.string())
-				.min(1, "At least one escalation notification is required"),
 		})
 		.optional(),
 });
