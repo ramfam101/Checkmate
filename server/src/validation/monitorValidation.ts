@@ -3,6 +3,11 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const escalatedNotificationSchema = z.object({
+	notificationId: z.string().min(1, "Notification ID is required"),
+	delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+});
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -50,6 +55,7 @@ export const getCertificateParamValidation = z.object({
 });
 
 export const createMonitorBodyValidation = z.object({
+	escalatedNotifications: z.array(escalatedNotificationSchema).optional(),
 	_id: z.string().optional(),
 	name: z.string().min(1, "Name is required"),
 	description: z.union([z.string(), z.literal("")]).optional(),
@@ -81,6 +87,7 @@ export const createMonitorBodyValidation = z.object({
 });
 
 export const editMonitorBodyValidation = z.object({
+	escalatedNotifications: z.array(escalatedNotificationSchema).optional(),
 	name: z.string().optional(),
 	type: z.enum(MonitorTypes).optional(),
 	url: z.string().optional(),
@@ -123,6 +130,7 @@ export const getUptimeDetailsByIdQueryValidation = z.object({
 });
 
 const importedMonitorSchema = z.object({
+	escalatedNotifications: z.array(escalatedNotificationSchema).default([]),
 	id: z.string().optional(),
 	userId: z.string().optional(),
 	teamId: z.string().optional(),
