@@ -6,8 +6,7 @@ import Stack from "@mui/material/Stack";
 import { useTheme } from "@mui/material/styles";
 
 import { useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useGet, usePost, usePatch } from "@/Hooks/UseApi";
@@ -231,6 +230,35 @@ const NotificationsCreatePage = () => {
 					}
 				/>
 			)}
+			<ConfigBox
+				title={t("pages.notifications.form.escalation.title")}
+				subtitle={t("pages.notifications.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationMinutes"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								value={(field.value ?? []).join(", ")}
+								onChange={(event) => {
+									const nextValues = event.target.value
+										.split(",")
+										.map((value) => Number(value.trim()))
+										.filter((value) => Number.isFinite(value) && value > 0);
+									field.onChange(nextValues);
+								}}
+								type="text"
+								fieldLabel={t("pages.notifications.form.escalation.optionMinutes")}
+								placeholder={t("pages.notifications.form.escalation.placeholder")}
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? t("pages.notifications.form.escalation.helper")}
+							/>
+						)}
+					/>
+				}
+			/>
 			<Stack
 				direction="row"
 				justifyContent="flex-end"

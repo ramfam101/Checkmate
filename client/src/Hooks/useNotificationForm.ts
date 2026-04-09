@@ -13,13 +13,15 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 				? {
 						type: "matrix" as const,
 						notificationName: data.notificationName || "",
+						escalationMinutes: data.escalationMinutes || [],
 						homeserverUrl: data.homeserverUrl || "",
 						roomId: data.roomId || "",
 						accessToken: data.accessToken || "",
 					}
 				: {
-						type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
+					type: data?.type || "email",
 						notificationName: data?.notificationName || "",
+						escalationMinutes: data?.escalationMinutes || [],
 						address: data?.address || "",
 					};
 

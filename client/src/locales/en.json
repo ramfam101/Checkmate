@@ -543,6 +543,13 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Configure when escalation reminders should be sent if the monitor stays down.",
+					"helper": "Enter comma-separated minutes such as 5, 15, 30.",
+					"optionMinutes": "Escalation delay(s) in minutes",
+					"placeholder": "5, 15, 30",
+					"title": "Escalation rules"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -936,6 +943,13 @@
 					"optionName": "Channel name",
 					"placeholder": "e.g. Production Alerts",
 					"title": "Channel name"
+				},
+				"escalation": {
+					"description": "Configure when this notification channel should receive escalation reminders.",
+					"helper": "Enter comma-separated minutes such as 5, 15, 30.",
+					"optionMinutes": "Escalation delay(s) in minutes",
+					"placeholder": "5, 15, 30",
+					"title": "Escalation rules"
 				},
 				"pagerDuty": {
 					"description": "Your PagerDuty integration key for receiving alerts.",

@@ -66,15 +66,15 @@ import axios from "axios";
 import got from "got";
 import ping from "ping";
 import Docker from "dockerode";
-import net from "net";
-import fs from "fs";
-import path from "path";
+import net from "node:net";
+import fs from "node:fs";
+import path from "node:path";
 import nodemailer from "nodemailer";
 import pkg from "handlebars";
 const { compile } = pkg;
 import mjml2html from "mjml";
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { games, GameDig } from "gamedig";
 import jmespath from "jmespath";
 import * as grpc from "@grpc/grpc-js";
@@ -232,18 +232,21 @@ export const initializeServices = async ({
 	const teamsProvider = new TeamsProvider(logger);
 
 	const notificationsService = new NotificationsService(
-		notificationsRepository,
-		monitorsRepository,
-		webhookProvider,
-		emailProvider,
-		slackProvider,
-		discordProvider,
-		pagerDutyProvider,
-		matrixProvider,
-		teamsProvider,
-		settingsService,
-		logger,
-		notificationMessageBuilder
+		{
+			notificationsRepository,
+			monitorsRepository,
+			incidentsRepository,
+			webhookProvider,
+			emailProvider,
+			slackProvider,
+			discordProvider,
+			pagerDutyProvider,
+			matrixProvider,
+			teamsProvider,
+			settingsService,
+			logger,
+			notificationMessageBuilder,
+		}
 	);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(

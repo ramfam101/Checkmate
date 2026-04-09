@@ -32,6 +32,10 @@ const NotificationSchema = new Schema<NotificationDocument>(
 			type: String,
 			required: true,
 		},
+		escalationMinutes: {
+			type: [Number],
+			default: [],
+		},
 		address: { type: String },
 		phone: { type: String },
 		homeserverUrl: { type: String },
