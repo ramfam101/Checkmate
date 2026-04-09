@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -35,6 +35,7 @@ import { useMonitorForm } from "@/Hooks/useMonitorForm";
 import {
 	type Monitor,
 	type MonitorType,
+	type MonitorEscalation,
 	type GamesMap,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
@@ -203,6 +204,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields: escalationFields, append: appendEscalation, remove: removeEscalation } = useFieldArray({
+		control,
+		name: "escalations",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +767,114 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => (
+							<Stack
+								key={field.id}
+								spacing={theme.spacing(LAYOUT.SM)}
+								sx={{
+									padding: theme.spacing(LAYOUT.MD),
+									border: 1,
+									borderColor: theme.palette.divider,
+									borderRadius: theme.shape.borderRadius,
+								}}
+							>
+								<Stack
+									direction={{ xs: "column", md: "row" }}
+									spacing={theme.spacing(LAYOUT.MD)}
+									alignItems={{ xs: "stretch", md: "flex-start" }}
+								>
+									<Controller
+										name={`escalations.${index}.delayMinutes`}
+										control={control}
+										render={({ field: escalationField, fieldState }) => (
+											<TextField
+												{...escalationField}
+												value={escalationField.value ?? 0}
+												onChange={(e) => {
+													const nextValue = e.target.value;
+													escalationField.onChange(nextValue === "" ? 0 : Number(nextValue));
+												}}
+												type="number"
+												fieldLabel={t("pages.createMonitor.form.escalations.option.delay.label")}
+												placeholder={t(
+													"pages.createMonitor.form.escalations.option.delay.placeholder"
+												)}
+												fullWidth
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message ?? ""}
+											/>
+										)}
+									/>
+									<Controller
+										name={`escalations.${index}.channelId`}
+										control={control}
+										render={({ field: escalationField }) => {
+											const notificationOptions = (notifications ?? []).map((notification) => ({
+												...notification,
+												name: notification.notificationName,
+											}));
+											const selectedChannel =
+												notificationOptions.find((notification) => notification.id === escalationField.value) ??
+												null;
+											return (
+												<Autocomplete
+													options={notificationOptions}
+													value={selectedChannel}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: (typeof notificationOptions)[number] | null) => {
+														escalationField.onChange(newValue?.id ?? "");
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalations.option.channel.label"
+													)}
+												/>
+											);
+										}}
+									/>
+								</Stack>
+								<Stack
+									direction="row"
+									justifyContent="space-between"
+									alignItems="center"
+								>
+									<Typography color="text.secondary">
+										{t("pages.createMonitor.form.escalations.option.summary", {
+											count: index + 1,
+										})}
+									</Typography>
+									<IconButton
+										size="small"
+										onClick={() => removeEscalation(index)}
+										aria-label={t("pages.createMonitor.form.escalations.option.remove")}
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+							</Stack>
+						))}
+						<Button
+							type="button"
+							variant="outlined"
+							onClick={() =>
+								appendEscalation({
+									delayMinutes: 0,
+									channelId: "",
+								} satisfies MonitorEscalation)
+							}
+							sx={{ alignSelf: "flex-start" }}
+						>
+							{t("pages.createMonitor.form.escalations.option.add")}
+						</Button>
+					</Stack>
 				}
 			/>
 

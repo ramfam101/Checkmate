@@ -35,7 +35,7 @@
 		"cookie-parser": "^1.4.7",
 		"cors": "^2.8.5",
 		"dockerode": "4.0.6",
-		"dotenv": "^16.4.5",
+		"dotenv": "^16.6.1",
 		"express": "^4.19.2",
 		"express-rate-limit": "8.0.1",
 		"gamedig": "5.2.0",

@@ -14,7 +14,12 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendToNotificationIds: (args: {
+		notificationIds: string[];
+		monitor: Monitor;
+		monitorStatusResponse: MonitorStatusResponse;
+		decision: MonitorActionDecision;
+	}) => Promise<string[]>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -81,7 +86,6 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Route to provider based on notification type
 		switch (notification.type) {
 			case "webhook":
 				return await this.webhookProvider.sendMessage!(notification, notificationMessage);
@@ -107,29 +111,41 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds: string[]
+	): Promise<string[]> => {
+		if (notificationIds.length === 0) {
+			return [];
+		}
 
-		// Build notification message once for all notifications
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (notifications.length === 0) {
+			return [];
+		}
+
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		const outcomes = await Promise.all(
+			notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage))
+		);
 
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
+		const successfulIds = notifications.filter((_, index) => outcomes[index]).map((notification) => notification.id);
+		const failed = notifications.length - successfulIds.length;
+
 		if (failed > 0) {
 			this.logger.warn({
-				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				message: `Notification send completed with ${successfulIds.length} success, ${failed} failure(s)`,
 				service: SERVICE_NAME,
 				method: "sendNotifications",
 			});
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+
+		return successfulIds;
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
@@ -137,8 +153,23 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const notificationIds = monitor.notifications ?? [];
+		const successfulIds = await this.sendNotifications(monitor, monitorStatusResponse, decision, notificationIds);
+		return successfulIds.length === notificationIds.length;
+	};
+
+	sendToNotificationIds = async ({
+		notificationIds,
+		monitor,
+		monitorStatusResponse,
+		decision,
+	}: {
+		notificationIds: string[];
+		monitor: Monitor;
+		monitorStatusResponse: MonitorStatusResponse;
+		decision: MonitorActionDecision;
+	}) => {
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, notificationIds);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
