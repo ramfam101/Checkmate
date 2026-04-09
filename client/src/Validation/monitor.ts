@@ -13,6 +13,13 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationRules: z.array(
+		z.object({
+			minutesBeforeEscalation: z.number().min(1, "Escalation delay must be at least 1 minute").max(10080, "Escalation delay cannot exceed 7 days"),
+			escalationNotifications: z.array(z.string().min(1, "Notification ID is required")).min(1, "At least one escalation notification is required"),
+			lastEscalationSentAt: z.number().optional(),
+		})
+	).max(1, "Only one escalation rule is allowed").optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -27,6 +34,7 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	
 });
 
 // HTTP monitor schema

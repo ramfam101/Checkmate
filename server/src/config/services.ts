@@ -257,6 +257,7 @@ export const initializeServices = async ({
 		incidentService,
 		maintenanceWindowsRepository,
 		monitorsRepository,
+		notificationsRepository,
 		teamsRepository,
 		monitorStatsRepository,
 		checksRepository,

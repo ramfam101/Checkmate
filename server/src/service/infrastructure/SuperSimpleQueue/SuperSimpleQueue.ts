@@ -89,8 +89,12 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 		try {
 			this.scheduler.start();
 
+			// Set scheduler on helper so it can schedule escalation jobs
+			(this.helper as any).scheduler = this.scheduler;
+
 			this.scheduler.addTemplate("monitor-job", this.helper.getHeartbeatJob());
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
+			this.scheduler.addTemplate("escalation-job", this.helper.getEscalationJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
 			const monitors = await this.monitorsRepository.findAll();

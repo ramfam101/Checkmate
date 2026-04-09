@@ -17,6 +17,7 @@ import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
+import { EscalationRulesPanel } from "./components/EscalationRulesPanel";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
 import {
@@ -252,6 +253,8 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		console.log("Form submitted with data:", data);
+		console.log("Escalation rules in submitted data:", data.escalationRules);
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -271,7 +274,12 @@ const CreateMonitorPage = () => {
 	};
 
 	const onError = (errors: unknown) => {
-		logger.debug("Monitor creation validation errors", errors);
+		const errorObj = errors as Record<string, any>;
+		logger.debug("Monitor creation validation errors", errorObj);
+		// Log detailed validation error info
+		if (errorObj?.escalationRules) {
+			logger.debug("Escalation rules validation error:", errorObj.escalationRules);
+		}
 	};
 
 	return (
@@ -710,9 +718,17 @@ const CreateMonitorPage = () => {
 								...n,
 								name: n.notificationName,
 							}));
-							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+
+							// Convert field.value to simple string array (notification IDs)
+							const currentNotificationIds: string[] = (field.value ?? []).filter(
+								(item: any): item is string => typeof item === "string"
 							);
+
+							// Get selected notification objects
+							const selectedNotifications = notificationOptions.filter((n) =>
+								currentNotificationIds.includes(n.id)
+							);
+
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Autocomplete
@@ -721,41 +737,43 @@ const CreateMonitorPage = () => {
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											// Convert selected notifications to string array of IDs
 											field.onChange(newValue.map((n) => n.id));
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
-									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
-											{selectedNotifications.map((notification, index) => (
-												<Stack
-													direction="row"
-													alignItems="center"
-													key={notification.id}
-													width="100%"
-												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
-													<IconButton
-														size="small"
-														onClick={() => {
-															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
-														}}
-														aria-label="Remove notification"
+
+									{currentNotificationIds.length > 0 && (
+										<Stack flex={1} width="100%">
+											{currentNotificationIds.map((notificationId, index) => {
+												const notification = notificationOptions.find((n) => n.id === notificationId);
+												return (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={`${notificationId}-${index}`}
+														width="100%"
 													>
-														<Trash2 size={16} />
-													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
-												</Stack>
-											))}
+														<Typography flexGrow={1}>
+															{notification?.notificationName || notificationId}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	currentNotificationIds.filter(
+																		(_, i) => i !== index
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < currentNotificationIds.length - 1 && <Divider />}
+													</Stack>
+												);
+											})}
 										</Stack>
 									)}
 								</Stack>
@@ -764,6 +782,36 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			{/* Escalation Rules Section - Separate from Notifications */}
+		<Controller
+			name="escalationRules"
+			control={control}
+			render={({ field, fieldState }) => {
+				return (
+					<ConfigBox
+						title={t("pages.createMonitor.form.escalation.title")}
+						subtitle={t("pages.createMonitor.form.escalation.description")}
+						rightContent={
+							<Stack spacing={2}>
+								<EscalationRulesPanel
+									escalationRules={field.value ?? []}
+									availableNotifications={notifications ?? []}
+									onUpdate={(updatedRules) => {
+										field.onChange(updatedRules);
+									}}
+								/>
+								{fieldState.error && (
+									<Typography color="error" variant="caption">
+										{fieldState.error.message}
+									</Typography>
+								)}
+							</Stack>
+						}
+					/>
+				);
+			}}
+		/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

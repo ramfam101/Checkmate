@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotification: (notification: Notification, monitor: Monitor, incident: Incident) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -164,14 +165,41 @@ export class NotificationsService implements INotificationsService {
 
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
+		const tasks = notifications.map((notification) =>
+			this.sendTestNotification(notification).catch((error: unknown) => {
+				this.logger.warn({
+					message: `Failed to send test notification for ${notification.notificationName}`,
+					service: SERVICE_NAME,
+					method: "testAllNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				return false;
+			})
+		);
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
+		return succeeded > 0;
+	};
+
+	sendEscalationNotification = async (notification: Notification, monitor: Monitor, incident: Incident): Promise<boolean> => {
+		try {
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "http://localhost:5173";
+
+			// Build escalation notification message
+			const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(incident, monitor, clientHost);
+
+			// Send the escalation notification using the provider routing system
+			return await this.send(notification, monitor, {} as MonitorStatusResponse, {} as MonitorActionDecision, notificationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: error instanceof Error ? error.message : "Unknown error sending escalation notification",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 			return false;
 		}
-		return true;
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {

@@ -1,5 +1,6 @@
 {
 	"common": {
+		"enable": "Enable",
 		"auth": {
 			"roles": {
 				"admin": "Admin",
@@ -283,6 +284,7 @@
 		},
 		"auth": {
 			"common": {
+				
 				"passwordRules": {
 					"length": {
 						"beginning": "Must be at least",
@@ -381,6 +383,7 @@
 			}
 		},
 		"common": {
+			
 			"monitors": {
 				"actions": {
 					"configure": "Configure",
@@ -542,6 +545,29 @@
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
+				},
+				"escalation":{
+					"description": "If the monitor stays down for the specified time, notify additional channels",
+					"title": "Escalation",
+					"addRule": "Add Escalation Rule",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation for this channel"
+						},
+						"delayMinutes": {
+							"label": "Escalation delay (minutes)",
+							"placeholder": "5"
+						},
+						"escalationChannel": {
+							"label": "Escalation channel",
+							"placeholder": "Select a channel to escalate to"
+						},
+						"maxEscalations": {
+							"label": "Maximum escalations",
+							"placeholder": "3"
+						},
+						"noChannelsAvailable": "No additional channels available for escalation. Add more notification channels to set up escalation rules."
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",
@@ -962,6 +988,7 @@
 		"pageSpeed": {
 			"charts": {
 				"common": {
+					
 					"cls": "Cumulative Layout Shift (CLS)",
 					"fcp": "First Contentful Paint (FCP)",
 					"lcp": "Largest Contentful Paint (LCP)",

@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Monitor, MonitorStatusResponse, Incident } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(incident: Incident, monitor: Monitor, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +271,74 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(incident: Incident, monitor: Monitor, clientHost: string): NotificationMessage {
+		// Calculate how long the incident has been active
+		const startTime = new Date(incident.startTime);
+		const now = new Date();
+		const durationMs = now.getTime() - startTime.getTime();
+		const durationMinutes = Math.floor(durationMs / (60 * 1000));
+
+		const severity: NotificationSeverity = "critical";
+		const type: NotificationType = "monitor_down";
+
+		const escalationLevel = (incident.escalationHistory?.length ?? 0) + 1;
+		const title = `Escalation: monitor ${monitor.name} is still down`;
+		const summary = `Monitor "${monitor.name}" has been down for ${this.formatDuration(durationMinutes)} and is being escalated (level ${escalationLevel}).`;
+		const details = [
+			`Monitor: ${monitor.name}`,
+			`URL: ${monitor.url}`,
+			`Type: ${monitor.type}`,
+			`Duration: ${this.formatDuration(durationMinutes)}`,
+			`Escalation Level: ${escalationLevel}`,
+		];
+
+		if (incident.message) {
+			details.push(`Details: ${incident.message}`);
+		}
+
+		const content: NotificationContent = {
+			title,
+			summary,
+			details,
+			incident: {
+				id: incident.id,
+				url: monitor.url,
+				createdAt: new Date(incident.startTime),
+				duration: this.formatDuration(durationMinutes),
+			},
+			timestamp: now,
+		};
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
+	private formatDuration(minutes: number): string {
+		if (minutes < 60) {
+			return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+		}
+		const hours = Math.floor(minutes / 60);
+		const remainingMinutes = minutes % 60;
+		if (remainingMinutes === 0) {
+			return `${hours} hour${hours === 1 ? "" : "s"}`;
+		}
+		return `${hours}h ${remainingMinutes}m`;
 	}
 }

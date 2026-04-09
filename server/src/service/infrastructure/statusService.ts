@@ -238,6 +238,26 @@ export class StatusService implements IStatusService {
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
+				// Track escalation state even with incomplete data
+				const enteringIncidentState = newStatus === "down" && prevStatus !== "down";
+				const recovering = newStatus === "up" && prevStatus !== "up";
+
+				if (enteringIncidentState) {
+					monitor.lastDownTime = Date.now();
+				}
+
+				if (recovering) {
+					monitor.lastDownTime = undefined;
+
+					// Reset escalation state on recovery
+					if (Array.isArray(monitor.escalationRules) && monitor.escalationRules.length > 0) {
+						monitor.escalationRules = monitor.escalationRules.map((rule) => ({
+							...rule,
+							lastEscalationSentAt: undefined,
+						}));
+					}
+				}
+
 				monitor.status = newStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
@@ -254,7 +274,7 @@ export class StatusService implements IStatusService {
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 
 			// If threshold has been met and the monitor is not already down, mark down:
-			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+			if (status === false && failureRate >= monitor.statusWindowThreshold && monitor.status !== "down"){				
 				newStatus = "down";
 				statusChanged = true;
 			}
@@ -347,6 +367,28 @@ export class StatusService implements IStatusService {
 
 			// Apply the final status
 			monitor.status = newStatus;
+
+			// Track escalation state
+			const enteringIncidentState =
+				(newStatus === "down" && prevStatus !== "down") ||
+				(newStatus === "breached" && prevStatus !== "breached");
+			const recovering = newStatus === "up" && prevStatus !== "up";
+
+			if (enteringIncidentState) {
+				monitor.lastDownTime = Date.now();
+			}
+
+			if (recovering) {
+				monitor.lastDownTime = undefined;
+
+				// Reset escalation state on recovery
+				if (Array.isArray(monitor.escalationRules) && monitor.escalationRules.length > 0) {
+					monitor.escalationRules = monitor.escalationRules.map((rule) => ({
+						...rule,
+						lastEscalationSentAt: undefined,
+					}));
+				}
+			}
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
