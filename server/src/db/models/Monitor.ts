@@ -355,6 +355,17 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		owner: {
+			type: String,
+			ref: "User",
+			required: true,
+		},
+		notificationInterval: {
+			type: Number,
+			default: 5,
+			min: 1,
+			max: 1440,
+		},
 	},
 	{
 		timestamps: true,

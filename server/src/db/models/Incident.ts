@@ -72,6 +72,23 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationHistory: [
+			{
+				notificationSentAt: {
+					type: Date,
+					required: true,
+				},
+				intervalMinutes: {
+					type: Number,
+					required: true,
+				},
+				_id: false,
+			},
+		],
+		scheduledNextNotification: {
+			type: Date,
+			default: null,
+		},
 	},
 	{ timestamps: true }
 );

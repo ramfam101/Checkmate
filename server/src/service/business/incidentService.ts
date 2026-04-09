@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { IEscalationService } from "@/service/business/escalationService.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationService: IEscalationService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationService: IEscalationService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationService = escalationService;
 	}
 
 	get serviceName() {
@@ -91,7 +95,21 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				// Start escalation notifications for this incident
+				try {
+					await this.escalationService.startRepeatingNotifications(createdIncident, monitor);
+				} catch (error) {
+					this.logger.error({
+						message: `Failed to start escalation notifications: ${error instanceof Error ? error.message : String(error)}`,
+						service: SERVICE_NAME,
+						method: "handleIncident",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+
+				return createdIncident;
 			}
 		}
 
@@ -102,7 +120,21 @@ export class IncidentService implements IIncidentService {
 			activeIncident.status = false;
 			activeIncident.endTime = Date.now().toString();
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			const resolvedIncident = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+
+			// Stop escalation notifications for this incident
+			try {
+				await this.escalationService.stopRepeatingNotifications(activeIncident.id, activeIncident.teamId);
+			} catch (error) {
+				this.logger.error({
+					message: `Failed to stop escalation notifications: ${error instanceof Error ? error.message : String(error)}`,
+					service: SERVICE_NAME,
+					method: "handleIncident",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+
+			return resolvedIncident;
 		}
 
 		return null;
@@ -154,6 +186,18 @@ export class IncidentService implements IIncidentService {
 			incident.endTime = Date.now().toString();
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
+
+			// Stop escalation notifications for this incident
+			try {
+				await this.escalationService.stopRepeatingNotifications(incident.id, teamId);
+			} catch (error) {
+				this.logger.error({
+					message: `Failed to stop escalation notifications: ${error instanceof Error ? error.message : String(error)}`,
+					service: SERVICE_NAME,
+					method: "resolveIncident",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
 
 			this.logger.debug({
 				service: SERVICE_NAME,

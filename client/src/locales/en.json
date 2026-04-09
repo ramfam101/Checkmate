@@ -543,6 +543,25 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Configure reminder notifications for when this monitor is down",
+					"title": "Escalation settings",
+					"notificationInterval": {
+						"label": "Reminder notification interval",
+						"option": {
+							"1min": "Every 1 minute",
+							"5min": "Every 5 minutes",
+							"10min": "Every 10 minutes",
+							"15min": "Every 15 minutes",
+							"30min": "Every 30 minutes",
+							"1hour": "Every 1 hour",
+							"2hours": "Every 2 hours",
+							"4hours": "Every 4 hours",
+							"8hours": "Every 8 hours",
+							"1day": "Every 1 day"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -672,7 +691,14 @@
 					"statusCode": "Status code:",
 					"timeline": "Timeline",
 					"title": "Incident details",
-					"url": "URL:"
+					"url": "URL:",
+					"escalation": {
+						"title": "Escalation notifications",
+						"interval": "Reminder interval:",
+						"minutes": "minutes",
+						"nextNotification": "Next notification:",
+						"history": "Notification history:"
+					}
 				}
 			},
 			"filters": {
