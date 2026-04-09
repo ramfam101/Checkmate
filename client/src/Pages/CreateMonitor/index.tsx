@@ -765,6 +765,73 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title="Escalation Settings"
+				subtitle="Configure escalated notifications if the monitor remains down after a delay."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="enableEscalation"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable Escalation</Typography>
+								</Stack>
+							)}
+						/>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field }) => (
+								<Stack spacing={theme.spacing(SPACING.XS)}>
+									<Typography>Delay (minutes)</Typography>
+									<TextField
+										type="number"
+										value={field.value ?? ""}
+										onChange={(e) => {
+											const value = Number(e.target.value);
+											field.onChange(value < 1 ? 1 : value);
+										}}
+									/>
+								</Stack>
+							)}
+						/>
+						<Controller
+							name="escalationChannelId"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedChannel =
+									notificationOptions.find((n) => n.id === field.value) || null;
+
+								return (
+									<Autocomplete
+										options={notificationOptions}
+										value={selectedChannel}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: (typeof notificationOptions)[number] | null) => {
+											field.onChange(newValue?.id || "");
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

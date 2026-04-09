@@ -14,6 +14,11 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	notifications: data?.notifications || [],
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
+
+	enableEscalation: data?.enableEscalation ?? false,
+	escalationDelayMinutes: data?.escalationDelayMinutes ?? 10,
+	escalationChannelId: data?.escalationChannelId || "",
+
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
 	geoCheckLocations: data?.geoCheckLocations || [],
 	geoCheckInterval: data?.geoCheckInterval || 300000,
@@ -42,6 +47,7 @@ export const useMonitorForm = ({
 					jsonPath: data?.jsonPath || "",
 				};
 				break;
+
 			case "ping":
 				defaults = {
 					...base,
@@ -49,6 +55,7 @@ export const useMonitorForm = ({
 					url: data?.url || "",
 				};
 				break;
+
 			case "port":
 				defaults = {
 					...base,
@@ -57,6 +64,7 @@ export const useMonitorForm = ({
 					port: data?.port || 80,
 				};
 				break;
+
 			case "docker":
 				defaults = {
 					...base,
@@ -64,6 +72,7 @@ export const useMonitorForm = ({
 					url: data?.url || "",
 				};
 				break;
+
 			case "game":
 				defaults = {
 					...base,
@@ -73,6 +82,7 @@ export const useMonitorForm = ({
 					gameId: data?.gameId || "",
 				};
 				break;
+
 			case "grpc":
 				defaults = {
 					...base,
@@ -83,6 +93,7 @@ export const useMonitorForm = ({
 					ignoreTlsErrors: data?.ignoreTlsErrors || false,
 				};
 				break;
+
 			case "pagespeed":
 				defaults = {
 					...base,
@@ -90,6 +101,7 @@ export const useMonitorForm = ({
 					url: data?.url || "",
 				};
 				break;
+
 			case "hardware":
 				defaults = {
 					...base,
@@ -103,6 +115,7 @@ export const useMonitorForm = ({
 					selectedDisks: data?.selectedDisks || [],
 				};
 				break;
+
 			case "websocket":
 				defaults = {
 					...base,
@@ -111,6 +124,7 @@ export const useMonitorForm = ({
 					ignoreTlsErrors: data?.ignoreTlsErrors || false,
 				};
 				break;
+
 			default:
 				defaults = {
 					...base,

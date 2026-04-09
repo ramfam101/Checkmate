@@ -124,7 +124,7 @@ const migrateBackupData = async (backedUp: boolean): Promise<MigrationStats> => 
 
 		stats.totalSource = await source.countDocuments();
 
-		const cursor = source.find().addCursorFlag("noCursorTimeout", true);
+		const cursor = source.find();
 		const operations: AnyBulkWriteOperation<Document>[] = [];
 		const invalidDocs: Document[] = [];
 
