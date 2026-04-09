@@ -35,6 +35,14 @@ interface MonitorDocument extends MonitorDocumentBase {
 	updatedAt: Date;
 }
 
+const escalationStepSchema = new Schema(
+	{
+		delayMinutes: { type: Number, required: true },
+		notifications: [{ type: Schema.Types.ObjectId, ref: "Notification", required: true }],
+	},
+	{ _id: false }
+);
+
 const snapshotTimingPhasesSchema = new Schema<GotTimings["phases"]>(
 	{
 		wait: { type: Number },
@@ -284,6 +292,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalations: {
+			type: [escalationStepSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

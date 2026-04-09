@@ -151,10 +151,29 @@ export class EmailService implements IEmailService {
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
+			const err = error as (Error & { code?: string; response?: string; responseCode?: number; command?: string }) | undefined;
 			this.logger.warn({
 				message: "Email transporter verification failed",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
+				details: {
+					host: systemEmailHost,
+					port: Number(systemEmailPort),
+					secure: systemEmailSecure,
+					user: systemEmailUser || systemEmailAddress,
+					from: systemEmailAddress,
+					pool: systemEmailPool,
+					ignoreTLS: systemEmailIgnoreTLS,
+					requireTLS: systemEmailRequireTLS,
+					rejectUnauthorized: systemEmailRejectUnauthorized,
+					tlsServername: systemEmailTLSServername,
+					connectionHost: systemEmailConnectionHost,
+					errorMessage: err instanceof Error ? err.message : undefined,
+					errorCode: err?.code,
+					errorCommand: err?.command,
+					errorResponseCode: err?.responseCode,
+					errorResponse: err?.response,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;

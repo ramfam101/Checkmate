@@ -65,7 +65,7 @@ class MongoSettingsRepository implements ISettingsRepository {
 
 		// Iterate through settings and separate into $set and $unset
 		Object.entries(settings).forEach(([key, value]) => {
-			if (value === undefined || value === null) {
+			if (value === null) {
 				$unset[key] = "";
 			} else {
 				$set[key] = value;
