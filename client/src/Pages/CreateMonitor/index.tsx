@@ -764,7 +764,74 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+			<ConfigBox
+  				title="Escalated Notifications"
+  				subtitle="Send additional alerts if the monitor remains down for a specified duration."
+  				rightContent={
+					<Controller
+						name="escalations"
+      					control={control}
+      					defaultValue={[]}
+      					render={({ field }) => {
+        					const escalations = field.value ?? [];
+        					const notificationOptions = (notifications ?? []).map((n) => ({
+          						...n,
+          						name: n.notificationName,
+	 					}));
 
+        				const addEscalation = () => {
+          					field.onChange([...escalations, { delayMinutes: 30, notificationId: "" }]);
+        				};
+
+        				const removeEscalation = (index: number) => {
+         					field.onChange(escalations.filter((_: any, i: number) => i !== index));
+       					};
+
+        				const updateEscalation = (index: number, key: string, value: any) => {
+          					const updated = escalations.map((e: any, i: number) =>
+            					i === index ? { ...e, [key]: value } : e
+          					);
+         					field.onChange(updated);
+        				};
+
+						return (
+						<Stack spacing={theme.spacing(4)}>
+							{escalations.map((esc: any, index: number) => (
+							<Stack key={index} direction="row" alignItems="center" spacing={2}>
+								<Typography>After</Typography>
+								<TextField
+								type="number"
+								size="small"
+								value={esc.delayMinutes}
+								onChange={(e) => updateEscalation(index, "delayMinutes", Number(e.target.value))}
+								inputProps={{ min: 1 }}
+								sx={{ width: 80 }}
+								/>
+								<Typography>min, notify via</Typography>
+								<Select
+								size="small"
+								value={esc.notificationId}
+								onChange={(e) => updateEscalation(index, "notificationId", e.target.value)}
+								sx={{ minWidth: 160 }}
+								>
+								{notificationOptions.map((n) => (
+									<MenuItem key={n.id} value={n.id}>{n.name}</MenuItem>
+								))}
+								</Select>
+								<IconButton size="small" onClick={() => removeEscalation(index)}>
+								<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+							))}
+							<Button variant="contained" color="secondary" onClick={addEscalation}>
+							+ Add Escalation
+							</Button>
+						</Stack>
+						);
+					}}
+					/>
+				}
+			/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
