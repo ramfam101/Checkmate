@@ -826,7 +826,6 @@ const CreateMonitorPage = () => {
 												placeholder="Select escalation email"
 												fullWidth
 												error={!!fieldState.error}
-												helperText={fieldState.error?.message ?? ""}
 											>
 												{emailNotifications.map((notification) => (
 													<MenuItem
