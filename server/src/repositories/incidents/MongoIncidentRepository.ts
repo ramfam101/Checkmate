@@ -1,6 +1,6 @@
 import { IncidentModel } from "@/db/models/index.js";
 import type { IncidentDocument } from "@/db/models/Incident.js";
-import type { Incident, IncidentSummary } from "@/types/index.js";
+import type { Incident, IncidentSummary } from "@/types/incident.js";
 import type { IIncidentsRepository } from "@/repositories/index.js";
 import mongoose from "mongoose";
 import { AppError } from "@/utils/AppError.js";
@@ -47,7 +47,9 @@ class MongoIncidentRepository implements IIncidentsRepository {
 	}
 
 	protected toEntity = (doc: IncidentDocument): Incident => {
-		return {
+		const rawEscalationSentAt = (doc as IncidentDocument & { escalationSentAt?: Date | string | null }).escalationSentAt ?? null;
+		const escalationSentAt = rawEscalationSentAt ? this.toDateString(rawEscalationSentAt) : null;
+		const entity = {
 			id: this.toStringId(doc._id),
 			monitorId: this.toStringId(doc.monitorId),
 			teamId: this.toStringId(doc.teamId),
@@ -62,7 +64,9 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			comment: doc.comment ?? null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
+			escalationSentAt,
 		};
+		return entity as unknown as Incident;
 	};
 
 	protected mapDocuments = (documents: IncidentDocument[] | IncidentDocument | null): Incident[] => {

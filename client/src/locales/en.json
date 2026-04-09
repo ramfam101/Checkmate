@@ -539,6 +539,18 @@
 					},
 					"title": "Incidents"
 				},
+				"escalationRules": {
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"option": {
+						"escalationTime": {
+							"label": "Escalation time after (minutes)"
+						},
+						"notifyChannels": {
+							"label": "Notify these channels if incident is unresolved after escalation time"
+						}
+					},
+					"title": "Escalation rules"
+				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
