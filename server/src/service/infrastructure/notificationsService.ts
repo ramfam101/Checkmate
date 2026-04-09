@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotification: (monitor: Monitor, notificationId: string, incidentStartTime: string, delayMinutes: number) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +139,35 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (monitor: Monitor, notificationId: string, incidentStartTime: string, delayMinutes: number): Promise<boolean> => {
+		try {
+			const notifications = await this.notificationsRepository.findNotificationsByIds([notificationId]);
+			if (notifications.length === 0) {
+				this.logger.warn({
+					message: `Escalation notification ${notificationId} not found`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+
+			const notification = notifications[0]!;
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const message = this.notificationMessageBuilder.buildEscalationMessage(monitor, incidentStartTime, delayMinutes, clientHost);
+
+			return await this.send(notification, monitor, {} as MonitorStatusResponse, {} as MonitorActionDecision, message);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Failed to send escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

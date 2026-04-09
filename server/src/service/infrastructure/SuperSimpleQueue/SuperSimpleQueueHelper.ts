@@ -177,6 +177,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Check escalations (best effort, don't wait)
+				if (statusChangeResult.monitor.escalations && statusChangeResult.monitor.escalations.length > 0) {
+					this.checkEscalations(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error checking escalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -417,6 +429,45 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async checkEscalations(monitor: Monitor): Promise<void> {
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const incidentStartMs = new Date(activeIncident.startTime).getTime();
+		const nowMs = Date.now();
+		const elapsedMinutes = (nowMs - incidentStartMs) / 60000;
+
+		for (const escalation of monitor.escalations) {
+			if (elapsedMinutes < escalation.delayMinutes) {
+				continue;
+			}
+
+			if (activeIncident.firedEscalations.includes(escalation.notificationId)) {
+				continue;
+			}
+
+			this.logger.info({
+				message: `Firing escalation for monitor ${monitor.id}: notification ${escalation.notificationId} after ${escalation.delayMinutes} min`,
+				service: SERVICE_NAME,
+				method: "checkEscalations",
+			});
+
+			const sent = await this.notificationsService.sendEscalationNotification(
+				monitor,
+				escalation.notificationId,
+				activeIncident.startTime,
+				escalation.delayMinutes
+			);
+
+			if (sent) {
+				await this.incidentsRepository.addFiredEscalation(activeIncident.id, monitor.teamId, escalation.notificationId);
+			}
+		}
+	}
+
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

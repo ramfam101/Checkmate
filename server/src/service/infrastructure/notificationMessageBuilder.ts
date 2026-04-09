@@ -15,6 +15,12 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		incidentStartTime: string,
+		delayMinutes: number,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -52,6 +58,50 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(
+		monitor: Monitor,
+		incidentStartTime: string,
+		delayMinutes: number,
+		clientHost: string
+	): NotificationMessage {
+		const startDate = new Date(incidentStartTime);
+		const elapsedMs = Date.now() - startDate.getTime();
+		const elapsedMinutes = Math.round(elapsedMs / 60000);
+
+		const title = `Escalation: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been ${monitor.status === "breached" ? "breached" : "down"} for ${elapsedMinutes} minute${elapsedMinutes !== 1 ? "s" : ""} (escalation trigger: ${delayMinutes} min).`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: ${monitor.status}`,
+			`Type: ${monitor.type}`,
+			`Incident started: ${startDate.toISOString()}`,
+			`Escalation delay: ${delayMinutes} minute${delayMinutes !== 1 ? "s" : ""}`,
+		];
+
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title,
+				summary,
+				details,
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -80,6 +130,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
