@@ -4,15 +4,15 @@ import { AppError } from "@/utils/AppError.js";
 
 const handleErrors = (error: unknown, req: Request, res: Response, _next: NextFunction) => {
 	const status = error instanceof AppError ? error.status || 500 : 500;
-	const message = error instanceof AppError ? error.message : "Server error";
+	const message = error instanceof AppError ? error.message : error instanceof Error ? error.message : "Server error";
 	const service = error instanceof AppError ? error.service : "unknownService";
 	const method = error instanceof AppError ? error.method : "unknownMethod";
 	logger.error({
 		message: message,
 		service: service,
 		method: method,
-		stack: error instanceof AppError ? error.stack : undefined,
-		details: error instanceof AppError ? error.details : undefined,
+		stack: error instanceof Error ? error.stack : undefined,
+		details: error instanceof AppError ? error.details : { path: req.originalUrl, httpMethod: req.method },
 	});
 	res.status(status).json({
 		status,
