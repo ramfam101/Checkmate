@@ -55,6 +55,9 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
+			if (decision.notificationReason === "escalation") {
+				return "monitor_still_down";
+			}
 			return "monitor_down";
 		}
 
@@ -81,6 +84,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return "critical";
+			case "monitor_still_down":
+				return "critical";
 			case "threshold_breach":
 				return "warning";
 			case "monitor_up":
@@ -97,6 +102,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_still_down":
+				return this.buildMonitorStillDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -112,6 +119,29 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Down: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		// Add response code if available
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorStillDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Monitor Still Down: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" continues to be down and unreachable.`;
+		const details = [`URL: ${monitor.url}`, `Status: Still Down`, `Type: ${monitor.type}`];
 
 		// Add response code if available
 		if (monitorStatusResponse.code) {

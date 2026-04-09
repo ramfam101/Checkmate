@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStats } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "escalation" | "threshold_breach" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -153,10 +153,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
-				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				// Step 5. Fetch monitor stats for escalation check
+				const monitorStats = await this.monitorStatsRepository.findByMonitorId(monitorId);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				// Step 6.  Get decisions
+				const decision = this.evaluateMonitorAction(statusChangeResult, monitorStats);
+
+				// Step 7. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
@@ -168,7 +171,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
+				// Step 8. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -418,7 +421,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private evaluateMonitorAction(statusChangeResult: StatusChangeResult, monitorStats?: MonitorStats | null): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -431,6 +434,14 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
+			if (monitor.status === "down" && monitor.escalationMinutes && monitor.escalationMinutes > 0 && monitorStats?.timeOfLastFailure) {
+				const downDurationMs = Date.now() - monitorStats.timeOfLastFailure;
+				const escalationMs = monitor.escalationMinutes * 60_000;
+				if (downDurationMs >= escalationMs) {
+					decision.shouldSendNotification = true;
+					decision.notificationReason = "escalation";
+				}
+			}
 			return decision;
 		}
 

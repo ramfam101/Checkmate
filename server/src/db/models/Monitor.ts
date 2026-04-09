@@ -355,6 +355,14 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		escalationMinutes: {
+			type: Number,
+			default: 3,
+		},
+		escalationChannels: {
+			type: [String],
+			default: [],
+		},
 	},
 	{
 		timestamps: true,

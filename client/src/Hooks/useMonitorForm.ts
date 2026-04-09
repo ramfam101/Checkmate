@@ -1,10 +1,17 @@
 import { useMemo } from "react";
 import { monitorSchema, type MonitorFormData } from "@/Validation/monitor";
 import type { Monitor, MonitorType } from "@/Types/Monitor";
+import type { DefaultValues } from "react-hook-form";
+import type { ZodType } from "zod";
 
 interface UseMonitorFormOptions {
 	data?: Monitor | null;
 	defaultType?: MonitorType;
+}
+
+interface UseMonitorFormResult {
+	schema: typeof monitorSchema;
+	defaults: DefaultValues<MonitorFormData>;
 }
 
 const getBaseDefaults = (data?: Monitor | null) => ({
@@ -17,12 +24,14 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
 	geoCheckLocations: data?.geoCheckLocations || [],
 	geoCheckInterval: data?.geoCheckInterval || 300000,
+	escalationMinutes: data?.escalationMinutes || 3,
+	escalationChannels: data?.escalationChannels || [],
 });
 
 export const useMonitorForm = ({
 	data = null,
 	defaultType = "http",
-}: UseMonitorFormOptions = {}) => {
+}: UseMonitorFormOptions = {}): UseMonitorFormResult => {
 	return useMemo(() => {
 		const type = data?.type || defaultType;
 		const base = getBaseDefaults(data);

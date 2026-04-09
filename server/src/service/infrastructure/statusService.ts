@@ -96,6 +96,7 @@ export class StatusService implements IStatusService {
 					uptimePercentage: 0,
 					lastResponseTime: 0,
 					lastCheckTimestamp: 0,
+					timeOfLastFailure: 0,
 				};
 			} else {
 				// Use existing stats (omit id, monitorId, createdAt, updatedAt)
@@ -108,7 +109,7 @@ export class StatusService implements IStatusService {
 					uptimePercentage: existingStats.uptimePercentage,
 					lastResponseTime: existingStats.lastResponseTime,
 					lastCheckTimestamp: existingStats.lastCheckTimestamp,
-					timeOfLastFailure: existingStats.timeOfLastFailure,
+					timeOfLastFailure: existingStats.timeOfLastFailure ?? 0,
 				};
 			}
 
@@ -138,12 +139,12 @@ export class StatusService implements IStatusService {
 			if (status === true) {
 				stats.totalUpChecks++;
 				// Update the timeSinceLastFailure if needed
-				if (stats.timeOfLastFailure === 0) {
-					stats.timeOfLastFailure = new Date().getTime();
-				}
+				stats.timeOfLastFailure = 0;
 			} else {
 				stats.totalDownChecks++;
-				stats.timeOfLastFailure = 0;
+				if (!stats.timeOfLastFailure) {
+                    stats.timeOfLastFailure = Date.now();
+                }
 			}
 
 			// Calculate uptime percentage

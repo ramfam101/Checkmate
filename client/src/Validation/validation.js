@@ -1,5 +1,6 @@
 import joi from "joi";
 import dayjs from "dayjs";
+import { es } from "zod/v4/locales";
 export const ROLES = {
 	SUPERADMIN: "superadmin",
 	ADMIN: "admin",
@@ -243,6 +244,8 @@ const monitorValidation = joi.object({
 		}),
 		otherwise: joi.string().allow(null, ""),
 	}),
+	escalationMinutes: joi.number().integer().min(1).optional(),
+	escalationChannels: joi.array().items(joi.string()).optional(),
 });
 
 const imageValidation = joi.object({

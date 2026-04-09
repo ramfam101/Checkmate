@@ -39,7 +39,7 @@ import {
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
-import type { MonitorFormData } from "@/Validation/monitor";
+import type { MonitorFormData, MonitorFormInput } from "@/Validation/monitor";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -198,7 +198,7 @@ const CreateMonitorPage = () => {
 		defaultType,
 	});
 
-	const form = useForm<MonitorFormData>({
+	const form = useForm<MonitorFormInput, unknown, MonitorFormData>({
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
@@ -762,6 +762,92 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationMinutes"
+							control={control}
+							render={({ field }) => (
+								<Select
+									{...field}
+									value={field.value ?? 5}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.minutes.label")}
+								>
+									<MenuItem value={1}>1 minutes</MenuItem>
+									<MenuItem value={2}>2 minutes</MenuItem>
+									<MenuItem value={3}>3 minutes</MenuItem>
+									<MenuItem value={4}>4 minutes</MenuItem>
+								</Select>
+							)}
+						/>
+						<Controller
+							name="escalationChannels"
+							control={control}
+							render={({ field }) => {
+								const escalationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedEscalationChannels = escalationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={escalationOptions}
+											value={selectedEscalationChannels}
+											fieldLabel={t("pages.createMonitor.form.escalation.option.channels.label")}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof escalationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedEscalationChannels.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedEscalationChannels.map((notification, index) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={notification.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{notification.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															field.onChange(
+																(field.value ?? []).filter(
+																	(id: string) => id !== notification.id
+																)
+															);
+														}}
+														aria-label="Remove notification"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+													{index < selectedEscalationChannels.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

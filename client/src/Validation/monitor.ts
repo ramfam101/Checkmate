@@ -27,6 +27,8 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationMinutes: z.number().min(1).default(3),
+	escalationChannels: z.array(z.string()).default([]),
 });
 
 // HTTP monitor schema
@@ -135,7 +137,8 @@ export const monitorSchema = z.discriminatedUnion("type", [
 	websocketSchema,
 ]);
 
-export type MonitorFormData = z.infer<typeof monitorSchema>;
+export type MonitorFormInput = z.input<typeof monitorSchema>;
+export type MonitorFormData = z.output<typeof monitorSchema>;
 
 // Type-specific schemas exported for individual use
 export {
