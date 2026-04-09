@@ -15,6 +15,11 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -52,6 +57,52 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		clientHost: string
+	): NotificationMessage {
+		const title = `Escalation: Monitor ${monitor.name} still down`;
+		const summary = `Monitor "${monitor.name}" has been down for more than ${monitor.escalateAfterMinutes} minutes and requires attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Still Down`,
+			`Type: ${monitor.type}`,
+			`Escalation Threshold: ${monitor.escalateAfterMinutes} minutes`,
+		];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title,
+				summary,
+				details,
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -83,6 +134,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "critical";
 			case "threshold_breach":
 				return "warning";
+			case "escalation":
+				return "critical";
 			case "monitor_up":
 			case "threshold_resolved":
 				return "success";

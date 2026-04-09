@@ -128,13 +128,43 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		const envHost = process.env.SYSTEM_EMAIL_HOST;
+		const envPort = process.env.SYSTEM_EMAIL_PORT;
+		const envAddress = process.env.SYSTEM_EMAIL_ADDRESS;
+		const envUser = process.env.SYSTEM_EMAIL_USER;
+		const envPassword = process.env.SYSTEM_EMAIL_PASSWORD;
+
+		const smtpHost = systemEmailHost || envHost || "smtp.gmail.com";
+		const smtpPort = Number(systemEmailPort ?? envPort ?? 587);
+		const smtpSecure = systemEmailSecure || smtpPort === 465;
+		const smtpRequireTLS = systemEmailRequireTLS || smtpPort === 587;
+		const smtpUser = systemEmailUser || systemEmailAddress || envUser || envAddress;
+		const smtpPassword = systemEmailPassword || envPassword;
+		const fromAddress = systemEmailAddress || envAddress;
+
+		if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword || !fromAddress) {
+			this.logger.warn({
+				message: "Email configuration is incomplete",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					hasHost: Boolean(smtpHost),
+					hasPort: Boolean(smtpPort),
+					hasUser: Boolean(smtpUser),
+					hasPassword: Boolean(smtpPassword),
+					hasFromAddress: Boolean(fromAddress),
+				},
+			});
+			return false;
+		}
+
 		const emailConfig = {
-			host: systemEmailHost,
-			port: Number(systemEmailPort),
-			secure: systemEmailSecure,
+			host: smtpHost,
+			port: smtpPort,
+			secure: smtpSecure,
 			auth: {
-				user: systemEmailUser || systemEmailAddress,
-				pass: systemEmailPassword,
+				user: smtpUser,
+				pass: smtpPassword,
 			},
 			name: systemEmailConnectionHost || "localhost",
 			connectionTimeout: 5000,
@@ -142,7 +172,7 @@ export class EmailService implements IEmailService {
 			tls: {
 				rejectUnauthorized: systemEmailRejectUnauthorized,
 				ignoreTLS: systemEmailIgnoreTLS,
-				requireTLS: systemEmailRequireTLS,
+				requireTLS: smtpRequireTLS,
 				servername: systemEmailTLSServername,
 			},
 		};
@@ -163,7 +193,7 @@ export class EmailService implements IEmailService {
 		try {
 			const info = await this.transporter.sendMail({
 				to: to,
-				from: systemEmailAddress,
+				from: fromAddress,
 				subject: subject,
 				html: html,
 			});

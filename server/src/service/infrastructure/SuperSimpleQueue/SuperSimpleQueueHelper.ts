@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +177,27 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Check for escalation (if monitor is down)
+				if (statusChangeResult.monitor.status === "down") {
+					this.checkAndSendEscalation(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error checking escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				} else if (statusChangeResult.monitor.status === "up" && decision.shouldResolveIncident) {
+					// Reset escalation state when monitor recovers
+					this.resetEscalationState(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId).catch((_error: unknown) => {
+						this.logger.warn({
+							message: `Error resetting escalation state for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -188,6 +209,98 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async checkAndSendEscalation(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse
+	): Promise<void> {
+		// Skip if escalation is not configured
+		if (!monitor.escalateAfterMinutes || monitor.escalateAfterMinutes <= 0) {
+			return;
+		}
+
+		// Skip if no escalation notifications configured
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+			return;
+		}
+
+		// Check if monitor has been down long enough
+		const lastDownAt = monitor.lastDownAt ? new Date(monitor.lastDownAt) : null;
+
+		if (!lastDownAt) {
+			// First time down, record the timestamp
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				lastDownAt: new Date().toISOString(),
+				lastEscalationAt: null,
+				escalationSent: false,
+			});
+			this.logger.debug({
+				message: `Monitor ${monitor.id} went down, recording timestamp for escalation tracking`,
+				service: SERVICE_NAME,
+				method: "checkAndSendEscalation",
+			});
+			return;
+		}
+
+		const downDurationMs = Date.now() - lastDownAt.getTime();
+		const escalateAfterMs = monitor.escalateAfterMinutes * 60 * 1000;
+		const lastEscalationAt = monitor.lastEscalationAt ? new Date(monitor.lastEscalationAt) : null;
+		const shouldSendRecurringEscalation =
+			!lastEscalationAt || Date.now() - lastEscalationAt.getTime() >= escalateAfterMs;
+
+		if (downDurationMs >= escalateAfterMs && shouldSendRecurringEscalation) {
+			// Send escalation notification
+			this.logger.info({
+				message: `Monitor ${monitor.id} has been down for ${Math.round(downDurationMs / 60000)} minutes, sending escalation`,
+				service: SERVICE_NAME,
+				method: "checkAndSendEscalation",
+			});
+
+			const success = await this.notificationsService.handleEscalation(
+				monitor,
+				monitorStatusResponse
+			);
+
+			if (success) {
+				// Track latest escalation send timestamp for recurring escalation cadence
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					lastEscalationAt: new Date().toISOString(),
+					escalationSent: true,
+				});
+
+				this.logger.info({
+					message: `Escalation notification sent for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "checkAndSendEscalation",
+				});
+			}
+		} else if (downDurationMs >= escalateAfterMs && !shouldSendRecurringEscalation) {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} is still down, waiting for next escalation interval (${monitor.escalateAfterMinutes} minutes)`,
+				service: SERVICE_NAME,
+				method: "checkAndSendEscalation",
+			});
+		} else {
+			this.logger.debug({
+				message: `Monitor ${monitor.id} has been down for ${Math.round(downDurationMs / 60000)} minutes, escalation threshold is ${monitor.escalateAfterMinutes} minutes`,
+				service: SERVICE_NAME,
+				method: "checkAndSendEscalation",
+			});
+		}
+	}
+
+	private async resetEscalationState(monitorId: string, teamId: string): Promise<void> {
+		await this.monitorsRepository.updateById(monitorId, teamId, {
+			lastDownAt: null,
+			lastEscalationAt: null,
+			escalationSent: false,
+		});
+		this.logger.debug({
+			message: `Reset escalation state for monitor ${monitorId}`,
+			service: SERVICE_NAME,
+			method: "resetEscalationState",
+		});
+	}
 
 	getCleanupOrphanedJob = () => {
 		return async () => {
