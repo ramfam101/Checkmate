@@ -40,7 +40,7 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
-	private notificationsService: INotificationsService;	
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
@@ -101,28 +101,31 @@ export class IncidentService implements IIncidentService {
 				const notificationIds = monitor.escalationNotifications ?? [];
 
 				if (decision.shouldSendNotification && delayMinutes > 0 && notificationIds.length > 0 && monitorStatusResponse) {
-    				setTimeout(() => {
-        				void (async () => {
-            				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
-            				if (!activeIncident || activeIncident.id !== createdIncident.id) return;
+					setTimeout(
+						() => {
+							void (async () => {
+								const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+								if (!activeIncident || activeIncident.id !== createdIncident.id) return;
 
-            				const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
-            				if (!currentMonitor) return;
+								const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+								if (!currentMonitor) return;
 
-            				await this.notificationsService.sendEscalatedNotifications(
-                				currentMonitor.escalationNotifications ?? notificationIds,
-                				currentMonitor,
-                				monitorStatusResponse,
-                				decision
-            				);
-        				})().catch((error: unknown) => {
-            				this.logger.warn({
-                				service: SERVICE_NAME,
-                				method: "scheduleEscalation",
-                				message: error instanceof Error ? error.message : "Unknown error",
-            				});
-        				});
-    				}, delayMinutes * 60 * 1000);
+								await this.notificationsService.sendEscalatedNotifications(
+									currentMonitor.escalationNotifications ?? notificationIds,
+									currentMonitor,
+									monitorStatusResponse,
+									decision
+								);
+							})().catch((error: unknown) => {
+								this.logger.warn({
+									service: SERVICE_NAME,
+									method: "scheduleEscalation",
+									message: error instanceof Error ? error.message : "Unknown error",
+								});
+							});
+						},
+						delayMinutes * 60 * 1000
+					);
 				}
 
 				return createdIncident;
