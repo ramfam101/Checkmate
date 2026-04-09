@@ -177,6 +177,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				if (statusChangeResult.monitor.status === "down") {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId);
+
+					if (activeIncident) {
+						const sentEscalationNotificationIds = await this.notificationsService.handleEscalations(statusChangeResult.monitor, status, activeIncident);
+
+						if (sentEscalationNotificationIds.length > 0) {
+							const existingEscalationNotificationIds = activeIncident.sentEscalationNotificationIds ?? [];
+							const mergedEscalationNotificationIds = Array.from(new Set([...existingEscalationNotificationIds, ...sentEscalationNotificationIds]));
+
+							await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+								sentEscalationNotificationIds: mergedEscalationNotificationIds,
+							});
+						}
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

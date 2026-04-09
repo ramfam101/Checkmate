@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Incident, Monitor, MonitorStatusResponse } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -14,6 +14,13 @@ export interface INotificationMessageBuilder {
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
 		clientHost: string
+	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident,
+		clientHost: string,
+		escalationDelayMinutes: number
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -52,6 +59,54 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		incident: Incident,
+		clientHost: string,
+		escalationDelayMinutes: number
+	): NotificationMessage {
+		const startedAt = new Date(incident.startTime);
+		const durationMinutes = Math.max(1, Math.floor((Date.now() - startedAt.getTime()) / 60000));
+
+		return {
+			type: "monitor_down_escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: ${monitor.name} is still down`,
+				summary: `Monitor "${monitor.name}" has been down for ${durationMinutes} minute(s), exceeding the ${escalationDelayMinutes}-minute escalation threshold.`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: Down`,
+					`Type: ${monitor.type}`,
+					`Escalation Delay: ${escalationDelayMinutes} minute(s)`,
+					`Current Downtime: ${durationMinutes} minute(s)`,
+					...(monitorStatusResponse.code ? [`Response Code: ${monitorStatusResponse.code}`] : []),
+					...(monitorStatusResponse.message ? [`Error: ${monitorStatusResponse.message}`] : []),
+				],
+				incident: {
+					id: incident.id,
+					url: `${clientHost}/incidents/${incident.id}`,
+					createdAt: startedAt,
+					duration: `${durationMinutes} minute(s)`,
+				},
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation_threshold",
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -80,6 +135,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_down_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";

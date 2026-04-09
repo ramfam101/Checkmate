@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Incident, Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalations: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, incident: Incident) => Promise<string[]>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -139,6 +140,69 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, incident: Incident): Promise<string[]> => {
+		const notificationIds = monitor.notifications ?? [];
+		if (notificationIds.length === 0) {
+			return [];
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const sentEscalationNotificationIds = new Set(incident.sentEscalationNotificationIds ?? []);
+		const downtimeMs = Date.now() - new Date(incident.startTime).getTime();
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+
+		const eligibleNotifications = notifications.filter((notification) => {
+			if (!notification.escalationDelayMinutes || !notification.escalationEmailAddress) {
+				return false;
+			}
+
+			if (sentEscalationNotificationIds.has(notification.id)) {
+				return false;
+			}
+
+			return downtimeMs >= notification.escalationDelayMinutes * 60 * 1000;
+		});
+
+		if (eligibleNotifications.length === 0) {
+			return [];
+		}
+
+		const outcomes = await Promise.all(
+			eligibleNotifications.map(async (notification) => {
+				const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(
+					monitor,
+					monitorStatusResponse,
+					incident,
+					clientHost,
+					notification.escalationDelayMinutes!
+				);
+
+				const escalationNotification = {
+					...notification,
+					address: notification.escalationEmailAddress,
+				};
+
+				const succeeded = await this.emailProvider.sendMessage!(escalationNotification, escalationMessage);
+				return succeeded ? notification.id : null;
+			})
+		);
+
+		const sentNotificationIds = outcomes.filter((notificationId): notificationId is string => Boolean(notificationId));
+		const failedCount = eligibleNotifications.length - sentNotificationIds.length;
+
+		if (failedCount > 0) {
+			this.logger.warn({
+				message: `Escalation send completed with ${sentNotificationIds.length} success, ${failedCount} failure(s)`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				details: { incidentId: incident.id, monitorId: monitor.id },
+			});
+		}
+
+		return sentNotificationIds;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

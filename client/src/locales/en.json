@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation rules",
+					"description": "Define when to escalate and which selected notification channel should receive the escalation.",
+					"option": {
+						"delay": {
+							"label": "Escalation delay (minutes)",
+							"placeholder": "15"
+						},
+						"channel": {
+							"label": "Escalation channel",
+							"placeholder": "Select a notification channel"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -922,6 +936,14 @@
 					"placeholderEmail": "example@example.com",
 					"placeholderWebhook": "https://your-server.com/webhook",
 					"title": "Address"
+				},
+				"escalation": {
+					"description": "Optionally send a follow-up escalation email if the monitor stays down longer than the configured delay.",
+					"optionDelay": "Escalation delay (minutes)",
+					"optionEmail": "Escalation email address",
+					"placeholderDelay": "15",
+					"placeholderEmail": "oncall@example.com",
+					"title": "Escalation"
 				},
 				"homeServer": {
 					"optionHomeServer": "Home server",

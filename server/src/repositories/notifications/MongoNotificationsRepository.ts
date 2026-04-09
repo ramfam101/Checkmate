@@ -28,6 +28,8 @@ class MongoNotificationsRepository implements INotificationsRepository {
 			type: doc.type,
 			notificationName: doc.notificationName,
 			address: doc.address ?? undefined,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationEmailAddress: doc.escalationEmailAddress ?? undefined,
 			phone: doc.phone ?? undefined,
 			homeserverUrl: doc.homeserverUrl ?? undefined,
 			roomId: doc.roomId ?? undefined,
