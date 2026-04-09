@@ -48,6 +48,6 @@ export interface NotificationMessage {
 	clientHost: string;
 	metadata: {
 		teamId: string;
-		notificationReason: string;
+		notificationReason: "status_change" | "threshold_breach" | "escalation";
 	};
 }
