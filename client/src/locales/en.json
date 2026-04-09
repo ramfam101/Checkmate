@@ -543,6 +543,14 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalationRules": {
+					"description": "Configure escalation notifications for delayed alerts",
+					"title": "Escalation Rules",
+					"minutesLabel": "Escalate after (minutes)",
+					"channelsLabel": "Notification channels",
+					"minutesHelper": "Set to 0 to disable escalation",
+					"info": "When an incident occurs, escalation notifications will be sent through selected channels after the specified delay"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

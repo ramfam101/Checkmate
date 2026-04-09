@@ -11,9 +11,10 @@ import type {
 export interface INotificationMessageBuilder {
 	buildMessage(
 		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
+		monitorStatusResponse: MonitorStatusResponse | undefined,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalationContext?: { escalationLevel: number; incidentId: string }
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -25,13 +26,14 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	buildMessage(
 		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
+		monitorStatusResponse: MonitorStatusResponse | undefined,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalationContext?: { escalationLevel: number; incidentId: string }
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, escalationContext);
 
 		return {
 			type,
@@ -48,6 +50,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				...(escalationContext && { escalationLevel: escalationContext.escalationLevel, incidentId: escalationContext.incidentId }),
 			},
 		};
 	}
@@ -93,23 +96,35 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse | undefined,
+		escalationContext?: { escalationLevel: number; incidentId: string }
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse as MonitorStatusResponse, escalationContext);
 			case "monitor_up":
-				return this.buildMonitorUpContent(monitor);
+				return this.buildMonitorUpContent(monitor, escalationContext);
 			case "threshold_breach":
-				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
+				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>, escalationContext);
 			case "threshold_resolved":
-				return this.buildThresholdResolvedContent(monitor);
+				return this.buildThresholdResolvedContent(monitor, escalationContext);
 			default:
-				return this.buildDefaultContent(monitor);
+				return this.buildDefaultContent(monitor, escalationContext);
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
+	private buildMonitorDownContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		escalationContext?: { escalationLevel: number; incidentId: string }
+	): NotificationContent {
+		let title = `Monitor Down: ${monitor.name}`;
+		if (escalationContext && escalationContext.escalationLevel > 0) {
+			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+		}
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
 
@@ -131,8 +146,14 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildMonitorUpContent(monitor: Monitor): NotificationContent {
-		const title = `Monitor Recovered: ${monitor.name}`;
+	private buildMonitorUpContent(
+		monitor: Monitor,
+		escalationContext?: { escalationLevel: number; incidentId: string }
+	): NotificationContent {
+		let title = `Monitor Recovered: ${monitor.name}`;
+		if (escalationContext && escalationContext.escalationLevel > 0) {
+			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+		}
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
 
@@ -144,8 +165,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildThresholdBreachContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): NotificationContent {
-		const title = `Threshold Exceeded: ${monitor.name}`;
+	private buildThresholdBreachContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>,
+		escalationContext?: { escalationLevel: number; incidentId: string }
+	): NotificationContent {
+		let title = `Threshold Exceeded: ${monitor.name}`;
+		if (escalationContext && escalationContext.escalationLevel > 0) {
+			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+		}
 		const summary = `Monitor "${monitor.name}" has exceeded one or more thresholds.`;
 		const details = [`URL: ${monitor.url}`, `Status: Threshold exceeded`, `Type: ${monitor.type}`];
 
@@ -160,8 +188,14 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildThresholdResolvedContent(monitor: Monitor): NotificationContent {
-		const title = `Thresholds Resolved: ${monitor.name}`;
+	private buildThresholdResolvedContent(
+		monitor: Monitor,
+		escalationContext?: { escalationLevel: number; incidentId: string }
+	): NotificationContent {
+		let title = `Thresholds Resolved: ${monitor.name}`;
+		if (escalationContext && escalationContext.escalationLevel > 0) {
+			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+		}
 		const summary = `Monitor "${monitor.name}" thresholds have returned to normal.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
 
@@ -173,9 +207,16 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildDefaultContent(monitor: Monitor): NotificationContent {
+	private buildDefaultContent(
+		monitor: Monitor,
+		escalationContext?: { escalationLevel: number; incidentId: string }
+	): NotificationContent {
+		let title = `Monitor: ${monitor.name}`;
+		if (escalationContext && escalationContext.escalationLevel > 0) {
+			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+		}
 		return {
-			title: `Monitor: ${monitor.name}`,
+			title,
 			summary: `Status update for monitor "${monitor.name}".`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
 			timestamp: new Date(),

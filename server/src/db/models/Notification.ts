@@ -37,6 +37,11 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		homeserverUrl: { type: String },
 		roomId: { type: String },
 		accessToken: { type: String },
+		// Escalation notification fields
+		isEscalation: { type: Boolean, default: false },
+		escalationLevel: { type: Number, min: 1 },
+		incidentId: { type: Schema.Types.ObjectId, ref: "Incident" },
+		monitorId: { type: Schema.Types.ObjectId, ref: "Monitor" },
 	},
 	{
 		timestamps: true,

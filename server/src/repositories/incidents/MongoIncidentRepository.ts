@@ -60,6 +60,8 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationsSent: doc.escalationsSent ?? 0,
+			lastEscalationTime: doc.lastEscalationTime ? this.toDateString(doc.lastEscalationTime) : null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -286,6 +288,57 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		const objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
 		const result = await IncidentModel.deleteMany({ monitorId: { $nin: objectIds } });
 		return result.deletedCount ?? 0;
+	};
+
+	findIncidentsNeedingEscalation = async (teamId: string, currentTime: Date): Promise<Incident[]> => {
+		// Find all active incidents for this team along with their monitors' escalation settings
+		const incidents = await IncidentModel.aggregate([
+			{
+				$match: {
+					teamId: new mongoose.Types.ObjectId(teamId),
+					status: true, // Only active incidents
+				},
+			},
+			{
+				$lookup: {
+					from: "monitors",
+					localField: "monitorId",
+					foreignField: "_id",
+					as: "monitor",
+				},
+			},
+			{
+				$unwind: {
+					path: "$monitor",
+					preserveNullAndEmptyArrays: false,
+				},
+			},
+			{
+				$match: {
+					"monitor.escalationEnabled": true,
+					"monitor.escalationIntervals": { $ne: [], $exists: true },
+				},
+			},
+		]);
+
+		// Filter incidents where escalation is due
+		return incidents
+			.filter((doc) => {
+				const escalationIntervals = doc.monitor.escalationIntervals || [];
+				const escalationsSent = doc.escalationsSent || 0;
+
+				// Check if there are more escalations to send
+				if (escalationsSent >= escalationIntervals.length) {
+					return false;
+				}
+
+				const nextEscalationIntervalMs = escalationIntervals[escalationsSent] * 60 * 1000;
+				const timeSinceStart = currentTime.getTime() - new Date(doc.startTime).getTime();
+
+				// Check if enough time has passed since the incident started for the next escalation
+				return timeSinceStart >= nextEscalationIntervalMs;
+			})
+			.map((doc) => this.toEntity(doc));
 	};
 }
 export default MongoIncidentRepository;

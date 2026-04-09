@@ -12,6 +12,11 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	// Escalation notification fields
+	isEscalation?: boolean;        // false for user-configured, true for system-triggered escalations
+	escalationLevel?: number;      // 1, 2, 3... for escalation sequence
+	incidentId?: string;           // links to the incident that triggered escalation
+	monitorId?: string;            // monitor that triggered the escalation
 	createdAt: string;
 	updatedAt: string;
 }
