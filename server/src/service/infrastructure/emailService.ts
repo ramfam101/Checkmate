@@ -152,12 +152,11 @@ export class EmailService implements IEmailService {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: "Email transporter verification failed; proceeding with send attempt",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,
 			});
-			return false;
 		}
 
 		try {
