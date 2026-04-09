@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -172,6 +172,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Check escalations (best effort, fire-and-forget)
+				this.checkEscalations(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error checking escalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -455,4 +465,47 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private checkEscalations = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> => {
+		if (monitor.status !== "down" && monitor.status !== "breached") return;
+
+		const escalatingConfigs = (monitor.notifications ?? []).filter(
+			(n) => n.escalation?.channelId
+		);
+		if (!escalatingConfigs.length) return;
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) return;
+
+		const incidentAgeMinutes = (Date.now() - new Date(activeIncident.startTime).getTime()) / 60_000;
+		const alreadySent = activeIncident.escalationsSent ?? [];
+
+		for (const config of escalatingConfigs) {
+			const { escalation } = config;
+			if (!escalation?.channelId) continue;
+			if (alreadySent.includes(escalation.channelId)) continue;
+			if (incidentAgeMinutes < escalation.delayMinutes) continue;
+
+			// Record before sending (at-most-once: prevents duplicate sends if send throws)
+			await this.incidentsRepository.recordEscalationSent(activeIncident.id, monitor.teamId, escalation.channelId);
+
+			const escalationDecision: MonitorActionDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "status_change",
+			};
+
+			await this.notificationsService
+				.sendEscalationNotification(escalation.channelId, monitor, monitorStatusResponse, escalationDecision, escalation.delayMinutes)
+				.catch((err: unknown) => {
+					this.logger.warn({
+						message: `Escalation send failed for channel ${escalation.channelId}: ${err instanceof Error ? err.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "checkEscalations",
+					});
+				});
+		}
+	};
 }
