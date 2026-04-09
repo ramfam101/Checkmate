@@ -10,6 +10,7 @@ import {
 	IStatusService,
 	IncidentService,
 	type IGeoChecksService,
+	IEscalationService,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
@@ -54,6 +55,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private networkService: INetworkService;
 	private statusService: IStatusService;
 	private notificationsService: INotificationsService;
+	private escalationService: IEscalationService;
 	private checkService: ICheckService;
 	private settingsService: ISettingsService;
 	private buffer: IBufferService;
@@ -72,6 +74,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		networkService: INetworkService,
 		statusService: IStatusService,
 		notificationsService: INotificationsService,
+		escalationService: IEscalationService,
 		checkService: ICheckService,
 		settingsService: ISettingsService,
 		buffer: IBufferService,
@@ -92,6 +95,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.settingsService = settingsService;
 		this.buffer = buffer;
 		this.notificationsService = notificationsService;
+		this.escalationService = escalationService;
 		this.incidentService = incidentService;
 		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -177,6 +181,34 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalations (best effort, don't wait)
+				(async () => {
+					try {
+						// Get active incident if monitor is down
+						if (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") {
+							const activeIncident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, teamId);
+							if (activeIncident) {
+								await this.escalationService.evaluateAndTriggerEscalations(activeIncident, statusChangeResult.monitor);
+							}
+						}
+
+						// Cancel escalations if monitor recovered
+						if (decision.shouldResolveIncident) {
+							const resolvedIncident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, teamId);
+							if (resolvedIncident) {
+								await this.escalationService.cancelPendingEscalations(resolvedIncident.id, teamId);
+							}
+						}
+					} catch (error: unknown) {
+						this.logger.error({
+							message: `Error handling escalations for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				})();
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
