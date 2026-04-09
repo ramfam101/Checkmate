@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, MonitorNotificationConfig, CheckSnapshot } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -16,13 +16,21 @@ import type {
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
 
+type NotificationConfigDocument = Omit<MonitorNotificationConfig, "notificationId" | "escalation"> & {
+	notificationId: Types.ObjectId;
+	escalation?: {
+		delayMinutes: number;
+		channelId: Types.ObjectId;
+	};
+};
+
 type MonitorDocumentBase = Omit<
 	Monitor,
 	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
-	notifications: Types.ObjectId[];
+	notifications: NotificationConfigDocument[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -173,6 +181,28 @@ const snapshotAuditsSchema = new Schema<CheckAudits>(
 	{ _id: false }
 );
 
+const notificationConfigSchema = new Schema<NotificationConfigDocument>(
+	{
+		notificationId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+			required: true,
+		},
+		escalation: {
+			type: new Schema<NonNullable<NotificationConfigDocument["escalation"]>>(
+				{
+					delayMinutes: { type: Number, required: true },
+					channelId: { type: Schema.Types.ObjectId, ref: "Notification", required: true },
+				},
+				{ _id: false }
+			),
+			required: false,
+			default: undefined,
+		},
+	},
+	{ _id: false }
+);
+
 const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{
 		id: { type: String, required: true },
@@ -278,12 +308,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: undefined,
 		},
-		notifications: [
-			{
-				type: Schema.Types.ObjectId,
-				ref: "Notification",
-			},
-		],
+		notifications: {
+			type: [notificationConfigSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

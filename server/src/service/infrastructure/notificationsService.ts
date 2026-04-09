@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotification: (channelId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision, delayMinutes: number) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -108,7 +108,7 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = (monitor.notifications ?? []).map((n) => n.notificationId);
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -139,6 +139,33 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalationNotification = async (
+		channelId: string,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		delayMinutes: number
+	): Promise<boolean> => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds([channelId]);
+		if (!notifications.length) {
+			this.logger.warn({
+				message: `Escalation channel ${channelId} not found`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(
+			monitor,
+			monitorStatusResponse,
+			delayMinutes,
+			clientHost
+		);
+		return this.send(notifications[0], monitor, monitorStatusResponse, decision, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

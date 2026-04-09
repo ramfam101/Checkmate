@@ -35,6 +35,7 @@ import { useMonitorForm } from "@/Hooks/useMonitorForm";
 import {
 	type Monitor,
 	type MonitorType,
+	type MonitorNotificationConfig,
 	type GamesMap,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
@@ -217,6 +218,20 @@ const CreateMonitorPage = () => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
 
+	useEffect(() => {
+		if (!existingMonitor) return;
+		const escalatingEntries = (existingMonitor.notifications ?? []).filter(
+			(n) => n.escalation?.channelId
+		);
+		if (escalatingEntries.length > 0) {
+			setEscalationChannelIds(escalatingEntries.map((n) => n.escalation!.channelId));
+			setEscalationDelayMinutes(escalatingEntries[0].escalation!.delayMinutes);
+		} else {
+			setEscalationChannelIds([]);
+			setEscalationDelayMinutes(30);
+		}
+	}, [existingMonitor]);
+
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
 		[watchedType, t]
@@ -227,6 +242,8 @@ const CreateMonitorPage = () => {
 	const isSubmitting = isCreating || isUpdating;
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [escalationChannelIds, setEscalationChannelIds] = useState<string[]>([]);
+	const [escalationDelayMinutes, setEscalationDelayMinutes] = useState<number>(30);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
 	const handleDeleteClick = () => {
@@ -252,11 +269,22 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const baseConfigs = (data.notifications ?? []).map((n) => ({
+			notificationId: n.notificationId,
+		}));
+		const escalationConfigs: MonitorNotificationConfig[] = escalationChannelIds.map((channelId) => ({
+			notificationId: channelId,
+			escalation: { delayMinutes: escalationDelayMinutes, channelId },
+		}));
+		const payload: MonitorFormData = {
+			...data,
+			notifications: [...baseConfigs, ...escalationConfigs],
+		};
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -705,55 +733,49 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
+							const configs: MonitorNotificationConfig[] = field.value ?? [];
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
 							}));
-							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+							const selectedOptions = notificationOptions.filter((n) =>
+								configs.some((c) => c.notificationId === n.id)
 							);
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Autocomplete
 										multiple
 										options={notificationOptions}
-										value={selectedNotifications}
+										value={selectedOptions}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+											field.onChange(newValue.map((n) => ({ notificationId: n.id })));
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
-									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
-											{selectedNotifications.map((notification, index) => (
+									{selectedOptions.length > 0 && (
+										<Stack spacing={theme.spacing(LAYOUT.SM)}>
+											{selectedOptions.map((channel) => (
 												<Stack
+													key={channel.id}
 													direction="row"
 													alignItems="center"
-													key={notification.id}
-													width="100%"
 												>
 													<Typography flexGrow={1}>
-														{notification.notificationName}
+														{channel.notificationName}
 													</Typography>
 													<IconButton
 														size="small"
-														onClick={() => {
+														onClick={() =>
 															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
-														}}
+																configs
+																	.filter((c) => c.notificationId !== channel.id)
+															)
+														}
 														aria-label="Remove notification"
 													>
 														<Trash2 size={16} />
 													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
 										</Stack>
@@ -762,6 +784,75 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down longer than the configured delay, the selected channels are also notified."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<TextField
+							type="number"
+							fieldLabel="Escalate after (minutes)"
+							value={escalationDelayMinutes}
+							onChange={(e) =>
+								setEscalationDelayMinutes(Math.max(1, Number(e.target.value)))
+							}
+							inputProps={{ min: 1 }}
+							fullWidth
+						/>
+						<Autocomplete
+							multiple
+							options={(notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}))}
+							value={(notifications ?? [])
+								.filter((n) => escalationChannelIds.includes(n.id))
+								.map((n) => ({ ...n, name: n.notificationName }))}
+							getOptionLabel={(option) => option.name}
+							onChange={(
+								_: unknown,
+								newValue: Array<Notification & { name: string }>
+							) => {
+								setEscalationChannelIds(newValue.map((n) => n.id));
+							}}
+							isOptionEqualToValue={(option, value) => option.id === value.id}
+						/>
+						{escalationChannelIds.length > 0 && (
+							<Stack spacing={theme.spacing(LAYOUT.SM)}>
+								{escalationChannelIds.map((channelId) => {
+									const channel = (notifications ?? []).find(
+										(n) => n.id === channelId
+									);
+									if (!channel) return null;
+									return (
+										<Stack
+											key={channelId}
+											direction="row"
+											alignItems="center"
+										>
+											<Typography flexGrow={1}>
+												{channel.notificationName}
+											</Typography>
+											<IconButton
+												size="small"
+												onClick={() =>
+													setEscalationChannelIds((prev) =>
+														prev.filter((id) => id !== channelId)
+													)
+												}
+												aria-label="Remove escalation channel"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									);
+								})}
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 

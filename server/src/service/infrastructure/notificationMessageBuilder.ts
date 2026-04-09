@@ -15,6 +15,12 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		delayMinutes: number,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -106,6 +112,45 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		delayMinutes: number,
+		clientHost: string
+	): NotificationMessage {
+		const content: NotificationContent = {
+			title: `Escalated Notification: ${monitor.name} is still down`,
+			summary: `Monitor "${monitor.name}" has been down for more than ${delayMinutes} minute(s) and has not recovered. This is an escalation alert.`,
+			details: [
+				`URL: ${monitor.url}`,
+				`Status: Down`,
+				`Type: ${monitor.type}`,
+				`Escalation threshold: ${delayMinutes} minute(s)`,
+				...(monitorStatusResponse.code ? [`Response Code: ${monitorStatusResponse.code}`] : []),
+				...(monitorStatusResponse.message ? [`Error: ${monitorStatusResponse.message}`] : []),
+			],
+			timestamp: new Date(),
+		};
+
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
