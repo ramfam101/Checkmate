@@ -1,0 +1,15 @@
+{
+  "type": "http",
+  "url": "https://postman-demo-s219.onrender.com",
+  "name": "render site",
+  "interval": 15000,
+  "statusWindowSize": 5,
+  "statusWindowThreshold": 60,
+  "ignoreTlsErrors": false,
+  "geoCheckEnabled": true,
+  "geoCheckLocations": ["North America", "Europe", "Asia"],
+  "geoCheckInterval": 300000,
+  "notifications": [],
+  "escalationDelayMinutes": null,
+  "escalationNotifications": []
+}

@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationNotificationSent: doc.escalationNotificationSent ?? false,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -286,6 +287,18 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		const objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
 		const result = await IncidentModel.deleteMany({ monitorId: { $nin: objectIds } });
 		return result.deletedCount ?? 0;
+	};
+
+	findByStatus = async (status: boolean): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({ status });
+		return this.mapDocuments(incidents);
+	};
+
+	updateEscalationSent = async (incidentId: string, sent: boolean): Promise<void> => {
+		await IncidentModel.updateOne(
+			{ _id: new mongoose.Types.ObjectId(incidentId) },
+			{ escalationNotificationSent: sent }
+		);
 	};
 }
 export default MongoIncidentRepository;

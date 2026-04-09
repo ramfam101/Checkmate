@@ -22,8 +22,11 @@ export interface IIncidentsRepository {
 
 	// update
 	updateById(incidentId: string, teamId: string, updateData: Partial<Incident>): Promise<Incident>;
+	updateEscalationSent(incidentId: string, sent: boolean): Promise<void>;
 	// delete
 	deleteByMonitorId(monitorId: string, teamId: string): Promise<number>;
 	deleteByMonitorIdsNotIn(monitorIds: string[]): Promise<number>;
+	// fetch (non-team-specific)
+	findByStatus(status: boolean): Promise<Incident[]>;
 	// other
 }
