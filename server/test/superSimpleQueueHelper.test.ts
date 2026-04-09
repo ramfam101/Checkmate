@@ -41,7 +41,10 @@ const createHelper = (overrides?: Record<string, unknown>) => {
 		logger: createMockLogger(),
 		networkService: { requestStatus: jest.fn() },
 		statusService: statusServiceMock,
-		notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+		notificationsService: {
+			handleNotifications: jest.fn().mockResolvedValue(undefined),
+			handleEscalationNotifications: jest.fn().mockResolvedValue(false),
+		},
 		checkService: { buildCheck: jest.fn().mockReturnValue({}), deleteOlderThan: jest.fn().mockResolvedValue(0) },
 		settingsService: settingsServiceMock,
 		buffer: { addToBuffer: jest.fn(), addGeoCheckToBuffer: jest.fn() },
@@ -106,6 +109,40 @@ describe("SuperSimpleQueueHelper", () => {
 			const monitor = { id: "m1", teamId: "team" } as Monitor;
 			await job(monitor);
 			expect(helper["networkService"].requestStatus).toHaveBeenCalledWith(monitor);
+		});
+
+		it("checks escalation notifications for ongoing incidents", async () => {
+			const networkResponse = { monitor: { id: "m1" }, status: false, code: 500, message: "Down" };
+			const statusServiceMock = {
+				updateMonitorStatus: jest.fn().mockResolvedValue({
+					monitor: {
+						id: "m1",
+						teamId: "team",
+						status: "down",
+						escalationMinutes: 1,
+						escalationNotifications: ["n1"],
+					},
+					statusChanged: false,
+					prevStatus: "down",
+					code: 500,
+				}),
+			};
+			const notificationsServiceMock = {
+				handleNotifications: jest.fn().mockResolvedValue(undefined),
+				handleEscalationNotifications: jest.fn().mockResolvedValue(true),
+			};
+			const { helper } = createHelper({
+				networkService: { requestStatus: jest.fn().mockResolvedValue(networkResponse) },
+				statusService: statusServiceMock,
+				notificationsService: notificationsServiceMock,
+			});
+			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
+			const job = helper.getHeartbeatJob();
+			await job({ id: "m1", teamId: "team" } as Monitor);
+			expect(notificationsServiceMock.handleEscalationNotifications).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "m1", status: "down" }),
+				networkResponse
+			);
 		});
 
 		it("throws when monitor id is missing", async () => {

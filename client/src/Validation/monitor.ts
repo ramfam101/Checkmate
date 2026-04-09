@@ -13,6 +13,8 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationMinutes: z.number().int().min(1, "Escalation time must be at least 1 minute").nullable(),
+	escalationNotifications: z.array(z.string()),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -123,7 +125,7 @@ const websocketSchema = baseSchema.extend({
 });
 
 // Discriminated union of all monitor types
-export const monitorSchema = z.discriminatedUnion("type", [
+const rawMonitorSchema = z.discriminatedUnion("type", [
 	httpSchema,
 	pingSchema,
 	portSchema,
@@ -134,6 +136,24 @@ export const monitorSchema = z.discriminatedUnion("type", [
 	hardwareSchema,
 	websocketSchema,
 ]);
+
+export const monitorSchema = rawMonitorSchema.superRefine((data, ctx) => {
+	if (data.escalationNotifications.length > 0 && data.escalationMinutes === null) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["escalationMinutes"],
+			message: "Escalation time is required when escalation channels are selected",
+		});
+	}
+
+	if (data.escalationMinutes !== null && data.escalationNotifications.length === 0) {
+		ctx.addIssue({
+			code: "custom",
+			path: ["escalationNotifications"],
+			message: "Select at least one escalation notification channel",
+		});
+	}
+});
 
 export type MonitorFormData = z.infer<typeof monitorSchema>;
 

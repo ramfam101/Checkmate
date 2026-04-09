@@ -163,31 +163,35 @@ export const SettingsPage = () => {
 			!formValues.systemEmailHost ||
 			!formValues.systemEmailPort ||
 			!formValues.systemEmailAddress ||
-			!formValues.systemEmailPassword
+			(!formValues.systemEmailPassword && !isEmailPasswordSet)
 		) {
 			alert("Please fill in all required email fields before testing.");
 			return;
 		}
 
-		await sendTestEmail("/settings/test-email", {
+		const payload = {
 			to: user.email,
 			systemEmailHost: formValues.systemEmailHost,
 			systemEmailPort: formValues.systemEmailPort,
 			systemEmailAddress: formValues.systemEmailAddress,
-			systemEmailPassword: formValues.systemEmailPassword,
 			systemEmailSecure: formValues.systemEmailSecure,
 			systemEmailPool: formValues.systemEmailPool,
 			systemEmailIgnoreTLS: formValues.systemEmailIgnoreTLS,
 			systemEmailRequireTLS: formValues.systemEmailRequireTLS,
 			systemEmailRejectUnauthorized: formValues.systemEmailRejectUnauthorized,
 			...(formValues.systemEmailUser && { systemEmailUser: formValues.systemEmailUser }),
+			...(formValues.systemEmailPassword && {
+				systemEmailPassword: formValues.systemEmailPassword,
+			}),
 			...(formValues.systemEmailTLSServername && {
 				systemEmailTLSServername: formValues.systemEmailTLSServername,
 			}),
 			...(formValues.systemEmailConnectionHost && {
 				systemEmailConnectionHost: formValues.systemEmailConnectionHost,
 			}),
-		});
+		};
+
+		await sendTestEmail("/settings/test-email", payload);
 	};
 
 	const handleClearStats = async () => {

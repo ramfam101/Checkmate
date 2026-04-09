@@ -13,6 +13,7 @@ interface IncidentRow {
 	message: string | null;
 	status_code: number | null;
 	resolution_type: IncidentResolutionType;
+	escalation_notified_at: Date | null;
 	resolved_by: string | null;
 	resolved_by_email: string | null;
 	comment: string | null;
@@ -21,15 +22,15 @@ interface IncidentRow {
 }
 
 const COLUMNS = `id, monitor_id, team_id, start_time, end_time, status, message, status_code,
-	resolution_type, resolved_by, resolved_by_email, comment, created_at, updated_at`;
+	resolution_type, escalation_notified_at, resolved_by, resolved_by_email, comment, created_at, updated_at`;
 
 export class TimescaleIncidentsRepository implements IIncidentsRepository {
 	constructor(private pool: Pool) {}
 
 	create = async (incident: Partial<Incident>): Promise<Incident> => {
 		const result = await this.pool.query<IncidentRow>(
-			`INSERT INTO incidents (monitor_id, team_id, start_time, end_time, status, message, status_code, resolution_type, resolved_by, resolved_by_email, comment)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			`INSERT INTO incidents (monitor_id, team_id, start_time, end_time, status, message, status_code, resolution_type, escalation_notified_at, resolved_by, resolved_by_email, comment)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			 RETURNING ${COLUMNS}`,
 			[
 				incident.monitorId,
@@ -40,6 +41,7 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 				incident.message ?? null,
 				incident.statusCode ?? null,
 				incident.resolutionType ?? null,
+				incident.escalationNotifiedAt ? new Date(Number(incident.escalationNotifiedAt) || incident.escalationNotifiedAt) : null,
 				incident.resolvedBy ?? null,
 				incident.resolvedByEmail ?? null,
 				incident.comment ?? null,
@@ -204,6 +206,7 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 			["statusCode", "status_code"],
 			["endTime", "end_time"],
 			["resolutionType", "resolution_type"],
+			["escalationNotifiedAt", "escalation_notified_at"],
 			["resolvedBy", "resolved_by"],
 			["resolvedByEmail", "resolved_by_email"],
 			["comment", "comment"],
@@ -211,7 +214,10 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 
 		for (const [key, column] of fieldMap) {
 			if (patch[key] !== undefined) {
-				const value = key === "endTime" && patch[key] ? new Date(Number(patch[key]) || (patch[key] as string)) : patch[key];
+				const value =
+					(key === "endTime" || key === "escalationNotifiedAt") && patch[key]
+						? new Date(Number(patch[key]) || (patch[key] as string))
+						: patch[key];
 				sets.push(`${column} = $${paramIndex++}`);
 				values.push(value);
 			}
@@ -285,6 +291,7 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 		message: row.message ?? null,
 		statusCode: row.status_code ?? null,
 		resolutionType: row.resolution_type ?? null,
+		escalationNotifiedAt: row.escalation_notified_at ? row.escalation_notified_at.toISOString() : null,
 		resolvedBy: row.resolved_by ?? null,
 		resolvedByEmail: row.resolved_by_email ?? null,
 		comment: row.comment ?? null,

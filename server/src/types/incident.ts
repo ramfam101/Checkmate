@@ -13,6 +13,7 @@ export interface Incident {
 	message?: string | null;
 	statusCode?: number | null;
 	resolutionType: IncidentResolutionType;
+	escalationNotifiedAt?: string | null;
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;

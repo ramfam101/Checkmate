@@ -82,7 +82,8 @@ class SettingsController implements ISettingsController {
 
 	sendTestEmail = async (req: Request, res: Response, next: NextFunction) => {
 		try {
-			sendTestEmailBodyValidation.parse(req.body);
+			const validatedBody = sendTestEmailBodyValidation.parse(req.body);
+			const savedSettings = await this.settingsService.getDBSettings();
 
 			const {
 				to,
@@ -98,7 +99,25 @@ class SettingsController implements ISettingsController {
 				systemEmailRequireTLS,
 				systemEmailRejectUnauthorized,
 				systemEmailTLSServername,
-			} = req.body;
+			} = validatedBody;
+
+			const transportConfig = {
+				systemEmailHost: systemEmailHost ?? savedSettings.systemEmailHost,
+				systemEmailPort: systemEmailPort ?? savedSettings.systemEmailPort,
+				systemEmailUser: systemEmailUser ?? savedSettings.systemEmailUser,
+				systemEmailAddress: systemEmailAddress ?? savedSettings.systemEmailAddress,
+				systemEmailPassword: systemEmailPassword ?? savedSettings.systemEmailPassword,
+				systemEmailConnectionHost:
+					systemEmailConnectionHost ?? savedSettings.systemEmailConnectionHost,
+				systemEmailSecure: systemEmailSecure ?? savedSettings.systemEmailSecure,
+				systemEmailPool: systemEmailPool ?? savedSettings.systemEmailPool,
+				systemEmailIgnoreTLS: systemEmailIgnoreTLS ?? savedSettings.systemEmailIgnoreTLS,
+				systemEmailRequireTLS: systemEmailRequireTLS ?? savedSettings.systemEmailRequireTLS,
+				systemEmailRejectUnauthorized:
+					systemEmailRejectUnauthorized ?? savedSettings.systemEmailRejectUnauthorized,
+				systemEmailTLSServername:
+					systemEmailTLSServername ?? savedSettings.systemEmailTLSServername,
+			};
 
 			const subject = "This is a test email from Checkmate";
 			const context = { testName: "Monitoring System" };
@@ -107,20 +126,7 @@ class SettingsController implements ISettingsController {
 			if (!html) {
 				throw new AppError({ message: "Failed to build email template.", status: 500 });
 			}
-			const messageId = await this.emailService.sendEmail(to, subject, html, {
-				systemEmailHost,
-				systemEmailPort,
-				systemEmailUser,
-				systemEmailAddress,
-				systemEmailPassword,
-				systemEmailConnectionHost,
-				systemEmailSecure,
-				systemEmailPool,
-				systemEmailIgnoreTLS,
-				systemEmailRequireTLS,
-				systemEmailRejectUnauthorized,
-				systemEmailTLSServername,
-			});
+			const messageId = await this.emailService.sendEmail(to, subject, html, transportConfig);
 
 			if (!messageId) {
 				throw new AppError({ message: "Failed to send test email.", status: 500 });
