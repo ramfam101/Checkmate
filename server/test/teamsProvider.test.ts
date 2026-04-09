@@ -1,9 +1,9 @@
 import { describe, expect, it, jest, beforeEach } from "@jest/globals";
-import { TeamsProvider } from "../src/service/infrastructure/notificationProviders/teams.ts";
+import type { TeamsProvider as TeamsProviderType } from "../src/service/infrastructure/notificationProviders/teams.ts";
 import type { Notification } from "../src/types/notification.ts";
 import type { NotificationMessage } from "../src/types/notificationMessage.ts";
 
-// Mock got
+// Mock got BEFORE any module that depends on it is imported
 jest.unstable_mockModule("got", () => ({
 	default: { post: jest.fn() },
 }));
@@ -58,12 +58,13 @@ const createMessage = (overrides?: Partial<NotificationMessage>): NotificationMe
 });
 
 describe("TeamsProvider", () => {
-	let provider: TeamsProvider;
+	let provider: TeamsProviderType;
 	let logger: ReturnType<typeof createLogger>;
 	let gotPost: jest.Mock;
 
 	beforeEach(async () => {
 		logger = createLogger();
+		const { TeamsProvider } = await import("../src/service/infrastructure/notificationProviders/teams.ts");
 		provider = new TeamsProvider(logger);
 		const got = await import("got");
 		gotPost = got.default.post as jest.Mock;
@@ -222,7 +223,7 @@ describe("TeamsProvider", () => {
 			const thresholdHeader = card.body.find((b: any) => b.type === "TextBlock" && b.text === "**Threshold Breaches**");
 			expect(thresholdHeader).toBeDefined();
 
-			const cpuBlock = card.body.find((b: any) => b.type === "TextBlock" && b.text?.includes("CPU"));
+			const cpuBlock = card.body.find((b: any) => b.type === "TextBlock" && b.text?.includes("CPU") && b.text?.includes("threshold:"));
 			expect(cpuBlock).toBeDefined();
 			expect(cpuBlock.text).toContain("95%");
 			expect(cpuBlock.text).toContain("threshold: 80%");

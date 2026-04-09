@@ -54,6 +54,12 @@ export interface Monitor {
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;
 	recentChecks: CheckSnapshot[];
+	/** When true, send an escalated notification separately (e.g. for threshold breaches) */
+	escalatedNotification?: boolean;
+	/** Optional notification id to use for escalated notifications */
+	escalationNotificationId?: string;
+	/** Delay in ms before sending the escalation notification (0 = immediately) */
+	escalationDelay?: number;
 	createdAt: string;
 	updatedAt: string;
 }

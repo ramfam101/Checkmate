@@ -5,7 +5,7 @@
 	"main": "index.js",
 	"type": "module",
 	"scripts": {
-		"test": "NODE_OPTIONS=--experimental-vm-modules c8 jest --runInBand",
+		"test": "cross-env NODE_OPTIONS=--experimental-vm-modules c8 jest --runInBand",
 		"dev": "nodemon --exec tsx src/index.js",
 		"start": "node --watch ./dist/index.js",
 		"build": "tsc && tsc-alias && cp -r src/templates dist/templates",
@@ -62,6 +62,7 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"cross-env": "^7.0.3",
 		"@eslint/js": "^9.17.0",
 		"@types/compression": "1.8.1",
 		"@types/cookie-parser": "1.4.10",

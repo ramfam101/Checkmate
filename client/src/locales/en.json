@@ -543,6 +543,33 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation",
+					"description": "Send an additional alert to a separate channel after a threshold breach, optionally after a delay.",
+					"option": {
+						"enable": {
+							"label": "Enable escalation notifications for threshold breaches"
+						},
+						"channel": {
+							"label": "Escalation channel",
+							"none": "None"
+						},
+						"delay": {
+							"label": "Delay before escalating",
+							"value": {
+								"immediately": "Immediately",
+								"oneMinute": "1 minute",
+								"threeMinutes": "3 minutes",
+								"fiveMinutes": "5 minutes",
+								"tenMinutes": "10 minutes",
+								"fifteenMinutes": "15 minutes",
+								"thirtyMinutes": "30 minutes",
+								"oneHour": "1 hour",
+								"twoHours": "2 hours"
+							}
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

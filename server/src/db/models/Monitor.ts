@@ -284,6 +284,20 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		// Escalation settings: enable sending a separate notification for escalations
+		escalatedNotification: {
+			type: Boolean,
+			default: false,
+		},
+		escalationNotificationId: {
+			type: Schema.Types.ObjectId,
+			ref: "Notification",
+			default: null,
+		},
+		escalationDelay: {
+			type: Number,
+			default: 0,
+		},
 		secret: {
 			type: String,
 		},

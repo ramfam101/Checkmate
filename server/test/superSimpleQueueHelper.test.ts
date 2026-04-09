@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from "@jest/globals";
-import SuperSimpleQueueHelper from "../src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.ts";
+import { SuperSimpleQueueHelper } from "../src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.ts";
 import type { Monitor } from "../src/types/monitor.ts";
 
 const createLogger = () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() });
@@ -7,6 +7,9 @@ const createLogger = () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn()
 const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimpleQueueHelper>[0]>) => {
 	const maintenanceWindowsRepository = {
 		findByMonitorId: jest.fn().mockResolvedValue([]),
+	};
+	const monitorsRepository = {
+		updateById: jest.fn().mockResolvedValue({}),
 	};
 	const statusServiceMock = {
 		updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: { id: "m1" }, statusChanged: true, prevStatus: false }),
@@ -17,9 +20,17 @@ const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimp
 		statusService: statusServiceMock,
 		notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
 		checkService: { buildCheck: jest.fn().mockResolvedValue({}) },
-		buffer: { addToBuffer: jest.fn() },
-		incidentService: { handleIncident: jest.fn().mockResolvedValue(undefined) },
-		maintenanceWindowsRepository,
+		settingsService: {} as any,
+		buffer: { addToBuffer: jest.fn(), addGeoCheckToBuffer: jest.fn() },
+		incidentService: { handleIncident: jest.fn().mockResolvedValue(undefined) } as any,
+		maintenanceWindowsRepository: maintenanceWindowsRepository as any,
+		monitorsRepository: monitorsRepository as any,
+		teamsRepository: {} as any,
+		monitorStatsRepository: {} as any,
+		checksRepository: {} as any,
+		incidentsRepository: {} as any,
+		geoChecksService: {} as any,
+		geoChecksRepository: {} as any,
 		...overrides,
 	});
 	return { helper, maintenanceWindowsRepository };

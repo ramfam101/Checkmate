@@ -27,6 +27,11 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+
+	// Escalation settings: send an escalated notification (e.g. for threshold breaches)
+	escalatedNotification: z.boolean().optional(),
+	escalationNotificationId: z.string().optional(),
+	escalationDelay: z.number().optional(),
 });
 
 // HTTP monitor schema

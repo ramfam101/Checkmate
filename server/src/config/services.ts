@@ -246,14 +246,14 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
-	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
+	const superSimpleQueueHelper = new SuperSimpleQueueHelper({
 		logger,
 		networkService,
 		statusService,
 		notificationsService,
 		checkService,
 		settingsService,
-		bufferService,
+		buffer: bufferService,
 		incidentService,
 		maintenanceWindowsRepository,
 		monitorsRepository,
@@ -262,8 +262,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
-	);
+		geoChecksRepository,
+	});
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
 

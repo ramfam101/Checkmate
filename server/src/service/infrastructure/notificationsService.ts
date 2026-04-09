@@ -109,12 +109,42 @@ export class NotificationsService implements INotificationsService {
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		let notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		// If escalation is enabled, send a separate follow-up notification after the configured delay.
+		try {
+			const shouldEscalate = decision.incidentReason === "status_down" || decision.incidentReason === "threshold_breach";
+			if (monitor.escalatedNotification && shouldEscalate && monitor.escalationNotificationId) {
+				const escalated = await this.notificationsRepository.findById(monitor.escalationNotificationId, monitor.teamId);
+				if (escalated) {
+					const delay = Math.max(0, monitor.escalationDelay ?? 0);
+					const escalationMessage: NotificationMessage = {
+						...notificationMessage,
+						content: {
+							...notificationMessage.content,
+							title: `Escalation: ${notificationMessage.content.title}`,
+							summary: `${notificationMessage.content.summary} This is an escalation notification.`,
+						},
+						metadata: {
+							...notificationMessage.metadata,
+							isEscalation: true,
+						},
+					};
+					setTimeout(() => {
+						this.send(escalated, monitor, monitorStatusResponse, decision, escalationMessage).catch((err: unknown) => {
+							this.logger.warn({ message: `Escalation notification failed: ${err instanceof Error ? err.message : String(err)}`, service: SERVICE_NAME, method: "sendNotifications" });
+						});
+					}, delay);
+				}
+			}
+		} catch (err) {
+			this.logger.warn({ message: `Failed to load escalation notification: ${err instanceof Error ? err.message : String(err)}`, service: SERVICE_NAME, method: "sendNotifications" });
+		}
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 

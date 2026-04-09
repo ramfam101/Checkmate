@@ -67,24 +67,41 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
 
-	constructor(
-		logger: ILogger,
-		networkService: INetworkService,
-		statusService: IStatusService,
-		notificationsService: INotificationsService,
-		checkService: ICheckService,
-		settingsService: ISettingsService,
-		buffer: IBufferService,
-		incidentService: IncidentService,
-		maintenanceWindowsRepository: IMaintenanceWindowsRepository,
-		monitorsRepository: IMonitorsRepository,
-		teamsRepository: ITeamsRepository,
-		monitorStatsRepository: IMonitorStatsRepository,
-		checksRepository: IChecksRepository,
-		incidentsRepository: IIncidentsRepository,
-		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
-	) {
+	constructor({
+		logger,
+		networkService,
+		statusService,
+		notificationsService,
+		checkService,
+		settingsService,
+		buffer,
+		incidentService,
+		maintenanceWindowsRepository,
+		monitorsRepository,
+		teamsRepository,
+		monitorStatsRepository,
+		checksRepository,
+		incidentsRepository,
+		geoChecksService,
+		geoChecksRepository,
+	}: {
+		logger: ILogger;
+		networkService: INetworkService;
+		statusService: IStatusService;
+		notificationsService: INotificationsService;
+		checkService: ICheckService;
+		settingsService: ISettingsService;
+		buffer: IBufferService;
+		incidentService: IncidentService;
+		maintenanceWindowsRepository: IMaintenanceWindowsRepository;
+		monitorsRepository: IMonitorsRepository;
+		teamsRepository: ITeamsRepository;
+		monitorStatsRepository: IMonitorStatsRepository;
+		checksRepository: IChecksRepository;
+		incidentsRepository: IIncidentsRepository;
+		geoChecksService: IGeoChecksService;
+		geoChecksRepository: IGeoChecksRepository;
+	}) {
 		this.logger = logger;
 		this.networkService = networkService;
 		this.statusService = statusService;
@@ -108,8 +125,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	}
 
 	getHeartbeatJob = () => {
-		return async (monitor: Monitor) => {
-			try {
+		return async (monitor: Monitor) => {			try {
 				const monitorId = monitor.id;
 				const teamId = monitor.teamId;
 				if (!monitorId) {
@@ -188,6 +204,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	/** Alias for getHeartbeatJob — used by tests and external callers */
+	getMonitorJob = () => this.getHeartbeatJob();
 
 	getCleanupOrphanedJob = () => {
 		return async () => {

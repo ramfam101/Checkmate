@@ -765,6 +765,68 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalatedNotification"
+							control={control}
+							render={({ field }) => (
+								<Stack direction="row" alignItems="center" spacing={theme.spacing(SPACING.LG)}>
+									<Switch checked={field.value ?? false} onChange={(e) => field.onChange(e.target.checked)} />
+									<Typography>{t("pages.createMonitor.form.escalation.option.enable.label")}</Typography>
+								</Stack>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationId"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								return (
+									<Select
+										{...field}
+										value={field.value ?? ""}
+										fieldLabel={t("pages.createMonitor.form.escalation.option.channel.label")}
+									>
+										<MenuItem value="">{t("pages.createMonitor.form.escalation.option.channel.none")}</MenuItem>
+										{notificationOptions.map((n) => (
+											<MenuItem key={n.id} value={n.id}>{n.notificationName}</MenuItem>
+										))}
+									</Select>
+								);
+							}}
+						/>
+						<Controller
+							name="escalationDelay"
+							control={control}
+							render={({ field }) => (
+								<Select
+									{...field}
+									value={field.value ?? 0}
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+								>
+									<MenuItem value={0}>{t("pages.createMonitor.form.escalation.option.delay.value.immediately")}</MenuItem>
+								<MenuItem value={60000}>{t("pages.createMonitor.form.escalation.option.delay.value.oneMinute")}</MenuItem>
+									<MenuItem value={180000}>{t("pages.createMonitor.form.escalation.option.delay.value.threeMinutes")}</MenuItem>
+									<MenuItem value={300000}>{t("pages.createMonitor.form.escalation.option.delay.value.fiveMinutes")}</MenuItem>
+									<MenuItem value={600000}>{t("pages.createMonitor.form.escalation.option.delay.value.tenMinutes")}</MenuItem>
+									<MenuItem value={900000}>{t("pages.createMonitor.form.escalation.option.delay.value.fifteenMinutes")}</MenuItem>
+									<MenuItem value={1800000}>{t("pages.createMonitor.form.escalation.option.delay.value.thirtyMinutes")}</MenuItem>
+									<MenuItem value={3600000}>{t("pages.createMonitor.form.escalation.option.delay.value.oneHour")}</MenuItem>
+									<MenuItem value={7200000}>{t("pages.createMonitor.form.escalation.option.delay.value.twoHours")}</MenuItem>
+								</Select>
+							)}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
