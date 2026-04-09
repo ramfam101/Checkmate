@@ -1,6 +1,6 @@
 import { BasePage, Tab, Tabs } from "@/Components/design-elements";
 import { HeaderTimeRange } from "@/Components/common";
-import { MonitorStatBoxes, HeaderMonitorControls } from "@/Components/monitors";
+import { MonitorStatBoxes, HeaderMonitorControls, EscalationBox } from "@/Components/monitors";
 import { TabNetwork } from "@/Pages/Infrastructure/Details/Components/TabNetwork";
 import { TabOverview } from "@/Pages/Infrastructure/Details/Components/TabOverview";
 
@@ -55,6 +55,7 @@ const InfrastructureDetails = () => {
 				monitor={monitor}
 				monitorStats={monitorStats}
 			/>
+			<EscalationBox monitor={monitor} />
 			<HeaderTimeRange
 				isLoading={monitorIsLoading}
 				hasDateRange={true}

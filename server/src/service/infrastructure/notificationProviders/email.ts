@@ -78,6 +78,11 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		// Use the content title for escalation messages
+		if (message.metadata.notificationReason === "escalation") {
+			return message.content.title;
+		}
+
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;

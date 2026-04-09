@@ -8,6 +8,7 @@ import {
 	HeaderMonitorControls,
 	HeaderGeoTabs,
 	GeoChecksMap,
+	EscalationBox,
 } from "@/Components/monitors";
 import { TrendingUp, AlertTriangle } from "lucide-react";
 import { ChecksTable } from "@/Pages/Uptime/Details/Components/ChecksTable";
@@ -186,6 +187,7 @@ const UptimeDetailsPage = () => {
 				monitorStats={monitorStats}
 				certificateExpiry={certificateExpiry}
 			/>
+			<EscalationBox monitor={monitor} />
 			<HeaderTimeRange
 				isLoading={monitorIsLoading || checksIsLoading}
 				hasDateRange={true}
