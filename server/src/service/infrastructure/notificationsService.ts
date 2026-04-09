@@ -15,6 +15,8 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendNotification: (notification: Notification, notificationMessage: NotificationMessage) => Promise<boolean>;
+
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -139,6 +141,10 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendNotification = async (notification: Notification, notificationMessage: NotificationMessage): Promise<boolean> => {
+		return await this.send(notification, {} as Monitor, {} as MonitorStatusResponse, {} as MonitorActionDecision, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

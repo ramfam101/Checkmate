@@ -20,7 +20,7 @@ const nameSchema = joi
 	.string()
 	.max(50)
 	.trim()
-	.pattern(/^[\p{L}\p{M}''()\-\. ]+$/u)
+	.pattern(/^[\p{L}\p{M}''()-. ]+$/u)
 	.messages({
 		"string.empty": "auth.common.inputs.firstName.errors.empty",
 		"string.max": "auth.common.inputs.firstName.errors.length",
@@ -31,7 +31,7 @@ const lastnameSchema = joi
 	.string()
 	.max(50)
 	.trim()
-	.pattern(/^[\p{L}\p{M}''()\-\. ]+$/u)
+	.pattern(/^[\p{L}\p{M}''()-. ]+$/u)
 	.messages({
 		"string.empty": "auth.common.inputs.lastName.errors.empty",
 		"string.max": "auth.common.inputs.lastName.errors.length",
@@ -414,7 +414,7 @@ const infrastructureMonitorValidation = joi.object({
 		.trim()
 		.custom((value, helpers) => {
 			const urlRegex =
-				/^(https?:\/\/)?(([0-9]{1,3}\.){3}[0-9]{1,3}|[\da-z\.-]+)(\.[a-z\.]{2,6})?(:(\d+))?([\/\w \.-]*)*\/?$/i;
+				/^(https?:\/\/)?(([0-9]{1,3}\.){3}[0-9]{1,3}|[\da-z.-]+)(\.[a-z.]{2,6})?(:(\d+))?([/\w .-]*)*\/?$/i;
 
 			if (!urlRegex.test(value)) {
 				return helpers.error("string.invalidUrl");

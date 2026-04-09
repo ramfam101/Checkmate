@@ -262,7 +262,9 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		notificationsRepository,
+		notificationMessageBuilder
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);

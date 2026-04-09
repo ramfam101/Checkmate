@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Monitor, MonitorStatusResponse, Incident } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, delayMinutes: number, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +271,49 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(monitor: Monitor, incident: Incident, delayMinutes: number, clientHost: string): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Use monitor_down type for escalations
+		const severity: NotificationSeverity = "critical";
+
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for ${delayMinutes} minutes.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Incident started: ${new Date(incident.startTime).toISOString()}`,
+			`Duration: ${delayMinutes} minutes`,
+		];
+
+		if (incident.message) {
+			details.push(`Error: ${incident.message}`);
+		}
+
+		const content: NotificationContent = {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
 	}
 }

@@ -14,11 +14,11 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
-import { BasePage, ConfigBox } from "@/Components/design-elements";
+import { BasePage, ConfigBox, Icon } from "@/Components/design-elements";
 import {
 	RadioWithDescription,
 	Button,
@@ -758,6 +758,104 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalationList = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationList.map((escalation, index) => (
+										<Stack
+											key={index}
+											direction="row"
+											spacing={theme.spacing(LAYOUT.SM)}
+											alignItems="center"
+										>
+											<TextField
+												value={escalation.delayMinutes}
+												onChange={(e) => {
+													const newEscalations = [...escalationList];
+													newEscalations[index].delayMinutes =
+														Number(e.target.value) || 0;
+													field.onChange(newEscalations);
+												}}
+												type="number"
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.delayMinutes.label"
+												)}
+												placeholder={t(
+													"pages.createMonitor.form.escalations.option.delayMinutes.placeholder"
+												)}
+												fullWidth={false}
+												sx={{ width: theme.spacing(LAYOUT.XL) }}
+											/>
+											<Select
+												value={escalation.notificationId}
+												onChange={(e) => {
+													const newEscalations = [...escalationList];
+													newEscalations[index].notificationId = e.target.value;
+													field.onChange(newEscalations);
+												}}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalations.option.notification.label"
+												)}
+												sx={{ minWidth: theme.spacing(LAYOUT.XXL) }}
+											>
+												<MenuItem value="">
+													{t(
+														"pages.createMonitor.form.escalations.option.notification.placeholder"
+													)}
+												</MenuItem>
+												{notifications?.map((notification) => (
+													<MenuItem
+														key={notification.id}
+														value={notification.id}
+													>
+														{notification.notificationName}
+													</MenuItem>
+												))}
+											</Select>
+											<IconButton
+												size="small"
+												onClick={() => {
+													const newEscalations = escalationList.filter(
+														(_, i) => i !== index
+													);
+													field.onChange(newEscalations);
+												}}
+												aria-label={t(
+													"pages.createMonitor.form.escalations.option.removeLabel"
+												)}
+											>
+												<Icon icon={Trash2} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										startIcon={<Icon icon={Plus} />}
+										onClick={() => {
+											const newEscalations = [
+												...escalationList,
+												{ delayMinutes: 30, notificationId: "" },
+											];
+											field.onChange(newEscalations);
+										}}
+									>
+										{t("pages.createMonitor.form.escalations.option.addButton")}
+									</Button>
 								</Stack>
 							);
 						}}
