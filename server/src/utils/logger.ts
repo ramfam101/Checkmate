@@ -12,6 +12,7 @@ interface LogConfig {
 	method?: string;
 	details?: Record<string, unknown>;
 	stack?: string;
+	error?: string;
 }
 
 interface LogEntry extends LogConfig {

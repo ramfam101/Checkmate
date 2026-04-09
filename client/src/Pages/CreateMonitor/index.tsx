@@ -16,6 +16,7 @@ import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
+import MonitorEscalationEditor from "@/Components/MonitorEscalationEditor";
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -252,11 +253,21 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		// Clean up escalation - only include if both fields are properly provided
+		const cleanData = { ...data };
+		
+		const hasValidMinutes = cleanData.escalation?.minutesAfterStart && cleanData.escalation.minutesAfterStart > 0;
+		const hasValidNotification = cleanData.escalation?.notificationId && cleanData.escalation.notificationId.trim().length > 0;
+		
+		if (!hasValidMinutes || !hasValidNotification) {
+			cleanData.escalation = undefined;
+		}
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, cleanData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", cleanData);
 		}
 
 		if (result?.success) {
@@ -736,6 +747,7 @@ const CreateMonitorPage = () => {
 													alignItems="center"
 													key={notification.id}
 													width="100%"
+													spacing={theme.spacing(LAYOUT.SM)}
 												>
 													<Typography flexGrow={1}>
 														{notification.notificationName}
@@ -762,6 +774,14 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<MonitorEscalationEditor control={control} />
 				}
 			/>
 

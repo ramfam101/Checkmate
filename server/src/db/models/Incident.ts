@@ -72,6 +72,29 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationsSent: {
+			type: [
+				{
+					levelIndex: {
+						type: Number,
+						required: true,
+					},
+					sentAt: {
+						type: Date,
+						required: true,
+					},
+					notificationId: {
+						type: String,
+						required: true,
+					},
+					sourceNotificationId: {
+						type: String,
+						required: true,
+					},
+				},
+			],
+			default: [],
+		},
 	},
 	{ timestamps: true }
 );

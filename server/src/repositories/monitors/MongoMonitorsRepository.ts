@@ -387,6 +387,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalation: doc.escalation ? {
+				minutesAfterStart: doc.escalation.minutesAfterStart,
+				notificationId: toStringId(doc.escalation.notificationId),
+			} : undefined,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
@@ -446,6 +450,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalation: doc.escalation ? {
+				minutesAfterStart: doc.escalation.minutesAfterStart,
+				notificationId: toStringId(doc.escalation.notificationId),
+			} : undefined,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
