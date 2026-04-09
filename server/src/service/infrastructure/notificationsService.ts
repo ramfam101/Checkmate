@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -128,8 +129,7 @@ export class NotificationsService implements INotificationsService {
 				method: "sendNotifications",
 			});
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+		return { succeeded, total: notifications.length };
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
@@ -138,7 +138,125 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const result = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		// Initial down/breached alerts should start the escalation interval clock.
+		if (result.succeeded > 0 && !decision.isEscalation && (monitor.status === "down" || monitor.status === "breached")) {
+			try {
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					lastEscalationEmailSentAt: new Date(),
+				});
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Failed to set lastEscalationEmailSentAt for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}
+
+		return result.succeeded === result.total;
+	};
+
+	handleEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+		if (!currentMonitor) {
+			this.logger.warn({
+				message: `Monitor ${monitor.id} not found for escalation notifications`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+			});
+			return false;
+		}
+
+		// Only escalate if monitor is down/breached and escalation is configured
+		if (currentMonitor.status !== "down" && currentMonitor.status !== "breached") {
+			return false;
+		}
+
+		const escalationDelayMinutes = currentMonitor.escalation?.delayMinutes ?? currentMonitor.escalationEmailFrequency;
+		const legacyEscalationNotificationIds = currentMonitor.escalationNotifications ?? [];
+		const escalationChannelId =
+			currentMonitor.escalation?.channelId ?? currentMonitor.escalationNotificationChannel ?? legacyEscalationNotificationIds[0];
+
+		if (!escalationDelayMinutes || escalationDelayMinutes <= 0 || !escalationChannelId) {
+			return false;
+		}
+
+		const escalationNotificationIds =
+			currentMonitor.escalation?.channelId || currentMonitor.escalationNotificationChannel ? [escalationChannelId] : legacyEscalationNotificationIds;
+		const now = new Date();
+		const escalationIntervalMs = escalationDelayMinutes * 60 * 1000;
+		const lastEscalationSentAt = currentMonitor.lastEscalationEmailSentAt ? new Date(currentMonitor.lastEscalationEmailSentAt) : null;
+
+		if (!lastEscalationSentAt) {
+			try {
+				await this.monitorsRepository.updateById(currentMonitor.id, currentMonitor.teamId, {
+					lastEscalationEmailSentAt: now,
+				});
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Failed to initialize escalation timestamp for monitor ${currentMonitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+			return false;
+		}
+
+		const timeSinceLastEscalation = now.getTime() - lastEscalationSentAt.getTime();
+		if (timeSinceLastEscalation < escalationIntervalMs) {
+			return false; // Not enough time has passed
+		}
+
+		// Get escalation notifications
+		const notifications = await this.notificationsRepository.findNotificationsByIds(escalationNotificationIds);
+		if (notifications.length === 0) {
+			return false;
+		}
+
+		// Build decision for escalation with isEscalation flag
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+			isEscalation: true,
+		};
+
+		// Build notification message for escalation
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(currentMonitor, monitorStatusResponse, escalationDecision, clientHost);
+
+		// Send escalation notifications
+		const tasks = notifications.map((notification) =>
+			this.send(notification, currentMonitor, monitorStatusResponse, escalationDecision, notificationMessage)
+		);
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+
+		// Update monitor with last escalation time if at least one succeeded
+		if (succeeded > 0) {
+			try {
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					lastEscalationEmailSentAt: now,
+				});
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Failed to update lastEscalationEmailSentAt for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalationNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}
+
+		return succeeded === notifications.length;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

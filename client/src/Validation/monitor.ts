@@ -4,6 +4,26 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
+const escalationSchema = z
+	.object({
+		delayMinutes: z
+			.number()
+			.min(1, "Escalation delay must be at least 1 minute")
+			.optional(),
+		channelId: z.string().optional(),
+	})
+	.optional()
+	.refine(
+		(value) =>
+			!value ||
+			(!value.delayMinutes && !value.channelId) ||
+			(Boolean(value.delayMinutes) && Boolean(value.channelId)),
+		{
+			message: "Select both the escalation delay and channel",
+			path: ["channelId"],
+		}
+	);
+
 // Common base schema for all monitor types
 const baseSchema = z.object({
 	name: z
@@ -13,6 +33,13 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalation: escalationSchema,
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationEmailFrequency: z
+		.number()
+		.min(1, "Escalation frequency must be at least 1 minute")
+		.optional(),
+	escalationNotificationChannel: z.string().optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

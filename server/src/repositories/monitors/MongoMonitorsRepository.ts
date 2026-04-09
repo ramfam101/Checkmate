@@ -167,15 +167,25 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
-		const updatedMonitor = await MonitorModel.findOneAndUpdate(
-			{ _id: monitorId, teamId },
-			{
-				$set: {
-					...patch,
-				},
-			},
-			{ new: true, runValidators: true }
-		);
+		const setEntries = Object.entries(patch).filter(([, value]) => value !== undefined);
+		const unsetEntries = Object.entries(patch).filter(([, value]) => value === undefined);
+		const updateOperation: {
+			$set?: Record<string, unknown>;
+			$unset?: Record<string, 1>;
+		} = {};
+
+		if (setEntries.length > 0) {
+			updateOperation.$set = Object.fromEntries(setEntries);
+		}
+
+		if (unsetEntries.length > 0) {
+			updateOperation.$unset = Object.fromEntries(unsetEntries.map(([key]) => [key, 1]));
+		}
+
+		const updatedMonitor = await MonitorModel.findOneAndUpdate({ _id: monitorId, teamId }, updateOperation, {
+			new: true,
+			runValidators: true,
+		});
 		if (!updatedMonitor) {
 			throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
 		}
@@ -351,6 +361,16 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) => toStringId(notification));
+		const escalationDelayMinutes = doc.escalation?.delayMinutes ?? doc.escalationEmailFrequency ?? undefined;
+		const escalationChannelId = doc.escalation?.channelId ?? doc.escalationNotificationChannel ?? escalationNotificationIds[0] ?? undefined;
+		const escalation =
+			escalationDelayMinutes && escalationChannelId
+				? {
+						delayMinutes: escalationDelayMinutes,
+						channelId: escalationChannelId,
+					}
+				: undefined;
 
 		return {
 			id: toStringId(doc._id),
@@ -374,7 +394,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
-			secret: doc.secret ?? undefined,
+			escalation,
+			escalationNotifications: escalationNotificationIds,
+			escalationEmailFrequency: doc.escalationEmailFrequency ?? undefined,
+			escalationNotificationChannel: doc.escalationNotificationChannel ?? undefined,
+			lastEscalationEmailSentAt: doc.lastEscalationEmailSentAt ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
 			memoryAlertThreshold: doc.memoryAlertThreshold,
@@ -410,6 +434,16 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationDelayMinutes = doc.escalation?.delayMinutes ?? doc.escalationEmailFrequency ?? undefined;
+		const escalationChannelId = doc.escalation?.channelId ?? doc.escalationNotificationChannel ?? escalationNotificationIds[0] ?? undefined;
+		const escalation =
+			escalationDelayMinutes && escalationChannelId
+				? {
+						delayMinutes: escalationDelayMinutes,
+						channelId: escalationChannelId,
+					}
+				: undefined;
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +467,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalation,
+			escalationNotifications: escalationNotificationIds,
+			escalationEmailFrequency: doc.escalationEmailFrequency ?? undefined,
+			escalationNotificationChannel: doc.escalationNotificationChannel ?? undefined,
+			lastEscalationEmailSentAt: doc.lastEscalationEmailSentAt ?? undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

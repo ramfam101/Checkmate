@@ -541,7 +541,35 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"option": {
+						"removeAriaLabel": "Remove notification"
+					}
+				},
+				"escalationRules": {
+					"title": "Escalation Rules",
+					"description": "If an incident remains unresolved after the selected delay, notify the escalation channel.",
+					"option": {
+						"frequency": {
+							"label": "Escalate After (minutes)",
+							"placeholder": "Enter minutes"
+						},
+						"channels": {
+							"label": "Escalation channel",
+							"placeholder": "Select a channel",
+							"removeAriaLabel": "Remove escalation channel"
+						}
+					}
+				},
+				"escalationEmailFrequency": {
+					"title": "Escalation email frequency",
+					"description": "Send escalation notifications at this interval when the monitor remains in an alert state",
+					"option": {
+						"frequency": {
+							"label": "Escalation frequency (minutes)",
+							"placeholder": "Enter minutes"
+						}
+					}
 				},
 				"type": {
 					"description": "Select the type of check to perform",

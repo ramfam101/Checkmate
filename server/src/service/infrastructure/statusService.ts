@@ -233,12 +233,13 @@ export class StatusService implements IStatusService {
 			}
 
 			const prevStatus = monitor.status;
-			let newStatus: MonitorStatus = status === true ? "up" : "down";
+			let newStatus: MonitorStatus = prevStatus;
 			let statusChanged = false;
 
-			// Return early if not enough data points
+			// Keep the current status until there are enough checks to evaluate the
+			// user-configured sliding window threshold.
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				monitor.status = prevStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -253,13 +254,14 @@ export class StatusService implements IStatusService {
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 
-			// If threshold has been met and the monitor is not already down, mark down:
+			// Only change state when the configured failure threshold is crossed.
 			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
 			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			// Once the sliding window is full and the failure rate is below threshold,
+			// a new or recovered monitor should be considered up.
+			else if (failureRate < monitor.statusWindowThreshold && (monitor.status === "down" || monitor.status === "initializing")) {
 				newStatus = "up";
 				statusChanged = true;
 			}
@@ -345,10 +347,14 @@ export class StatusService implements IStatusService {
 				}
 			}
 
-			// Apply the final status
-			monitor.status = newStatus;
+				if (statusChanged && (newStatus === "down" || newStatus === "breached" || newStatus === "up")) {
+					monitor.lastEscalationEmailSentAt = undefined;
+				}
 
-			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+				// Apply the final status
+				monitor.status = newStatus;
+
+				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
 			return {
 				monitor: updated,

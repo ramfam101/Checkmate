@@ -78,21 +78,11 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
-		switch (message.type) {
-			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
-			case "monitor_up":
-				return `Monitor ${message.monitor.name} is back up`;
-			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
-			case "threshold_resolved":
-				return `Monitor ${message.monitor.name} thresholds resolved`;
-			default:
-				return `Alert: ${message.monitor.name}`;
-		}
+		return message.content.title;
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
+		const isEscalationEmail = message.metadata.isEscalation ? true : false;
 		const context = {
 			title: message.content.title,
 			summary: message.content.summary,
@@ -104,14 +94,8 @@ export class EmailProvider implements INotificationProvider {
 			thresholds: message.content.thresholds,
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
+			isEscalation: isEscalationEmail,
 		};
-
-		this.logger.info({
-			message: "[DEBUG] Building email from message",
-			service: SERVICE_NAME,
-			method: "buildEmailFromMessage",
-			details: { context },
-		});
 
 		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
 

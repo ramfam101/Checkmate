@@ -128,14 +128,24 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
-		const emailConfig = {
+		if (!systemEmailHost || !systemEmailPort || !systemEmailAddress) {
+			this.logger.warn({
+				message: "Incomplete email transport settings",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					systemEmailHost,
+					systemEmailPort,
+					systemEmailAddress,
+				},
+			});
+			return false;
+		}
+
+		const emailConfig: Record<string, unknown> = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
 			secure: systemEmailSecure,
-			auth: {
-				user: systemEmailUser || systemEmailAddress,
-				pass: systemEmailPassword,
-			},
 			name: systemEmailConnectionHost || "localhost",
 			connectionTimeout: 5000,
 			pool: systemEmailPool,
@@ -146,6 +156,13 @@ export class EmailService implements IEmailService {
 				servername: systemEmailTLSServername,
 			},
 		};
+
+		if (systemEmailUser || systemEmailPassword) {
+			(emailConfig as Record<string, unknown>).auth = {
+				user: systemEmailUser || systemEmailAddress,
+				pass: systemEmailPassword,
+			};
+		}
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
 		try {

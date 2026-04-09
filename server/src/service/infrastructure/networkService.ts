@@ -44,8 +44,13 @@ export class NetworkService implements INetworkService {
 
 	// Main entry point
 	async requestStatus<T extends MonitorType>(monitor: Monitor & { type: T }): Promise<MonitorStatusResponse<MonitorPayloadMap[T]>> {
-		const provider = this.providers.find((p) => p.supports(monitor.type));
+		const provider = this.providers.find((candidate) => typeof candidate?.supports === "function" && candidate.supports(monitor.type));
 		if (!provider) {
+			this.logger.warn({
+				message: `No status provider found for monitor type ${monitor.type}`,
+				service: SERVICE_NAME,
+				method: "requestStatus",
+			});
 			return this.handleUnsupportedType(monitor.type) as Promise<MonitorStatusResponse<MonitorPayloadMap[T]>>;
 		}
 		return provider.handle(monitor) as Promise<MonitorStatusResponse<MonitorPayloadMap[T]>>;

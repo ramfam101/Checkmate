@@ -39,6 +39,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	isEscalation?: boolean;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -156,9 +157,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				// Step 6. Handle notifications first so the initial down/breach alert can establish escalation timing.
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+					await this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
@@ -166,6 +167,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// Step 6b. Only consider escalations for unresolved incidents on steady-state down/breached checks.
+				if (!decision.shouldSendNotification && (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached")) {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(
+						statusChangeResult.monitor.id,
+						statusChangeResult.monitor.teamId
+					);
+
+					if (activeIncident?.status) {
+						this.notificationsService.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)

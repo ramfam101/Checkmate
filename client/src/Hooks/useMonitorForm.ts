@@ -7,17 +7,37 @@ interface UseMonitorFormOptions {
 	defaultType?: MonitorType;
 }
 
-const getBaseDefaults = (data?: Monitor | null) => ({
-	name: data?.name || "",
-	description: data?.description || "",
-	interval: data?.interval || 60000,
-	notifications: data?.notifications || [],
-	statusWindowSize: data?.statusWindowSize || 5,
-	statusWindowThreshold: data?.statusWindowThreshold || 60,
-	geoCheckEnabled: data?.geoCheckEnabled ?? false,
-	geoCheckLocations: data?.geoCheckLocations || [],
-	geoCheckInterval: data?.geoCheckInterval || 300000,
-});
+const getBaseDefaults = (data?: Monitor | null) => {
+	const escalationDelayMinutes =
+		data?.escalation?.delayMinutes ?? data?.escalationEmailFrequency;
+	const escalationChannelId =
+		data?.escalation?.channelId ??
+		data?.escalationNotificationChannel ??
+		data?.escalationNotifications?.[0] ??
+		"";
+
+	return {
+		name: data?.name || "",
+		description: data?.description || "",
+		interval: data?.interval || 60000,
+		notifications: data?.notifications || [],
+		escalation:
+			escalationDelayMinutes && escalationChannelId
+				? {
+						delayMinutes: escalationDelayMinutes,
+						channelId: escalationChannelId,
+					}
+				: undefined,
+		escalationNotifications: data?.escalationNotifications || [],
+		escalationEmailFrequency: data?.escalationEmailFrequency ?? undefined,
+		statusWindowSize: data?.statusWindowSize || 5,
+		statusWindowThreshold: data?.statusWindowThreshold || 60,
+		geoCheckEnabled: data?.geoCheckEnabled ?? false,
+		geoCheckLocations: data?.geoCheckLocations || [],
+		geoCheckInterval: data?.geoCheckInterval || 300000,
+		escalationNotificationChannel: data?.escalationNotificationChannel || "",
+	};
+};
 
 export const useMonitorForm = ({
 	data = null,
