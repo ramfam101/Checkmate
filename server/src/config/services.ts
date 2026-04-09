@@ -232,19 +232,20 @@ export const initializeServices = async ({
 	const teamsProvider = new TeamsProvider(logger);
 
 	const notificationsService = new NotificationsService(
-		notificationsRepository,
-		monitorsRepository,
-		webhookProvider,
-		emailProvider,
-		slackProvider,
-		discordProvider,
-		pagerDutyProvider,
-		matrixProvider,
-		teamsProvider,
-		settingsService,
-		logger,
-		notificationMessageBuilder
-	);
+        notificationsRepository,
+        monitorsRepository,
+        incidentsRepository,
+        webhookProvider,
+        emailProvider,
+        slackProvider,
+        discordProvider,
+        pagerDutyProvider,
+        matrixProvider,
+        teamsProvider,
+        settingsService,
+        logger,
+        notificationMessageBuilder
+);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
