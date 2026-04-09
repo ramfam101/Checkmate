@@ -167,13 +167,18 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const updateQuery: mongoose.UpdateQuery<MonitorDocument> = {
+			$set: { ...patch },
+		};
+
+		if (patch.escalation === null) {
+			delete updateQuery.$set!.escalation;
+			updateQuery.$unset = { escalation: 1 };
+		}
+
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
-			{
-				$set: {
-					...patch,
-				},
-			},
+			updateQuery,
 			{ new: true, runValidators: true }
 		);
 		if (!updatedMonitor) {
@@ -391,6 +396,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalation: doc.escalation
+				? {
+						delayMinutes: doc.escalation.delayMinutes,
+						channelId: doc.escalation.channelId,
+					}
+				: undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -450,6 +461,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalation: doc.escalation
+				? {
+						delayMinutes: doc.escalation.delayMinutes,
+						channelId: doc.escalation.channelId,
+					}
+				: undefined,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

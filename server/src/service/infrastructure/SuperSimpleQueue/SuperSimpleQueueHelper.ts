@@ -166,6 +166,55 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+
+					// Escalation scheduling logic
+					if (monitor.escalation && decision.shouldCreateIncident && monitor.escalation.delayMinutes > 0 && monitor.escalation.channelId) {
+						const escalationKey = `escalation_${monitor.id}`;
+						// Prevent duplicate escalation jobs for the same incident
+						if (!globalThis.__checkmateEscalationJobs) globalThis.__checkmateEscalationJobs = {};
+						if (!globalThis.__checkmateEscalationJobs[escalationKey]) {
+							globalThis.__checkmateEscalationJobs[escalationKey] = true;
+							setTimeout(
+								async () => {
+									try {
+										const activeIncident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId);
+										if (activeIncident && !activeIncident.acknowledged && !activeIncident.endTime) {
+											// Send escalation notification
+											const escalationChannelId = statusChangeResult.monitor.escalation?.channelId || monitor.escalation.channelId;
+											const escalationChannel = await this.notificationsService.findById(escalationChannelId, statusChangeResult.monitor.teamId);
+											if (escalationChannel) {
+												await this.notificationsService.handleNotifications(
+													{ ...statusChangeResult.monitor, notifications: [escalationChannelId], isEscalation: true },
+													status,
+													{
+														shouldCreateIncident: true,
+														shouldResolveIncident: false,
+														shouldSendNotification: true,
+														incidentReason: "status_down",
+														notificationReason: "status_down",
+													}
+												);
+												this.logger.info({
+													message: `Escalation notification sent for monitor ${statusChangeResult.monitor.id} to channel ${escalationChannelId}`,
+													service: SERVICE_NAME,
+													method: "getMonitorJob",
+												});
+											}
+										}
+									} catch (err) {
+										this.logger.error({
+											message: `Error in escalation job for monitor ${statusChangeResult.monitor.id}: ${err instanceof Error ? err.message : err}`,
+											service: SERVICE_NAME,
+											method: "getMonitorJob",
+											stack: err instanceof Error ? err.stack : undefined,
+										});
+									}
+									delete globalThis.__checkmateEscalationJobs[escalationKey];
+								},
+								monitor.escalation.delayMinutes * 60 * 1000
+							);
+						}
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)

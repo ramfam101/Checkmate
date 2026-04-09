@@ -24,14 +24,22 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	static SERVICE_NAME = SERVICE_NAME;
 
 	buildMessage(
-		monitor: Monitor,
+		monitor: Monitor & { isEscalation?: boolean },
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		let content = this.buildContent(type, monitor, monitorStatusResponse);
+
+		// Override title for escalation
+		if (monitor.isEscalation && type === "monitor_down") {
+			content = {
+				...content,
+				title: `Escalation: Monitor ${monitor.name} still down`,
+			};
+		}
 
 		return {
 			type,

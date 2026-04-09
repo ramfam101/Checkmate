@@ -251,12 +251,25 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
-	const onSubmit = async (data: MonitorFormData) => {
+	const onSubmit = async (data: MonitorFormData & { escalationEnabled?: boolean }) => {
+		let payload = { ...data };
+		// Only send escalation if enabled and valid
+		if (!data.escalationEnabled) {
+			payload = { ...payload, escalation: null as any };
+		} else if (
+			data.escalation &&
+			data.escalation.delayMinutes &&
+			data.escalation.channelId
+		) {
+			payload = { ...payload, escalation: data.escalation };
+		}
+		delete payload.escalationEnabled;
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -762,6 +775,101 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			{/* Escalation Notification Section */}
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title", "Escalated notification")}
+				subtitle={t(
+					"pages.createMonitor.form.escalation.description",
+					"Send a notification to a different channel if the incident is not acknowledged after a delay."
+				)}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t(
+											"pages.createMonitor.form.escalation.enableLabel",
+											"Enable escalation"
+										)}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						{watch("escalationEnabled") && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Controller
+									name="escalation.delayMinutes"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											type="number"
+											value={field.value ?? ""}
+											onChange={(e) => {
+												const val = e.target.value;
+												field.onChange(val === "" ? undefined : Number(val));
+											}}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.delayLabel",
+												"Escalation delay (minutes)"
+											)}
+											placeholder={t(
+												"pages.createMonitor.form.escalation.delayPlaceholder",
+												"e.g. 10"
+											)}
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+								<Controller
+									name="escalation.channelId"
+									control={control}
+									render={({ field, fieldState }) => (
+										<Select
+											{...field}
+											value={field.value ?? ""}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.channelLabel",
+												"Escalation channel"
+											)}
+											error={!!fieldState.error}
+										>
+											<MenuItem value="">
+												{t(
+													"pages.createMonitor.form.escalation.channelPlaceholder",
+													"Select a channel"
+												)}
+											</MenuItem>
+											{(notifications ?? []).map((n) => (
+												<MenuItem
+													key={n.id}
+													value={n.id}
+												>
+													{n.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+									)}
+								/>
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 

@@ -80,6 +80,9 @@ export class EmailProvider implements INotificationProvider {
 	private buildSubject(message: NotificationMessage): string {
 		switch (message.type) {
 			case "monitor_down":
+				if (message.content.title?.startsWith("Escalation:")) {
+					return message.content.title;
+				}
 				return `Monitor ${message.monitor.name} is down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
