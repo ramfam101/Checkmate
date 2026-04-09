@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
 import { useForm, Controller } from "react-hook-form";
@@ -497,6 +496,65 @@ const CreateMonitorPage = () => {
 									helperText={fieldState.error?.message ?? ""}
 								/>
 							)}
+						/>
+					</Stack>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									value={(field.value ?? []).join(", ")}
+									onChange={(event) => {
+										const nextValues = event.target.value
+											.split(",")
+											.map((value) => Number(value.trim()))
+											.filter((value) => Number.isFinite(value) && value > 0);
+										field.onChange(nextValues);
+									}}
+									type="text"
+									fieldLabel={t("pages.createMonitor.form.escalation.optionMinutes")}
+									placeholder={t("pages.createMonitor.form.escalation.placeholder")}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={
+										fieldState.error?.message ??
+										t("pages.createMonitor.form.escalation.helper")
+									}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationIds"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((notification) => ({
+									...notification,
+									name: notification.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((notification) =>
+									(field.value ?? []).includes(notification.id)
+								);
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											field.onChange(newValue.map((notification) => notification.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+								);
+							}}
 						/>
 					</Stack>
 				}

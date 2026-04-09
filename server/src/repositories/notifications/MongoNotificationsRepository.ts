@@ -5,14 +5,14 @@ import type { Notification } from "@/types/index.js";
 import { AppError } from "@/utils/AppError.js";
 
 class MongoNotificationsRepository implements INotificationsRepository {
-	private mapDocuments = (documents: NotificationDocument[]): Notification[] => {
+	private readonly mapDocuments = (documents: NotificationDocument[]): Notification[] => {
 		if (!documents?.length) {
 			return [];
 		}
 		return documents.map((doc) => this.toEntity(doc));
 	};
 
-	private toEntity = (doc: NotificationDocument): Notification => {
+	private readonly toEntity = (doc: NotificationDocument): Notification => {
 		const toStringId = (value: mongoose.Types.ObjectId | string): string => {
 			return value instanceof mongoose.Types.ObjectId ? value.toString() : value;
 		};
@@ -27,6 +27,7 @@ class MongoNotificationsRepository implements INotificationsRepository {
 			teamId: toStringId(doc.teamId),
 			type: doc.type,
 			notificationName: doc.notificationName,
+			escalationMinutes: doc.escalationMinutes ?? [],
 			address: doc.address ?? undefined,
 			phone: doc.phone ?? undefined,
 			homeserverUrl: doc.homeserverUrl ?? undefined,

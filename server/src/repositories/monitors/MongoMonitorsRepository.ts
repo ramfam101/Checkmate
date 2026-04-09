@@ -289,7 +289,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			teamId: new mongoose.Types.ObjectId(teamId),
 			group: { $nin: [null, ""] },
 		});
-		return groups.sort();
+		return groups.sort((left, right) => left.localeCompare(right));
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
@@ -331,14 +331,14 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return result.modifiedCount;
 	};
 
-	private mapDocuments = (documents: MonitorDocument[]): Monitor[] => {
+	private readonly mapDocuments = (documents: MonitorDocument[]): Monitor[] => {
 		if (!documents?.length) {
 			return [];
 		}
 		return documents.map((doc) => this.toEntity(doc));
 	};
 
-	private toEntity = (doc: MonitorDocument): Monitor => {
+	private readonly toEntity = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
 			if (value instanceof mongoose.Types.ObjectId) {
 				return value.toString();
@@ -374,6 +374,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationMinutes: doc.escalationMinutes ?? [],
+			escalationNotificationIds: (doc.escalationNotificationIds ?? []).map((notification) => toStringId(notification)),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -396,10 +398,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 	};
 
-	private toEntityWithChecks = (doc: MonitorDocument): Monitor => {
+	private readonly toEntityWithChecks = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
-			if (value instanceof mongoose.Types.ObjectId) {
-				return value.toString();
+			if (typeof value === "string") {
+				return value;
 			}
 			return value?.toString() ?? "";
 		};
@@ -433,6 +435,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationMinutes: doc.escalationMinutes ?? [],
+			escalationNotificationIds: (doc.escalationNotificationIds ?? []).map((notification: unknown) => toStringId(notification)),
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -455,7 +459,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 	};
 
-	private toCheckSnapshot = (doc: CheckSnapshotDocument): CheckSnapshot => {
+	private readonly toCheckSnapshot = (doc: CheckSnapshotDocument): CheckSnapshot => {
 		const toDateString = (value: Date | string): string => {
 			return value instanceof Date ? value.toISOString() : value;
 		};

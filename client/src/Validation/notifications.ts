@@ -1,33 +1,55 @@
 import { z } from "zod";
 
+const isValidUrl = (value: string): boolean => {
+	try {
+		new URL(value);
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+const isValidEmail = (value: string): boolean => {
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+};
+
 const baseSchema = z.object({
 	notificationName: z
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	escalationMinutes: z
+		.array(z.number().int().min(1, "Escalation delay must be at least 1 minute"))
+		.max(10, "You can configure up to 10 escalation stages")
+		.optional(),
 });
 
 const emailSchema = baseSchema.extend({
 	type: z.literal("email"),
-	address: z
-		.string()
-		.min(1, "Email is required")
-		.email("Please enter a valid email address"),
+	address: z.string().min(1, "Email is required").refine(isValidEmail, {
+		message: "Please enter a valid email address",
+	}),
 });
 
 const slackSchema = baseSchema.extend({
 	type: z.literal("slack"),
-	address: z.string().min(1, "Webhook URL is required").url("Please enter a valid URL"),
+	address: z.string().min(1, "Webhook URL is required").refine(isValidUrl, {
+		message: "Please enter a valid URL",
+	}),
 });
 
 const discordSchema = baseSchema.extend({
 	type: z.literal("discord"),
-	address: z.string().min(1, "Webhook URL is required").url("Please enter a valid URL"),
+	address: z.string().min(1, "Webhook URL is required").refine(isValidUrl, {
+		message: "Please enter a valid URL",
+	}),
 });
 
 const webhookSchema = baseSchema.extend({
 	type: z.literal("webhook"),
-	address: z.string().min(1, "Webhook URL is required").url("Please enter a valid URL"),
+	address: z.string().min(1, "Webhook URL is required").refine(isValidUrl, {
+		message: "Please enter a valid URL",
+	}),
 });
 
 const pagerDutySchema = baseSchema.extend({
@@ -37,17 +59,18 @@ const pagerDutySchema = baseSchema.extend({
 
 const matrixSchema = baseSchema.extend({
 	type: z.literal("matrix"),
-	homeserverUrl: z
-		.string()
-		.min(1, "Homeserver URL is required")
-		.url("Please enter a valid URL"),
+	homeserverUrl: z.string().min(1, "Homeserver URL is required").refine(isValidUrl, {
+		message: "Please enter a valid URL",
+	}),
 	roomId: z.string().min(1, "Room ID is required"),
 	accessToken: z.string().min(1, "Access token is required"),
 });
 
 const teamsSchema = baseSchema.extend({
 	type: z.literal("teams"),
-	address: z.string().min(1, "Webhook URL is required").url("Please enter a valid URL"),
+	address: z.string().min(1, "Webhook URL is required").refine(isValidUrl, {
+		message: "Please enter a valid URL",
+	}),
 });
 
 export const notificationSchema = z.discriminatedUnion("type", [

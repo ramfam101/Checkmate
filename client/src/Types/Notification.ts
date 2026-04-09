@@ -15,6 +15,7 @@ export interface Notification {
 	teamId: string;
 	type: NotificationChannel;
 	notificationName: string;
+	escalationMinutes?: number[];
 	address?: string;
 	phone?: string;
 	homeserverUrl?: string;
