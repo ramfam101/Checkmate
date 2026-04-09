@@ -231,6 +231,7 @@ export const initializeServices = async ({
 	const matrixProvider = new MatrixProvider(logger);
 	const teamsProvider = new TeamsProvider(logger);
 
+	// Construct NotificationsService with correct argument order
 	const notificationsService = new NotificationsService(
 		notificationsRepository,
 		monitorsRepository,

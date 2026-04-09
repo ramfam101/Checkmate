@@ -148,8 +148,17 @@ export class EmailService implements IEmailService {
 		};
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
+		// Debug: verify transporter and log status
+		this.logger.info({
+			message: "Verifying email transporter",
+			service: SERVICE_NAME,
+			method: "sendEmail",
+			details: { host: emailConfig.host, port: emailConfig.port, secure: emailConfig.secure },
+		});
+
 		try {
 			await this.transporter.verify();
+			this.logger.info({ message: "Email transporter verified", service: SERVICE_NAME, method: "sendEmail" });
 		} catch (error: unknown) {
 			this.logger.warn({
 				message: "Email transporter verification failed",
@@ -161,12 +170,29 @@ export class EmailService implements IEmailService {
 		}
 
 		try {
+			this.logger.info({
+				message: "Sending email",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: { to, subject },
+			});
+
 			const info = await this.transporter.sendMail({
 				to: to,
 				from: systemEmailAddress,
 				subject: subject,
 				html: html,
 			});
+
+			if (info?.messageId) {
+				this.logger.info({
+					message: "Email sent",
+					service: SERVICE_NAME,
+					method: "sendEmail",
+					details: { to, subject, messageId: info.messageId },
+				});
+			}
+
 			return info?.messageId;
 		} catch (error: unknown) {
 			this.logger.error({

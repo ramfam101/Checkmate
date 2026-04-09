@@ -78,6 +78,9 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	//Escalation rules, use an identifier for the minutes, and an identifier for the notifications to send to
+	escalationMinutes: z.number().min(0).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -107,6 +110,9 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	// Allow editing escalation rules
+	escalationMinutes: z.number().min(0).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -144,6 +150,9 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	// imported escalationRules
+	escalationMinutes: z.number().min(0).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

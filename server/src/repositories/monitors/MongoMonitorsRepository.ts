@@ -352,6 +352,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
 
+		// Map escalationRules from DB shape to frontend shape
+		const escalationNotificationIds = ((doc as any).escalationNotifications ?? []).map((n: unknown) => toStringId(n));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -391,6 +394,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			// include escalationRules here
+			escalationMinutes: (doc as any).escalationMinutes ?? 0,
+			escalationNotifications: escalationNotificationIds,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -411,6 +417,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
+		// Map escalationRules for aggregated doc
+		const escalationNotificationIds = ((doc as any).escalationNotifications ?? []).map((n: unknown) => toStringId(n));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -450,6 +459,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			// include escalationRules here as well
+			escalationMinutes: (doc as any).escalationMinutes ?? 0,
+			escalationNotifications: escalationNotificationIds,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

@@ -78,18 +78,26 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		const isEscalation = Boolean((message.metadata as any)?.escalation);
+		let base = "";
 		switch (message.type) {
 			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
+				base = `Monitor ${message.monitor.name} is down`;
+				break;
 			case "monitor_up":
-				return `Monitor ${message.monitor.name} is back up`;
+				base = `Monitor ${message.monitor.name} is back up`;
+				break;
 			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
+				base = `Monitor ${message.monitor.name} threshold exceeded`;
+				break;
 			case "threshold_resolved":
-				return `Monitor ${message.monitor.name} thresholds resolved`;
+				base = `Monitor ${message.monitor.name} thresholds resolved`;
+				break;
 			default:
-				return `Alert: ${message.monitor.name}`;
+				base = `Alert: ${message.monitor.name}`;
+				break;
 		}
+		return isEscalation ? `Escalation: ${base}` : base;
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
