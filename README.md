@@ -1,3 +1,15 @@
+> [!NOTE]
+> ## 🎓 CEN3031 — Spring 2026 Mini Project
+>
+> This is the **central repository** for the CEN3031 Spring 2026 mini project.
+>
+> - 🍴 **Fork this repo** to begin your work
+> - 🔀 **All pull requests** should be submitted here
+> - 📖 **Read the rest of this README** for details about the project itself
+
+---
+
+
 <p align=center> <a href="https://trendshift.io/repositories/12443" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12443" alt="bluewave-labs%2Fcheckmate | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a></p>
   
 ![](https://img.shields.io/github/license/bluewave-labs/checkmate)
@@ -41,7 +53,7 @@ Checkmate has been stress-tested with 1000+ active monitors without any particul
 
 ## Demo
 
-You can see the latest build of [Checkmate](https://checkmate-demo.bluewavelabs.ca/) in action. The username is demouser@demo.com and the password is Demouser1! (just a note that we update the demo server from time to time, so if it doesn't work for you, please ping us on the Discussions channel).
+You can see the latest build of [Checkmate](https://checkmate-demo.bluewavelabs.ca/) in action. Upon initial launch of the application, please register and fill out the appropriate fields. You can put whatever you would like for all of them just make sure to remember your username and password. The email that you use needs to be a real email you have access to as it will be the recipent of some of the notification emails.
 
 ## User's guide
 
