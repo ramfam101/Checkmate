@@ -5,10 +5,10 @@
 	"main": "index.js",
 	"type": "module",
 	"scripts": {
-		"test": "NODE_OPTIONS=--experimental-vm-modules c8 jest --runInBand",
+		"build": "tsc && tsc-alias && node ./scripts/copyTemplates.cjs",
 		"dev": "nodemon --exec tsx src/index.js",
 		"start": "node --watch ./dist/index.js",
-		"build": "tsc && tsc-alias && cp -r src/templates dist/templates",
+		"test": "NODE_OPTIONS=--experimental-vm-modules c8 jest --runInBand",
 		"lint": "eslint .",
 		"lint-fix": "eslint --fix .",
 		"format": "prettier --write .",

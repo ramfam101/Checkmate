@@ -1,13 +1,26 @@
 import { Schema, model, type Types } from "mongoose";
 import type { Notification, NotificationChannel } from "@/types/notification.js";
 
+interface IEscalation {
+	delayMinutes: number;
+	channelId: Types.ObjectId | string;
+}
+
 interface NotificationDocument extends Omit<Notification, "id" | "userId" | "teamId" | "createdAt" | "updatedAt"> {
 	_id: Types.ObjectId;
 	userId: Types.ObjectId;
 	teamId: Types.ObjectId;
 	createdAt: Date;
 	updatedAt: Date;
+
+	// added escalations config
+	escalations?: IEscalation[];
 }
+
+const EscalationSchema = new Schema<IEscalation>({
+	delayMinutes: { type: Number, required: true, default: 0 },
+	channelId: { type: Schema.Types.ObjectId, ref: "Channel", required: true },
+});
 
 const NotificationSchema = new Schema<NotificationDocument>(
 	{
@@ -37,6 +50,9 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		homeserverUrl: { type: String },
 		roomId: { type: String },
 		accessToken: { type: String },
+
+		// escalations array for notification escalations
+		escalations: { type: [EscalationSchema], default: [] },
 	},
 	{
 		timestamps: true,
