@@ -238,7 +238,13 @@ export class StatusService implements IStatusService {
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				// Allow transition to "up" early so the user sees the monitor is reachable,
+				// but never set "down" here — that must wait until the window is full and
+				// the threshold is evaluated, otherwise a single failure prematurely marks
+				// the monitor "down" and breaks the threshold logic (the feedback-loop bug).
+				if (newStatus === "up") {
+					monitor.status = "up";
+				}
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -345,8 +351,11 @@ export class StatusService implements IStatusService {
 				}
 			}
 
-			// Apply the final status
-			monitor.status = newStatus;
+			// Apply the final status only when the threshold was crossed, or to graduate
+			// out of "initializing" once the window is full (no notification in that case).
+			if (statusChanged || monitor.status === "initializing") {
+				monitor.status = newStatus;
+			}
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 

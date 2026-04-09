@@ -765,6 +765,65 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+		<ConfigBox
+			title={t("pages.createMonitor.form.escalation.title")}
+			subtitle={t("pages.createMonitor.form.escalation.description")}
+			rightContent={
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="escalation.channelId"
+						control={control}
+						render={({ field, fieldState }) => {
+						const notificationOptions = (notifications ?? []).map((n) => ({
+							...n,
+							name: n.notificationName,
+						}));
+						return (
+							<Select
+								{...field}
+								value={field.value ?? ""}
+								fieldLabel={t("pages.createMonitor.form.escalation.option.channel.label")}
+								error={!!fieldState.error}
+							>
+								<MenuItem value="">
+									{t("pages.createMonitor.form.escalation.option.channel.placeholder")}
+								</MenuItem>
+								{notificationOptions.map((notification) => (
+									<MenuItem
+										key={notification.id}
+										value={notification.id}
+									>
+										{notification.notificationName}
+									</MenuItem>
+								))}
+							</Select>
+						);
+					}}
+					/>
+					<Controller
+						name="escalation.delayMinutes"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								value={field.value ?? ""}
+								type="number"
+								fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+								placeholder={t(
+									"pages.createMonitor.form.escalation.option.delay.placeholder"
+								)}
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+								inputProps={{ min: 1 }}
+								onChange={(e) => field.onChange(Number(e.target.value))}
+							/>
+						)}
+					/>
+				</Stack>
+			}
+		/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
