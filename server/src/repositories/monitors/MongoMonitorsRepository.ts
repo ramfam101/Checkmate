@@ -17,7 +17,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => ({
+			...monitor,
+			notifications: undefined,
+			escalationNotificationId: undefined,
+		}));
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -294,6 +298,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
 		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ escalationNotificationId: new mongoose.Types.ObjectId(notificationId) },
+			{ $unset: { escalationNotificationId: 1, escalationAfterMinutes: 1 } }
+		);
 	};
 
 	updateNotifications = async (
@@ -351,6 +359,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationId = doc.escalationNotificationId ? toStringId(doc.escalationNotificationId) : undefined;
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +383,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationAfterMinutes: doc.escalationAfterMinutes ?? undefined,
+			escalationNotificationId,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +421,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationId = doc.escalationNotificationId ? toStringId(doc.escalationNotificationId) : undefined;
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +445,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationAfterMinutes: doc.escalationAfterMinutes ?? undefined,
+			escalationNotificationId,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

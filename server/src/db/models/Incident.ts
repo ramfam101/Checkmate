@@ -54,6 +54,14 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			default: null,
 			index: true,
 		},
+		escalationNotificationIds: {
+			type: [String],
+			default: [],
+		},
+		escalationCount: {
+			type: Number,
+			default: 0,
+		},
 		resolutionType: {
 			type: String,
 			enum: IncidentResolutionTypes,

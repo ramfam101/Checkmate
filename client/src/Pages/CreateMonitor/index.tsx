@@ -765,6 +765,68 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationAfterMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									type="number"
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? undefined : Number(val));
+									}}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.waitMinutes.label"
+									)}
+									placeholder={t(
+										"pages.createMonitor.form.escalation.option.waitMinutes.placeholder"
+									)}
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotificationId"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Select
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const value = e.target.value;
+										field.onChange(value === "" ? undefined : value);
+									}}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.channel.label"
+									)}
+									error={!!fieldState.error}
+								>
+									<MenuItem value="">
+										{t("pages.createMonitor.form.escalation.option.channel.none")}
+									</MenuItem>
+									{(notifications ?? []).map((channel) => (
+										<MenuItem
+											key={channel.id}
+											value={channel.id}
+										>
+											{channel.notificationName}
+										</MenuItem>
+									))}
+								</Select>
+							)}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

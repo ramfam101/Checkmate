@@ -3,6 +3,8 @@ import { booleanCoercion } from "./shared.js";
 import { GeoContinents } from "@/types/geoCheck.js";
 import { MonitorMatchMethods, MonitorTypes } from "@/types/monitor.js";
 
+const optionalEscalationNotificationId = z.preprocess((value) => (value === "" || value === null ? undefined : value), z.string().min(1).optional());
+
 export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
@@ -49,65 +51,111 @@ export const getCertificateParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
-export const createMonitorBodyValidation = z.object({
-	_id: z.string().optional(),
-	name: z.string().min(1, "Name is required"),
-	description: z.union([z.string(), z.literal("")]).optional(),
-	type: z.enum(MonitorTypes, "Invalid monitor type"),
-	statusWindowSize: z.number().min(1).max(20).default(5),
-	statusWindowThreshold: z.number().min(1).max(100).default(60),
-	url: z.string().min(1, "URL is required"),
-	ignoreTlsErrors: z.boolean().default(false),
-	useAdvancedMatching: z.boolean().default(false),
-	port: z.number().optional(),
-	isActive: z.boolean().optional(),
-	interval: z.number().optional(),
-	cpuAlertThreshold: z.number().optional(),
-	memoryAlertThreshold: z.number().optional(),
-	diskAlertThreshold: z.number().optional(),
-	tempAlertThreshold: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
-	secret: z.string().optional(),
-	jsonPath: z.union([z.string(), z.literal("")]).optional(),
-	expectedValue: z.union([z.string(), z.literal("")]).optional(),
-	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
-	gameId: z.union([z.string(), z.literal("")]).optional(),
-	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
-	selectedDisks: z.array(z.string()).optional(),
-	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z.number().min(300000).optional(),
-});
+export const createMonitorBodyValidation = z
+	.object({
+		_id: z.string().optional(),
+		name: z.string().min(1, "Name is required"),
+		description: z.union([z.string(), z.literal("")]).optional(),
+		type: z.enum(MonitorTypes, "Invalid monitor type"),
+		statusWindowSize: z.number().min(1).max(20).default(5),
+		statusWindowThreshold: z.number().min(1).max(100).default(60),
+		url: z.string().min(1, "URL is required"),
+		ignoreTlsErrors: z.boolean().default(false),
+		useAdvancedMatching: z.boolean().default(false),
+		port: z.number().optional(),
+		isActive: z.boolean().optional(),
+		interval: z.number().optional(),
+		cpuAlertThreshold: z.number().optional(),
+		memoryAlertThreshold: z.number().optional(),
+		diskAlertThreshold: z.number().optional(),
+		tempAlertThreshold: z.number().optional(),
+		notifications: z.array(z.string()).optional(),
+		escalationAfterMinutes: z.number().min(1).optional(),
+		escalationNotificationId: optionalEscalationNotificationId,
+		secret: z.string().optional(),
+		jsonPath: z.union([z.string(), z.literal("")]).optional(),
+		expectedValue: z.union([z.string(), z.literal("")]).optional(),
+		matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
+		gameId: z.union([z.string(), z.literal("")]).optional(),
+		grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
+		selectedDisks: z.array(z.string()).optional(),
+		group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
+		geoCheckEnabled: z.boolean().optional(),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+		geoCheckInterval: z.number().min(300000).optional(),
+	})
+	.superRefine((body, ctx) => {
+		const hasEscalationAfterMinutes = typeof body.escalationAfterMinutes === "number";
+		const hasEscalationNotificationId = typeof body.escalationNotificationId === "string";
 
-export const editMonitorBodyValidation = z.object({
-	name: z.string().optional(),
-	type: z.enum(MonitorTypes).optional(),
-	url: z.string().optional(),
-	statusWindowSize: z.number().min(1).max(20).default(5),
-	statusWindowThreshold: z.number().min(1).max(100).default(60),
-	description: z.union([z.string(), z.literal("")]).optional(),
-	interval: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
-	secret: z.string().optional(),
-	ignoreTlsErrors: z.boolean().optional(),
-	useAdvancedMatching: z.boolean().optional(),
-	jsonPath: z.union([z.string(), z.literal("")]).optional(),
-	expectedValue: z.union([z.string(), z.literal("")]).optional(),
-	matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
-	port: z.number().min(1).max(65535).optional(),
-	cpuAlertThreshold: z.number().optional(),
-	memoryAlertThreshold: z.number().optional(),
-	diskAlertThreshold: z.number().optional(),
-	tempAlertThreshold: z.number().optional(),
-	gameId: z.union([z.string(), z.literal("")]).optional(),
-	grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
-	selectedDisks: z.array(z.string()).optional(),
-	group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z.number().min(300000).optional(),
-});
+		if (hasEscalationAfterMinutes && !hasEscalationNotificationId) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["escalationNotificationId"],
+				message: "Escalation notification channel is required when escalation wait time is set",
+			});
+		}
+
+		if (hasEscalationNotificationId && !hasEscalationAfterMinutes) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["escalationAfterMinutes"],
+				message: "Escalation wait time is required when escalation notification channel is set",
+			});
+		}
+	});
+
+export const editMonitorBodyValidation = z
+	.object({
+		name: z.string().optional(),
+		type: z.enum(MonitorTypes).optional(),
+		url: z.string().optional(),
+		statusWindowSize: z.number().min(1).max(20).default(5),
+		statusWindowThreshold: z.number().min(1).max(100).default(60),
+		description: z.union([z.string(), z.literal("")]).optional(),
+		interval: z.number().optional(),
+		notifications: z.array(z.string()).optional(),
+		secret: z.string().optional(),
+		ignoreTlsErrors: z.boolean().optional(),
+		useAdvancedMatching: z.boolean().optional(),
+		jsonPath: z.union([z.string(), z.literal("")]).optional(),
+		expectedValue: z.union([z.string(), z.literal("")]).optional(),
+		matchMethod: z.union([z.enum(MonitorMatchMethods), z.literal("")]).optional(),
+		port: z.number().min(1).max(65535).optional(),
+		cpuAlertThreshold: z.number().optional(),
+		memoryAlertThreshold: z.number().optional(),
+		diskAlertThreshold: z.number().optional(),
+		tempAlertThreshold: z.number().optional(),
+		escalationAfterMinutes: z.number().min(1).optional(),
+		escalationNotificationId: optionalEscalationNotificationId,
+		gameId: z.union([z.string(), z.literal("")]).optional(),
+		grpcServiceName: z.union([z.string(), z.literal("")]).optional(),
+		selectedDisks: z.array(z.string()).optional(),
+		group: z.union([z.string().max(50).trim(), z.null(), z.literal("")]).optional(),
+		geoCheckEnabled: z.boolean().optional(),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+		geoCheckInterval: z.number().min(300000).optional(),
+	})
+	.superRefine((body, ctx) => {
+		const hasEscalationAfterMinutes = typeof body.escalationAfterMinutes === "number";
+		const hasEscalationNotificationId = typeof body.escalationNotificationId === "string";
+
+		if (hasEscalationAfterMinutes && !hasEscalationNotificationId) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["escalationNotificationId"],
+				message: "Escalation notification channel is required when escalation wait time is set",
+			});
+		}
+
+		if (hasEscalationNotificationId && !hasEscalationAfterMinutes) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["escalationAfterMinutes"],
+				message: "Escalation wait time is required when escalation notification channel is set",
+			});
+		}
+	});
 
 export const pauseMonitorParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
@@ -144,6 +192,8 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationAfterMinutes: z.number().min(1).optional(),
+	escalationNotificationId: optionalEscalationNotificationId,
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

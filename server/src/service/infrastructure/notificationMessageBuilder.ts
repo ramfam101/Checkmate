@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision);
 
 		return {
 			type,
@@ -93,10 +93,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, decision);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -108,10 +113,21 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
+	private buildMonitorDownContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const isEscalation = decision.notificationReason === "escalation";
+		const title = isEscalation ? `Escalation: Monitor Down: ${monitor.name}` : `Monitor Down: ${monitor.name}`;
+		const summary = isEscalation
+			? `Escalation alert: monitor "${monitor.name}" remains down.`
+			: `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		if (isEscalation && decision.escalationDownTimeMs !== undefined) {
+			details.push(`Downtime: ${this.formatDuration(decision.escalationDownTimeMs)}`);
+		}
 
 		// Add response code if available
 		if (monitorStatusResponse.code) {
@@ -180,6 +196,24 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
 			timestamp: new Date(),
 		};
+	}
+
+	private formatDuration(durationMs: number): string {
+		const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+		const days = Math.floor(totalSeconds / 86400);
+		const hours = Math.floor((totalSeconds % 86400) / 3600);
+		const minutes = Math.floor((totalSeconds % 3600) / 60);
+		const seconds = totalSeconds % 60;
+
+		const parts: string[] = [];
+		if (days > 0) parts.push(`${days}d`);
+		if (hours > 0) parts.push(`${hours}h`);
+		if (minutes > 0) parts.push(`${minutes}m`);
+		if (parts.length === 0) {
+			parts.push(`${seconds}s`);
+		}
+
+		return parts.join(" ");
 	}
 
 	public extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[] {
