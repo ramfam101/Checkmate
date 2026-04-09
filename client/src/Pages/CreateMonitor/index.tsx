@@ -765,6 +765,71 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Send escalation alerts via selected channels after the configured delay."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{/* Escalation delay */}
+						<Controller
+							name="escalationAfter"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const value = e.target.value;
+										field.onChange(value === "" ? 0 : Number(value));
+									}}
+									type="number"
+									label="Escalation after (minutes)"
+									placeholder="Enter minutes"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+
+						{/* Escalation notification channels */}
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+
+								return (
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										getOptionLabel={(option) => option.name}
+										onChange={(_, newValue) => {
+											field.onChange(newValue.map((n) => n.id));
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										renderInput={(params) => (
+											<TextField
+												{...params}
+												label="Escalation notification channels"
+												placeholder="Select notification channels"
+												fullWidth
+											/>
+										)}
+									/>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
