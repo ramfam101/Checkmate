@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, CheckSnapshot, EscalationStep } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -15,14 +15,16 @@ import type {
 } from "@/types/check.js";
 
 type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Date };
+type EscalationStepDocument = Omit<EscalationStep, "notificationIds"> & { notificationIds: Types.ObjectId[] };
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "escalationSteps" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalationSteps: EscalationStepDocument[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -198,6 +200,16 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationStepSchema = new Schema<EscalationStepDocument>(
+	{
+		id: { type: String, required: true },
+		afterMinutes: { type: Number, required: true, min: 1 },
+		notificationIds: [{ type: Schema.Types.ObjectId, ref: "Notification" }],
+		label: { type: String },
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +296,14 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationEnabled: {
+			type: Boolean,
+			default: false,
+		},
+		escalationSteps: {
+			type: [escalationStepSchema],
+			default: [],
+		},
 		secret: {
 			type: String,
 		},

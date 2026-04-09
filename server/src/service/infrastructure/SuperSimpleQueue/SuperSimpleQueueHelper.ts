@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type Incident, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,14 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	escalation?: {
+		stepId: string;
+		afterMinutes: number;
+		label?: string;
+		incidentId: string;
+		incidentDurationMinutes: number;
+	};
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +184,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications for ongoing incidents
+				this.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalations for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +204,65 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private handleEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): Promise<void> => {
+		if ((monitor.status !== "down" && monitor.status !== "breached") || !monitor.escalationEnabled || !monitor.escalationSteps?.length) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const incidentStartMs = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(incidentStartMs)) {
+			return;
+		}
+
+		const elapsedMinutes = Math.floor((Date.now() - incidentStartMs) / 60000);
+		const sentStepIds = new Set(activeIncident.escalationSentStepIds ?? []);
+
+		const dueSteps = [...monitor.escalationSteps]
+			.sort((a, b) => a.afterMinutes - b.afterMinutes)
+			.filter((step) => step.afterMinutes <= elapsedMinutes && step.notificationIds.length > 0 && !sentStepIds.has(step.id));
+
+		if (!dueSteps.length) {
+			return;
+		}
+
+		const successfullySentStepIds: string[] = [];
+
+		for (const step of dueSteps) {
+			const sent = await this.notificationsService.handleEscalationNotifications(monitor, monitorStatusResponse, activeIncident, step, elapsedMinutes);
+			if (sent) {
+				successfullySentStepIds.push(step.id);
+			}
+		}
+
+		if (!successfullySentStepIds.length) {
+			return;
+		}
+
+		const updatedIncident = await this.incidentsRepository.markEscalationStepsSent(
+			activeIncident.id,
+			activeIncident.teamId,
+			successfullySentStepIds,
+			new Date()
+		);
+
+		if (updatedIncident) {
+			this.logger.info({
+				message: `Sent escalation step(s) ${successfullySentStepIds.join(", ")} for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationNotifications",
+				details: {
+					incidentId: activeIncident.id,
+					elapsedMinutes,
+				},
+			});
+		}
 	};
 
 	getCleanupOrphanedJob = () => {

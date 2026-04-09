@@ -3,7 +3,7 @@
  * Part of notification system unification effort
  */
 
-export type NotificationType = "monitor_down" | "monitor_up" | "threshold_breach" | "threshold_resolved" | "test";
+export type NotificationType = "monitor_down" | "monitor_up" | "threshold_breach" | "threshold_resolved" | "incident_escalation" | "test";
 
 export type NotificationSeverity = "critical" | "warning" | "info" | "success";
 
@@ -49,5 +49,12 @@ export interface NotificationMessage {
 	metadata: {
 		teamId: string;
 		notificationReason: string;
+		escalation?: {
+			stepId: string;
+			afterMinutes: number;
+			label?: string;
+			incidentId: string;
+			incidentDurationMinutes: number;
+		};
 	};
 }

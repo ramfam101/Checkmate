@@ -541,8 +541,33 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"option": {
+						"remove": "Remove notification"
+					}
 				},
+			"escalation": {
+				"title": "Escalation Rules",
+				"description": "If the monitor stays down for the specified time, notify additional channels.",
+				"option": {
+					"enabled": {
+						"label": "Enable escalated notifications"
+					},
+					"afterMinutes": {
+						"label": "Escalate after (minutes)"
+					},
+					"channels": {
+						"label": "Escalation notification channels"
+					},
+					"stepLabel": {
+						"label": "Step label (optional)",
+						"placeholder": "e.g. On-call manager"
+					},
+					"addStep": "Add escalation step",
+					"removeStep": "Remove escalation step",
+					"removeChannel": "Remove escalation channel"
+				}
+			},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

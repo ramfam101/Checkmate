@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision, clientHost);
 
 		return {
 			type,
@@ -48,11 +48,16 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				escalation: decision.escalation,
 			},
 		};
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "incident_escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -80,6 +85,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "incident_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -93,7 +99,13 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
@@ -103,9 +115,42 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "incident_escalation":
+				return this.buildIncidentEscalationContent(monitor, decision, clientHost);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
+	}
+
+	private buildIncidentEscalationContent(monitor: Monitor, decision: MonitorActionDecision, clientHost: string): NotificationContent {
+		const escalation = decision.escalation;
+		const durationMinutes = escalation?.incidentDurationMinutes ?? 0;
+		const stepLabel = escalation?.label ? ` (${escalation.label})` : "";
+
+		const title = `Escalation: Monitor ${monitor.name} still down`;
+		const summary = `${monitor.name} has been down for ${durationMinutes} minute(s). Escalation triggered after ${
+			escalation?.afterMinutes ?? 0
+		} minute(s)${stepLabel}.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: ${monitor.status}`,
+			`Incident ID: ${escalation?.incidentId ?? "unknown"}`,
+			`Down for: ${durationMinutes} minute(s)`,
+			`Escalation threshold: ${escalation?.afterMinutes ?? 0} minute(s)`,
+		];
+
+		return {
+			title,
+			summary,
+			details,
+			incident: {
+				id: escalation?.incidentId ?? "",
+				url: `${clientHost}/incidents`,
+				createdAt: new Date(Date.now() - durationMinutes * 60 * 1000),
+				duration: `${durationMinutes} minute(s)`,
+			},
+			timestamp: new Date(),
+		};
 	}
 
 	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
