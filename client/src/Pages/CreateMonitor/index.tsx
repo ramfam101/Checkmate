@@ -765,8 +765,8 @@ const CreateMonitorPage = () => {
 			/>
 
 			<ConfigBox
-				title={t("pages.createMonitor.form.escalationNotifications.title")}
-				subtitle={t("pages.createMonitor.form.escalationNotifications.description")}
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
 				rightContent={
 					<Controller
 						name="escalationNotifications"
@@ -797,7 +797,7 @@ const CreateMonitorPage = () => {
 													const val = e.target.value;
 													field.onChange(val === "" ? 0 : Number(val));
 												}}
-												fieldLabel={t("pages.createMonitor.form.escalationNotifications.option.escalationDelay.label")}
+												fieldLabel={t("pages.createMonitor.form.escalation.option.escalationDelay.label")}
 												type="number"
 												error={!!fieldState.error}
 												helperText={fieldState.error?.message}
@@ -808,7 +808,7 @@ const CreateMonitorPage = () => {
 										multiple
 										options={escalationOptions}
 										value={escalationNotifications}
-										fieldLabel={t("pages.createMonitor.form.escalationNotifications.option.escalationNotifications.label")}
+										fieldLabel={t("pages.createMonitor.form.escalation.option.escalationNotifications.label")}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof escalationOptions) => {
 											field.onChange(newValue.map((n) => n.id));

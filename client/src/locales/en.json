@@ -543,7 +543,7 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
-				"escalationNotifications": {
+				"escalation": {
 					"description": "If the monitor stays down for the specified time, notify additional channels.",
 					"option": {
 						"escalationDelay": {
