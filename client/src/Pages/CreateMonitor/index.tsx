@@ -764,6 +764,52 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+			{/* <ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="escalationInterval"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								type="number"
+								fieldLabel={t(
+									"pages.createMonitor.form.escalation.option.escalationInterval.label"
+								)}
+								placeholder={t(
+									"pages.createMonitor.form.escalation.option.escalationInterval.placeholder"
+								)}
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+							/>
+						)}
+					/>
+					<Controller
+						name="escalationNotificationChannels"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								type="text"
+								fieldLabel={t(
+									"pages.createMonitor.form.escalation.option.escalationNotificationChannels.label"
+								)}
+								placeholder={t(
+									"pages.createMonitor.form.escalation.option.escalationNotificationChannels.placeholder"
+								)}
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+							/>			
+						)}
+					/>
+				</Stack>
+				}
+			/> */}
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
@@ -940,6 +986,7 @@ const CreateMonitorPage = () => {
 									<Controller
 										name="geoCheckLocations"
 										control={control}
+
 										render={({ field }) => {
 											// Map continents to have 'name' property for Autocomplete
 											const locationOptions = GeoContinents.map((continent) => ({

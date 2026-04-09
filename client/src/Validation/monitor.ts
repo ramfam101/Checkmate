@@ -100,6 +100,7 @@ const hardwareSchema = baseSchema.extend({
 		.number()
 		.min(0, "CPU threshold must be at least 0")
 		.max(100, "CPU threshold must be at most 100"),
+	escalationInterval: z.array(z.string()).optional(),
 	memoryAlertThreshold: z
 		.number()
 		.min(0, "Memory threshold must be at least 0")
