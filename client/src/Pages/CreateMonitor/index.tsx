@@ -812,19 +812,33 @@ const CreateMonitorPage = () => {
 								<Controller
 									name="escalationEmail"
 									control={control}
-									render={({ field, fieldState }) => (
-										<TextField
-											{...field}
-											type="email"
-											fieldLabel={t(
-												"pages.createMonitor.form.escalation.option.email.label"
-											)}
-											placeholder="escalation@example.com"
-											fullWidth
-											error={!!fieldState.error}
-											helperText={fieldState.error?.message ?? ""}
-										/>
-									)}
+									render={({ field, fieldState }) => {
+										// Filter to only email notifications
+										const emailNotifications = (notifications ?? []).filter(
+											(n) => n.type === "email"
+										);
+										return (
+											<Select
+												{...field}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalation.option.email.label"
+												)}
+												placeholder="Select escalation email"
+												fullWidth
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message ?? ""}
+											>
+												{emailNotifications.map((notification) => (
+													<MenuItem
+														key={notification.id}
+														value={notification.address || ""}
+													>
+														{notification.notificationName} ({notification.address})
+													</MenuItem>
+												))}
+											</Select>
+										);
+									}}
 								/>
 							</>
 						)}
