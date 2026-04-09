@@ -21,6 +21,12 @@ const baseSchema = z.object({
 		.number({ message: "Threshold percentage is required" })
 		.min(1, "Incident percentage must be at least 1")
 		.max(100, "Incident percentage must be at most 100"),
+	incidentEscalationEnabled: z.boolean().optional(),
+	incidentEscalationMinutes: z
+		.number({ message: "Escalation minutes is required" })
+		.min(1, "Escalation delay must be at least 1 minute")
+		.max(10080, "Escalation delay must be at most 10080 minutes"),
+	incidentEscalationNotificationIds: z.array(z.string()),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z

@@ -50,6 +50,9 @@ export interface Monitor {
 	gameId?: string;
 	grpcServiceName?: string;
 	group: string | null;
+	incidentEscalationEnabled: boolean;
+	incidentEscalationMinutes: number;
+	incidentEscalationNotificationIds: string[];
 	geoCheckEnabled?: boolean;
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;

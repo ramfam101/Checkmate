@@ -351,6 +351,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.incidentEscalationNotificationIds ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -387,6 +388,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			incidentEscalationEnabled: doc.incidentEscalationEnabled ?? false,
+			incidentEscalationMinutes: doc.incidentEscalationMinutes ?? 30,
+			incidentEscalationNotificationIds: escalationNotificationIds,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
@@ -410,6 +414,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.incidentEscalationNotificationIds ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -446,6 +451,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			incidentEscalationEnabled: doc.incidentEscalationEnabled ?? false,
+			incidentEscalationMinutes: doc.incidentEscalationMinutes ?? 30,
+			incidentEscalationNotificationIds: escalationNotificationIds,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],

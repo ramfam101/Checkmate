@@ -81,6 +81,8 @@ export class EmailProvider implements INotificationProvider {
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
+				case "incident_escalation":
+					return `Monitor ${message.monitor.name} incident escalated`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":
