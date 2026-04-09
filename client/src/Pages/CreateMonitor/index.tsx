@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -203,6 +203,14 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const {
+		fields: escalationFields,
+		append: appendEscalation,
+		remove: removeEscalation,
+	} = useFieldArray({
+		control,
+		name: "escalations",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +770,90 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send additional alerts if an incident remains unresolved for a period of time"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Button
+							onClick={() => appendEscalation({ delayMinutes: 0, notifications: [] })}
+							disabled={isSubmitting}
+							startIcon={<Plus size={16} />}
+						>
+							Add Escalation Step
+						</Button>
+						{escalationFields.map((step, index) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack
+									key={step.id}
+									spacing={theme.spacing(LAYOUT.MD)}
+									sx={{
+										border: `1px solid ${theme.palette.divider}`,
+										borderRadius: theme.shape.borderRadius,
+										padding: theme.spacing(LAYOUT.MD),
+									}}
+								>
+									<Stack
+										direction="row"
+										spacing={theme.spacing(LAYOUT.MD)}
+										alignItems="center"
+									>
+										<Typography flexGrow={1}>Step {index + 1}</Typography>
+										<IconButton
+											size="small"
+											onClick={() => removeEscalation(index)}
+											aria-label="Remove escalation step"
+										>
+											<Trash2 size={16} />
+										</IconButton>
+									</Stack>
+									<Controller
+										name={`escalations.${index}.delayMinutes`}
+										control={control}
+										render={({ field }) => (
+											<TextField
+												{...field}
+												type="number"
+												label="Delay (minutes)"
+												onChange={(e) => field.onChange(Number(e.target.value))}
+											/>
+										)}
+									/>
+									<Controller
+										name={`escalations.${index}.notifications`}
+										control={control}
+										render={({ field }) => {
+											const selected = notificationOptions.filter((n) =>
+												(field.value ?? []).includes(n.id)
+											);
+											return (
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selected}
+													getOptionLabel={(option) => option.name}
+													onChange={(
+														_: unknown,
+														newValue: typeof notificationOptions
+													) => {
+														field.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+												/>
+											);
+										}}
+									/>
+								</Stack>
+							);
+						})}
+					</Stack>
 				}
 			/>
 
