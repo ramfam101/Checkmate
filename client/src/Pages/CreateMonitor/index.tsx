@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,15 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((n) => ({
+				...n,
+				name: n.notificationName,
+			})),
+		[notifications]
+	);
 
 	useEffect(() => {
 		clearErrors();
@@ -705,11 +714,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -749,11 +753,109 @@ const CreateMonitorPage = () => {
 																)
 															);
 														}}
-														aria-label="Remove notification"
+														aria-label={t(
+															"pages.createMonitor.form.notifications.option.remove"
+														)}
 													>
 														<Trash2 size={16} />
 													</IconButton>
 													{index < selectedNotifications.length - 1 && <Divider />}
+												</Stack>
+											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationSteps"
+						control={control}
+						render={({ field }) => {
+							const steps = field.value ?? [];
+							const currentStep = steps[0] ?? {
+								id: "",
+								afterMinutes: 1,
+								notificationIds: [],
+							};
+							const selectedChannels = notificationOptions.filter((n) =>
+								(currentStep.notificationIds ?? []).includes(n.id)
+							);
+
+							const updateStep = (updates: Partial<typeof currentStep>) => {
+								const updated = {
+									...currentStep,
+									id: currentStep.id || crypto.randomUUID(),
+									...updates,
+								};
+								field.onChange([updated]);
+								setValue("escalationEnabled", updated.notificationIds.length > 0);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<TextField
+										type="number"
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.afterMinutes.label"
+										)}
+										value={currentStep.afterMinutes}
+										onChange={(event) => {
+											updateStep({
+												afterMinutes: Number(event.target.value),
+											});
+										}}
+									/>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedChannels}
+										getOptionLabel={(option) => option.name}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.channels.label"
+										)}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											updateStep({
+												notificationIds: newValue.map((n) => n.id),
+											});
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+									{selectedChannels.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedChannels.map((channel) => (
+												<Stack
+													direction="row"
+													alignItems="center"
+													key={channel.id}
+													width="100%"
+												>
+													<Typography flexGrow={1}>{channel.notificationName}</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															updateStep({
+																notificationIds: currentStep.notificationIds.filter(
+																	(id: string) => id !== channel.id
+																),
+															});
+														}}
+														aria-label={t(
+															"pages.createMonitor.form.escalation.option.removeChannel"
+														)}
+													>
+														<Trash2 size={16} />
+													</IconButton>
 												</Stack>
 											))}
 										</Stack>

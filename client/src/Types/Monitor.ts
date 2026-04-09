@@ -38,6 +38,13 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 
 export type MonitorMatchMethod = "equal" | "include" | "regex" | "";
 
+export interface EscalationStep {
+	id: string;
+	afterMinutes: number;
+	notificationIds: string[];
+	label?: string;
+}
+
 export interface Monitor {
 	id: string;
 	userId: string;
@@ -60,6 +67,8 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalationEnabled?: boolean;
+	escalationSteps?: EscalationStep[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

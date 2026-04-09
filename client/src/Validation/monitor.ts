@@ -1,33 +1,79 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
 
+const escalationStepSchema = z.object({
+	id: z.string().min(1, "Step ID is required"),
+	afterMinutes: z
+		.number()
+		.int("Escalation time must be a whole number")
+		.min(1, "Escalation time must be at least 1 minute"),
+	notificationIds: z.array(z.string()),
+	label: z.string().optional(),
+});
+
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
 // Common base schema for all monitor types
-const baseSchema = z.object({
-	name: z
-		.string()
-		.min(1, "Monitor name is required")
-		.max(50, "Monitor name must be at most 50 characters"),
-	description: z.string().optional(),
-	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
-	notifications: z.array(z.string()),
-	statusWindowSize: z
-		.number({ message: "Status window size is required" })
-		.min(1, "Status window size must be at least 1")
-		.max(25, "Status window size must be at most 25"),
-	statusWindowThreshold: z
-		.number({ message: "Threshold percentage is required" })
-		.min(1, "Incident percentage must be at least 1")
-		.max(100, "Incident percentage must be at most 100"),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z
-		.number()
-		.min(300000, "Interval must be at least 5 minutes")
-		.optional(),
-});
+const baseSchema = z
+	.object({
+		name: z
+			.string()
+			.min(1, "Monitor name is required")
+			.max(50, "Monitor name must be at most 50 characters"),
+		description: z.string().optional(),
+		interval: z.number().min(15000, "Interval must be at least 15 seconds"),
+		notifications: z.array(z.string()),
+		escalationEnabled: z.boolean().default(false),
+		escalationSteps: z
+			.array(escalationStepSchema)
+			.max(10, "No more than 10 escalation steps are allowed")
+			.refine((steps) => {
+				for (let i = 1; i < steps.length; i++) {
+					if (steps[i].afterMinutes <= steps[i - 1].afterMinutes) {
+						return false;
+					}
+				}
+				return true;
+			}, "Escalation steps must be ordered by increasing minutes")
+			.default([]),
+		statusWindowSize: z
+			.number({ message: "Status window size is required" })
+			.min(1, "Status window size must be at least 1")
+			.max(25, "Status window size must be at most 25"),
+		statusWindowThreshold: z
+			.number({ message: "Threshold percentage is required" })
+			.min(1, "Incident percentage must be at least 1")
+			.max(100, "Incident percentage must be at most 100"),
+		geoCheckEnabled: z.boolean().optional(),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+		geoCheckInterval: z
+			.number()
+			.min(300000, "Interval must be at least 5 minutes")
+			.optional(),
+	})
+	.superRefine((data, ctx) => {
+		if (data.escalationEnabled) {
+			if (data.escalationSteps.length === 0) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["escalationSteps"],
+					message: "Add at least one escalation step or disable escalations",
+				});
+			} else {
+				for (const [i, step] of data.escalationSteps.entries()) {
+					if (step.notificationIds.length === 0) {
+						ctx.addIssue({
+							code: "custom",
+							path: ["escalationSteps", i, "notificationIds"],
+							message:
+								"Each escalation step must include at least one notification channel",
+						});
+					}
+				}
+			}
+		}
+	});
 
 // HTTP monitor schema
 const httpSchema = baseSchema.extend({
