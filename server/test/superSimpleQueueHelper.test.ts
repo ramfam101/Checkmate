@@ -15,7 +15,10 @@ const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimp
 		logger: createLogger(),
 		networkService: { requestStatus: jest.fn() },
 		statusService: statusServiceMock,
-		notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+		notificationsService: {
+			handleNotifications: jest.fn().mockResolvedValue(undefined),
+			processEscalationDueNotifications: jest.fn().mockResolvedValue(undefined),
+		},
 		checkService: { buildCheck: jest.fn().mockResolvedValue({}) },
 		buffer: { addToBuffer: jest.fn() },
 		incidentService: { handleIncident: jest.fn().mockResolvedValue(undefined) },
@@ -47,7 +50,10 @@ describe("SuperSimpleQueueHelper", () => {
 				statusService: {
 					updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: updatedMonitor, statusChanged: true, prevStatus: false, code: 200 }),
 				},
-				notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+				notificationsService: {
+					handleNotifications: jest.fn().mockResolvedValue(undefined),
+					processEscalationDueNotifications: jest.fn().mockResolvedValue(undefined),
+				},
 			});
 			jest.spyOn(helper, "isInMaintenanceWindow").mockResolvedValue(false);
 			const job = helper.getMonitorJob();

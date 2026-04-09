@@ -8,12 +8,15 @@ import type {
 	NotificationContent,
 } from "@/types/notificationMessage.js";
 
+export type EscalationMessageOptions = { isEscalation: boolean; delayMinutes: number };
+
 export interface INotificationMessageBuilder {
 	buildMessage(
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalation?: EscalationMessageOptions
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -27,11 +30,17 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalation?: EscalationMessageOptions
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
+
+		if (escalation?.isEscalation && escalation.delayMinutes > 0) {
+			const detail = `Escalated alert: sent ${escalation.delayMinutes} minute(s) after the incident started.`;
+			content.details = [...(content.details ?? []), detail];
+		}
 
 		return {
 			type,
@@ -48,32 +57,33 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				isEscalation: escalation?.isEscalation,
+				escalationDelayMinutes: escalation?.delayMinutes,
 			},
 		};
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
 		}
 
-		// Threshold breach (only if not down)
+		if (monitor.status === "breached") {
+			return "threshold_breach";
+		}
+
 		if (decision.notificationReason === "threshold_breach") {
 			return "threshold_breach";
 		}
 
-		// Recovery from threshold breach (only for hardware monitors)
 		if (decision.notificationReason === "status_change" && monitor.status === "up" && monitor.type === "hardware") {
 			return "threshold_resolved";
 		}
 
-		// Standard recovery (up)
 		if (monitor.status === "up") {
 			return "monitor_up";
 		}
 
-		// Default to monitor_up for any other case
 		return "monitor_up";
 	}
 

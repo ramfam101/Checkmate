@@ -1,8 +1,3 @@
-/**
- * Unified notification message types for cross-provider consistency
- * Part of notification system unification effort
- */
-
 export type NotificationType = "monitor_down" | "monitor_up" | "threshold_breach" | "threshold_resolved" | "test";
 
 export type NotificationSeverity = "critical" | "warning" | "info" | "success";
@@ -20,7 +15,7 @@ export interface ThresholdBreach {
 	currentValue: number;
 	threshold: number;
 	unit: string;
-	formattedValue: string; // e.g., "85%" or "72°C"
+	formattedValue: string;
 }
 
 export interface IncidentInfo {
@@ -49,5 +44,7 @@ export interface NotificationMessage {
 	metadata: {
 		teamId: string;
 		notificationReason: string;
+		isEscalation?: boolean;
+		escalationDelayMinutes?: number;
 	};
 }

@@ -540,8 +540,15 @@
 					"title": "Incidents"
 				},
 				"notifications": {
-					"description": "Select the notification channels you want to use",
+					"description": "Channels that are notified when this monitor goes down, recovers, or breaches a threshold.",
 					"title": "Notifications"
+				},
+				"escalatedNotifications": {
+					"title": "Escalated notifications",
+					"description": "Additional channels (they can differ from notifications above). Set how many minutes after an incident starts each one should alert. Use 0 to notify at the same time as regular notifications when an incident starts.",
+					"empty": "Add channels here for delayed or extra escalation alerts.",
+					"delayLabel": "Delay after incident starts",
+					"minutesSuffix": "min"
 				},
 				"type": {
 					"description": "Select the type of check to perform",
