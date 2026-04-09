@@ -213,6 +213,11 @@ const CreateMonitorPage = () => {
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
 
+	const notificationOptions = (notifications ?? []).map((n) => ({
+		...n,
+		name: n.notificationName,
+	}));
+
 	useEffect(() => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
@@ -228,6 +233,9 @@ const CreateMonitorPage = () => {
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
+
+	const [escalationDelay, setEscalationDelay] = useState<number>(1);
+	const [escalationChannels, setEscalationChannels] = useState<string[]>([]);
 
 	const handleDeleteClick = () => {
 		setIsDeleteDialogOpen(true);
@@ -765,7 +773,68 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			{(watchedType === "http" ||
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<TextField
+							label="Escalate after (minutes)"
+							type="number"
+							value={escalationDelay}
+							onChange={(e) => {
+								const value = Number(e.target.value);
+								setEscalationDelay(Number.isNaN(value) ? 0 : value);
+							}}
+							fullWidth
+						/>
+						<Autocomplete
+							multiple
+							options={notificationOptions}
+							value={notificationOptions.filter((option) => escalationChannels.includes(option.id))}
+							getOptionLabel={(option) => option.name}
+							onChange={(_: unknown, newValue) => {
+								setEscalationChannels(newValue.map((n) => n.id));
+							}}
+							isOptionEqualToValue={(option, value) => option.id === value.id}
+						/>
+						{escalationChannels.length > 0 && (
+							<Stack flex={1} width="100%">
+								{notificationOptions
+									.filter((option) => escalationChannels.includes(option.id))
+									.map((notification, index) => (
+										<Stack
+											direction="row"
+											alignItems="center"
+											key={notification.id}
+											width="100%"
+										>
+												<Typography flexGrow={1}>
+													{notification.notificationName}
+												</Typography>
+												<IconButton
+													size="small"
+													onClick={() => {
+														setEscalationChannels(
+															escalationChannels.filter(
+															(id: string) => id !== notification.id
+															)
+														);
+													}}
+													aria-label="Remove escalation notification"
+												>
+													<Trash2 size={16} />
+												</IconButton>
+												{index < escalationChannels.length - 1 && <Divider />}
+											</Stack>
+										))}
+								</Stack>
+							)}
+						</Stack>
+					}
+				/>
+				
+				{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
 				<ConfigBox
