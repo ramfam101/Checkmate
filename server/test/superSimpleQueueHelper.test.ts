@@ -1,12 +1,12 @@
 import { describe, expect, it, jest } from "@jest/globals";
-import SuperSimpleQueueHelper from "../src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.ts";
+import SuperSimpleQueueHelper  from "../src/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.ts";
 import type { Monitor } from "../src/types/monitor.ts";
 
 const createLogger = () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() });
 
 const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimpleQueueHelper>[0]>) => {
 	const maintenanceWindowsRepository = {
-		findByMonitorId: jest.fn().mockResolvedValue([]),
+		findByMonitorId: vi.fn().mockResolvedValue([]),
 	};
 	const statusServiceMock = {
 		updateMonitorStatus: jest.fn().mockResolvedValue({ monitor: { id: "m1" }, statusChanged: true, prevStatus: false }),
@@ -61,6 +61,50 @@ describe("SuperSimpleQueueHelper", () => {
 			const job = helper.getMonitorJob();
 			await expect(job({} as Monitor)).rejects.toThrow("No monitor id");
 			expect(helper["logger"].warn).toHaveBeenCalled();
+		});
+	});
+
+	describe("evaluateMonitorAction", () => {
+		it("returns escalation when status is down, not changed, escalationNotifications present, not sent, and downtime exceeds interval", () => {
+			const { helper } = createHelper();
+			const monitor = {
+				id: "m1",
+				status: "down",
+				escalationInterval: 1,
+				escalationNotifications: ["n1"],
+				escalationNotificationSent: false,
+				lastDownAt: new Date(Date.now() - 60_000).toISOString(),
+			} as any as Monitor;
+	
+			const decision = (helper as any).evaluateMonitorAction({
+				monitor,
+				statusChanged: false,
+				prevStatus: "down",
+			});
+	
+			expect(decision.shouldSendNotification).toBe(true);
+			expect(decision.notificationReason).toBe("escalation");
+		});
+	
+		it("does not return escalation if escalationNotificationSent is already true", () => {
+			const { helper } = createHelper();
+			const monitor = {
+				id: "m1",
+				status: "down",
+				escalationInterval: 1,
+				escalationNotifications: ["n1"],
+				escalationNotificationSent: true,
+				lastDownAt: new Date(Date.now() - 60_000).toISOString(),
+			} as any as Monitor;
+	
+			const decision = (helper as any).evaluateMonitorAction({
+				monitor,
+				statusChanged: false,
+				prevStatus: "down",
+			});
+	
+			expect(decision.shouldSendNotification).toBe(false);
+			expect(decision.notificationReason).toBeNull();
 		});
 	});
 
