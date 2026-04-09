@@ -9,6 +9,7 @@ import {
 	ISettingsService,
 	IStatusService,
 	IncidentService,
+	EscalationService,
 	type IGeoChecksService,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
@@ -58,6 +59,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private settingsService: ISettingsService;
 	private buffer: IBufferService;
 	private incidentService: IncidentService;
+	private escalationService: EscalationService;
 	private maintenanceWindowsRepository: IMaintenanceWindowsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private teamsRepository: ITeamsRepository;
@@ -76,6 +78,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		settingsService: ISettingsService,
 		buffer: IBufferService,
 		incidentService: IncidentService,
+		escalationService: EscalationService,
 		maintenanceWindowsRepository: IMaintenanceWindowsRepository,
 		monitorsRepository: IMonitorsRepository,
 		teamsRepository: ITeamsRepository,
@@ -93,6 +96,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.buffer = buffer;
 		this.notificationsService = notificationsService;
 		this.incidentService = incidentService;
+		this.escalationService = escalationService;
 		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.teamsRepository = teamsRepository;
@@ -177,7 +181,20 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
-			} catch (error: unknown) {
+			// Step 8. Handle escalations for active incidents (best effort, don't wait)
+			if (statusChangeResult.monitor.escalationRules && statusChangeResult.monitor.escalationRules.length > 0) {
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId);
+				if (activeIncident) {
+					this.escalationService.checkAndTriggerEscalations(activeIncident, statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error checking escalations for incident ${activeIncident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+			}			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,

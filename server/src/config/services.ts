@@ -20,6 +20,7 @@ import {
 	InviteService,
 	MaintenanceWindowService,
 	IncidentService,
+	EscalationService,
 	// Notification providers
 	WebhookProvider,
 	SlackProvider,
@@ -246,6 +247,8 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(logger, incidentsRepository, notificationsService);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -255,6 +258,7 @@ export const initializeServices = async ({
 		settingsService,
 		bufferService,
 		incidentService,
+		escalationService,
 		maintenanceWindowsRepository,
 		monitorsRepository,
 		teamsRepository,
@@ -324,6 +328,7 @@ export const initializeServices = async ({
 		maintenanceWindowService,
 		monitorService,
 		incidentService,
+		escalationService,
 		logger,
 		notificationsService,
 		statusPageService,

@@ -765,6 +765,136 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const escalationRule = (field.value ?? [{}])[0] || {};
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const selectedNotifications = notificationOptions.filter(
+								(n) => escalationRule.notificationIds?.includes(n.id)
+							);
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										<Typography 
+											variant="subtitle2" 
+											sx={{ color: theme.palette.text.secondary }}
+										>
+											{t("pages.createMonitor.form.escalations.delayLabel")}
+										</Typography>
+										<TextField
+											type="number"
+											value={escalationRule.delayMinutes ? escalationRule.delayMinutes : ""}
+											onChange={(e) => {
+												const value = e.target.value;
+												const numValue = value === "" ? 0 : parseInt(value, 10);
+												field.onChange([
+													{
+														...escalationRule,
+														delayMinutes: isNaN(numValue) ? 0 : numValue,
+													},
+												]);
+											}}
+											inputProps={{ min: 1 }}
+											placeholder="0"
+											sx={{
+												'& input[type=number]::-webkit-outer-spin-button': {
+													WebkitAppearance: 'none',
+													margin: 0,
+												},
+												'& input[type=number]::-webkit-inner-spin-button': {
+													WebkitAppearance: 'none',
+													margin: 0,
+												},
+												'& input[type=number]': {
+													MozAppearance: 'textfield',
+												},
+											}}
+										/>
+									</Stack>
+									<Stack spacing={theme.spacing(LAYOUT.SM)}>
+										<Typography 
+											variant="subtitle2" 
+											sx={{ color: theme.palette.text.secondary }}
+										>
+											{t("pages.createMonitor.form.escalations.channelsLabel")}
+										</Typography>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(
+												_: unknown,
+												newValue: typeof notificationOptions
+											) => {
+												field.onChange([
+													{
+														...escalationRule,
+														notificationIds: newValue.map((n) => n.id),
+													},
+												]);
+											}}
+											isOptionEqualToValue={(option, value) =>
+												option.id === value.id
+											}
+											placeholder={t(
+												"pages.createMonitor.form.escalations.channelsPlaceholder"
+											)}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange([
+																	{
+																		...escalationRule,
+																		notificationIds: (escalationRule.notificationIds ?? []).filter(
+																			(id: string) => id !== notification.id
+																		),
+																	},
+																]);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

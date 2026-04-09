@@ -72,6 +72,19 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationsSent: [
+			{
+				delayMinutes: {
+					type: Number,
+					required: true,
+				},
+				sentAt: {
+					type: Date,
+					required: true,
+				},
+				_id: false,
+			},
+		],
 	},
 	{ timestamps: true }
 );
