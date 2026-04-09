@@ -49,6 +49,7 @@ import Logs from "@/Pages/Logs";
 import { ProtectedRoute, RoleProtectedRoute } from "@/Components/routing/RouteProtected";
 
 import CreateMonitor from "@/Pages/CreateMonitor";
+import EscalationPage from "@/Pages/Escalation/escalationpage";
 
 const Routes = () => {
 	return (
@@ -158,6 +159,11 @@ const Routes = () => {
 				<Route
 					path="notifications/configure/:notificationId"
 					element={<CreateNotifications />}
+				/>
+
+				<Route
+					path="escalations"
+					element={<EscalationPage />}
 				/>
 
 				<Route

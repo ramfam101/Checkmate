@@ -1,0 +1,12 @@
+.escalation-page {
+    padding: 1.5rem;
+}
+
+.escalation-page h1 {
+    margin-bottom: 1rem;
+}
+
+.escalation-page p {
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary, #6b7280);
+}
