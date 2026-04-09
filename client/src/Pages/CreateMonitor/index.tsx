@@ -753,7 +753,9 @@ const CreateMonitorPage = () => {
 																)
 															);
 														}}
-														aria-label={t("pages.createMonitor.form.notifications.option.remove")}
+														aria-label={t(
+															"pages.createMonitor.form.notifications.option.remove"
+														)}
 													>
 														<Trash2 size={16} />
 													</IconButton>
@@ -787,19 +789,14 @@ const CreateMonitorPage = () => {
 								(currentStep.notificationIds ?? []).includes(n.id)
 							);
 
-							const updateStep = (
-								updates: Partial<typeof currentStep>
-							) => {
+							const updateStep = (updates: Partial<typeof currentStep>) => {
 								const updated = {
 									...currentStep,
 									id: currentStep.id || crypto.randomUUID(),
 									...updates,
 								};
 								field.onChange([updated]);
-								setValue(
-									"escalationEnabled",
-									updated.notificationIds.length > 0
-								);
+								setValue("escalationEnabled", updated.notificationIds.length > 0);
 							};
 
 							return (
@@ -824,19 +821,12 @@ const CreateMonitorPage = () => {
 										fieldLabel={t(
 											"pages.createMonitor.form.escalation.option.channels.label"
 										)}
-										onChange={(
-											_: unknown,
-											newValue: typeof notificationOptions
-										) => {
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
 											updateStep({
-												notificationIds: newValue.map(
-													(n) => n.id
-												),
+												notificationIds: newValue.map((n) => n.id),
 											});
 										}}
-										isOptionEqualToValue={(option, value) =>
-											option.id === value.id
-										}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
 									{selectedChannels.length > 0 && (
 										<Stack
@@ -850,19 +840,14 @@ const CreateMonitorPage = () => {
 													key={channel.id}
 													width="100%"
 												>
-													<Typography flexGrow={1}>
-														{channel.notificationName}
-													</Typography>
+													<Typography flexGrow={1}>{channel.notificationName}</Typography>
 													<IconButton
 														size="small"
 														onClick={() => {
 															updateStep({
-																notificationIds:
-																	currentStep.notificationIds.filter(
-																		(id: string) =>
-																			id !==
-																			channel.id
-																	),
+																notificationIds: currentStep.notificationIds.filter(
+																	(id: string) => id !== channel.id
+																),
 															});
 														}}
 														aria-label={t(
