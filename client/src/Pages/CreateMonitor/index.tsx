@@ -212,6 +212,8 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedNotifications = watch("notifications") as string[];
+	const escalationSectionDisabled = (watchedNotifications ?? []).length === 0;
 
 	useEffect(() => {
 		clearErrors();
@@ -252,11 +254,25 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const hasBaseNotifications = (data.notifications ?? []).length > 0;
+		const hasEscalationNotifications = (data.escalationNotifications ?? []).length > 0;
+		const normalizedData: MonitorFormData = {
+			...data,
+			escalationNotifications: hasBaseNotifications ? data.escalationNotifications : [],
+			escalationAfterMinutes:
+				hasBaseNotifications &&
+				hasEscalationNotifications &&
+				data.escalationAfterMinutes &&
+				data.escalationAfterMinutes > 0
+					? data.escalationAfterMinutes
+					: null,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, normalizedData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", normalizedData);
 		}
 
 		if (result?.success) {
@@ -749,7 +765,7 @@ const CreateMonitorPage = () => {
 																)
 															);
 														}}
-														aria-label="Remove notification"
+														aria-label="Remove escalation channel"
 													>
 														<Trash2 size={16} />
 													</IconButton>
@@ -762,6 +778,118 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationAfterMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const value = e.target.value;
+										field.onChange(value === "" ? null : Number(value));
+									}}
+									type="number"
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.delayMinutes.label"
+									)}
+									placeholder={t(
+										"pages.createMonitor.form.escalation.option.delayMinutes.placeholder"
+									)}
+									fullWidth
+									disabled={escalationSectionDisabled}
+									error={!!fieldState.error}
+									helperText={
+										fieldState.error?.message ??
+										(escalationSectionDisabled
+											? t("pages.createMonitor.form.escalation.baseRequired")
+											: "")
+									}
+									inputProps={{ min: 1 }}
+								/>
+							)}
+						/>
+
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const escalationOptions = (notifications ?? [])
+									.filter((notification) => notification.type === "email")
+									.map((notification) => ({
+										...notification,
+										name: notification.notificationName,
+									}));
+
+								const selectedEscalationNotifications = escalationOptions.filter(
+									(option) => (field.value ?? []).includes(option.id)
+								);
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={escalationOptions}
+											value={selectedEscalationNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof escalationOptions) => {
+												field.onChange(newValue.map((notification) => notification.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											disabled={escalationSectionDisabled}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channels.label"
+											)}
+										/>
+
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															disabled={escalationSectionDisabled}
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && (
+															<Divider />
+														)}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

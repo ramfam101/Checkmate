@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +177,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation checks on each poll cycle while monitor is already down/breached.
+				// Only run when statusChanged is false — skip the initial down cycle to avoid racing
+				// with incident creation (which is fire-and-forget above).
+				if (
+					!statusChangeResult.statusChanged &&
+					(statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached")
+				) {
+					this.handleEscalationIfEligible(statusChangeResult.monitor, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -416,6 +433,96 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private handleEscalationIfEligible = async (monitor: Monitor, status: MonitorStatusResponse) => {
+		const escalationAfterMinutes = monitor.escalationAfterMinutes;
+		if (escalationAfterMinutes === null || escalationAfterMinutes === undefined || escalationAfterMinutes <= 0) {
+			this.logger.debug({
+				message: `Escalation skipped for monitor ${monitor.id}: no escalation delay configured`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+			});
+			return;
+		}
+
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+			this.logger.debug({
+				message: `Escalation skipped for monitor ${monitor.id}: no escalation channels configured`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+			});
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			this.logger.debug({
+				message: `Escalation skipped for monitor ${monitor.id}: no active incident`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+			});
+			return;
+		}
+
+		if (activeIncident.escalationSentAt) {
+			this.logger.debug({
+				message: `Escalation skipped for monitor ${monitor.id}: already sent for active incident ${activeIncident.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+			});
+			return;
+		}
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		const elapsedMs = Date.now() - incidentStart;
+		const escalationDelayMs = escalationAfterMinutes * 60 * 1000;
+		if (elapsedMs < escalationDelayMs) {
+			this.logger.debug({
+				message: `Escalation skipped for monitor ${monitor.id}: delay not reached`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+				details: {
+					incidentId: activeIncident.id,
+					elapsedMs,
+					escalationDelayMs,
+				},
+			});
+			return;
+		}
+
+		// Atomically claim escalation to prevent duplicate sends across concurrent polls
+		const claimed = await this.incidentsRepository.claimEscalation(activeIncident.id, activeIncident.teamId);
+		if (!claimed) {
+			this.logger.debug({
+				message: `Escalation skipped for monitor ${monitor.id}: claim failed (already claimed by another poll)`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+				details: { incidentId: activeIncident.id },
+			});
+			return;
+		}
+
+		const sent = await this.notificationsService.handleEscalationNotifications(monitor, status);
+		if (!sent) {
+			this.logger.debug({
+				message: `Escalation claimed but no email was sent for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationIfEligible",
+				details: { incidentId: activeIncident.id },
+			});
+			return;
+		}
+
+		this.logger.info({
+			message: `Escalation notification sent for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationIfEligible",
+			details: {
+				incidentId: activeIncident.id,
+				escalationAfterMinutes,
+			},
+		});
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {

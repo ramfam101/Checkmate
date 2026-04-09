@@ -3599,6 +3599,18 @@
 						},
 						"description": "Array of notification IDs to associate with this monitor"
 					},
+					"escalationAfterMinutes": {
+						"type": ["integer", "null"],
+						"minimum": 1,
+						"description": "Delay in minutes before sending escalation notifications"
+					},
+					"escalationNotifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Array of escalation notification IDs (email channels only)"
+					},
 					"secret": {
 						"type": "string"
 					},
@@ -3690,6 +3702,16 @@
 						"type": "integer"
 					},
 					"notifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"escalationAfterMinutes": {
+						"type": ["integer", "null"],
+						"minimum": 1
+					},
+					"escalationNotifications": {
 						"type": "array",
 						"items": {
 							"type": "string"
@@ -3812,6 +3834,16 @@
 						"description": "Timestamp of last check"
 					},
 					"notifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"escalationAfterMinutes": {
+						"type": ["integer", "null"],
+						"minimum": 1
+					},
+					"escalationNotifications": {
 						"type": "array",
 						"items": {
 							"type": "string"
@@ -4123,6 +4155,11 @@
 					"statusCode": {
 						"type": ["integer", "null"],
 						"description": "HTTP status code if applicable"
+					},
+					"escalationSentAt": {
+						"type": ["string", "null"],
+						"format": "date-time",
+						"description": "Timestamp when escalation notifications were sent for this incident"
 					},
 					"resolutionType": {
 						"type": ["string", "null"],
