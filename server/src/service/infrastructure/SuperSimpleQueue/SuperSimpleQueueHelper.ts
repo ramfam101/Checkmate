@@ -156,6 +156,22 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				// Set downtimeStartedAt when monitor first goes down
+				if (statusChangeResult.monitor.status === "down" && statusChangeResult.statusChanged && !statusChangeResult.monitor.downtimeStartedAt) {
+					await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, {
+						downtimeStartedAt: Date.now(),
+					});
+					statusChangeResult.monitor.downtimeStartedAt = Date.now();
+				}
+
+				// Reset when monitor comes back up
+				if (statusChangeResult.monitor.status === "up" && statusChangeResult.statusChanged) {
+					await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, {
+						downtimeStartedAt: null,
+						escalationNotificationsSent: [],
+					});
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -167,6 +183,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						});
 					});
 				}
+
+				// Step 6b. Handle escalated notification emails for ongoing downtime
+				this.notificationsService.handleEscalationNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {

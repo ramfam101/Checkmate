@@ -16,6 +16,12 @@ const envSchema = z.object({
 	// Client Configuration
 	CLIENT_HOST: z.string().url("CLIENT_HOST must be a valid URL"),
 
+	// SMTP Configuration
+	SMTP_HOST: z.string().min(1, "SMTP_HOST is required"),
+	SMTP_PORT: z.coerce.number().min(1).max(65535).default(587),
+	SMTP_USER: z.string().min(1, "SMTP_USER is required"),
+	SMTP_PASS: z.string().min(1, "SMTP_PASS is required"),
+
 	// Optional
 	ORIGIN: z.string().optional(),
 });

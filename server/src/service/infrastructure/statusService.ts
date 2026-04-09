@@ -348,6 +348,17 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
+			// Track downtime start and escalation progress only for confirmed down status
+			if (newStatus === "down") {
+				if (!monitor.downtimeStartedAt) {
+					monitor.downtimeStartedAt = new Date().getTime();
+				}
+				monitor.escalationNotificationsSent = monitor.escalationNotificationsSent ?? [];
+			} else {
+				monitor.downtimeStartedAt = null;
+				monitor.escalationNotificationsSent = [];
+			}
+
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
 			return {

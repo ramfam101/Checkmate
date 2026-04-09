@@ -111,7 +111,22 @@ export class EmailService implements IEmailService {
 		if (typeof transportConfig !== "undefined") {
 			config = transportConfig;
 		} else {
-			config = await this.settingsService.getDBSettings();
+			// Use SMTP config from environment variables
+			const settings = this.settingsService.getSettings();
+			config = {
+				systemEmailHost: settings.smtpHost,
+				systemEmailPort: settings.smtpPort,
+				systemEmailSecure: false, // Default to false for SMTP
+				systemEmailPool: false,
+				systemEmailUser: settings.smtpUser,
+				systemEmailAddress: settings.smtpUser, // Use SMTP user as from address
+				systemEmailPassword: settings.smtpPass,
+				systemEmailConnectionHost: settings.smtpHost,
+				systemEmailTLSServername: undefined,
+				systemEmailIgnoreTLS: false,
+				systemEmailRequireTLS: false,
+				systemEmailRejectUnauthorized: false,
+			};
 		}
 		const {
 			systemEmailHost,
@@ -152,7 +167,7 @@ export class EmailService implements IEmailService {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: `Email transporter verification failed: ${error instanceof Error ? error.message : String(error)}`,
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,

@@ -12,6 +12,10 @@ export type EnvConfig = {
 	logLevel: string;
 	clientHost: string;
 	dbConnectionString: string;
+	smtpHost: string;
+	smtpPort: number;
+	smtpUser: string;
+	smtpPass: string;
 };
 
 export interface ISettingsService {
@@ -36,6 +40,10 @@ export class SettingsService implements ISettingsService {
 			logLevel: env.LOG_LEVEL,
 			clientHost: env.CLIENT_HOST,
 			dbConnectionString: env.DB_CONNECTION_STRING,
+			smtpHost: env.SMTP_HOST,
+			smtpPort: env.SMTP_PORT,
+			smtpUser: env.SMTP_USER,
+			smtpPass: env.SMTP_PASS,
 		};
 	}
 
