@@ -60,6 +60,10 @@ You can see the latest build of [Checkmate](https://checkmate-demo.bluewavelabs.
 
 Usage instructions can be found [here](https://checkmate.so/docs). 
 
+## Prerequisites
+- [Docker](https://www.docker.com/) installed
+- [Git](https://git-scm.com/) installed
+
 ## Installation
 
 See installation instructions in [Checkmate documentation portal](https://checkmate.so/docs). 
@@ -92,7 +96,7 @@ You can see the memory footprint of MongoDB and Redis on the same server (398Mb 
 If you have any questions, suggestions or comments, you have several options: 
 
 - [Discord channel](https://discord.gg/NAb6H3UTjK) (preferred)
-- [GitHub Discussions](https://github.com/bluewave-labs/bluewave-uptime/discussions) (we check here from time to time)
+- [GitHub Discussions](https://github.com/bluewave-labs/Checkmate/discussions) (we check here from time to time)
 
 Feel free to ask questions or share your ideas - we'd love to hear from you!
 
@@ -179,7 +183,7 @@ Here's how you can contribute:
   <img src="https://contrib.rocks/image?repo=bluewave-labs/checkmate" />
 </a>
 
-[![Star History Chart](https://api.star-history.com/svg?repos=bluewave-labs/checkmate&type=Date)](https://star-history.com/#bluewave-labs/bluewave-uptime&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=bluewave-labs/checkmate&type=Date)](https://star-history.com/#bluewave-labs/Checkmate&Date)
 
 ## Our sponsors
 

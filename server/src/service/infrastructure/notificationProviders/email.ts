@@ -78,6 +78,16 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		const isEscalationDown = message.content.title.startsWith("Escalation:");
+		if (isEscalationDown) {
+			return `Escalation: Monitor ${message.monitor.name} is still down`;
+		}
+
+		const isEscalationRecovery = message.metadata.notificationReason === "escalation_recovery";
+		if (isEscalationRecovery && message.type === "monitor_up") {
+			return `Escalation: Monitor ${message.monitor.name} is back up`;
+		}
+
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;

@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation_recovery" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -49,6 +49,7 @@ export interface MonitorActionDecision {
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	static SERVICE_NAME = SERVICE_NAME;
+	private escalationCache: Set<string> = new Set();
 
 	private logger: ILogger;
 	private networkService: INetworkService;
@@ -172,6 +173,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalation rules (best effort)
+				this.handleEscalationRules(statusChangeResult, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation rules for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -454,5 +465,81 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private clearEscalationCacheForMonitor(monitorId: string) {
+		const prefix = `${monitorId}:`;
+		for (const key of this.escalationCache) {
+			if (key.startsWith(prefix)) {
+				this.escalationCache.delete(key);
+			}
+		}
+	}
+
+	private hasEscalationForMonitor(monitorId: string): boolean {
+		const prefix = `${monitorId}:`;
+		for (const key of this.escalationCache) {
+			if (key.startsWith(prefix)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private async handleEscalationRules(statusChangeResult: StatusChangeResult, status: MonitorStatusResponse) {
+		const monitor = statusChangeResult.monitor;
+		const escalationRule = (monitor.escalationRules ?? []).find(
+			(rule) => typeof rule.afterMinutes === "number" && rule.afterMinutes > 0 && Array.isArray(rule.notificationIds) && rule.notificationIds.length > 0
+		);
+
+		if (monitor.status !== "down") {
+			const shouldSendEscalationRecovery =
+				statusChangeResult.statusChanged &&
+				statusChangeResult.prevStatus === "down" &&
+				monitor.status === "up" &&
+				Boolean(escalationRule) &&
+				this.hasEscalationForMonitor(monitor.id);
+
+			if (shouldSendEscalationRecovery && escalationRule) {
+				await this.notificationsService.sendEscalationRecoveryNotifications(monitor, status, escalationRule.notificationIds);
+			}
+
+			this.clearEscalationCacheForMonitor(monitor.id);
+			return;
+		}
+
+		if (!escalationRule) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const incidentStartMs = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(incidentStartMs)) {
+			return;
+		}
+
+		const downDurationMinutes = (Date.now() - incidentStartMs) / 60000;
+		if (downDurationMinutes < escalationRule.afterMinutes) {
+			return;
+		}
+
+		const cacheKey = `${monitor.id}:${activeIncident.id}:${escalationRule.afterMinutes}`;
+		if (this.escalationCache.has(cacheKey)) {
+			return;
+		}
+
+		const sent = await this.notificationsService.sendEscalationNotifications(
+			monitor,
+			status,
+			escalationRule.notificationIds,
+			escalationRule.afterMinutes
+		);
+		if (sent) {
+			this.escalationCache.add(cacheKey);
+		}
 	}
 }

@@ -293,7 +293,15 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ $or: [{ notifications: notificationId }, { "escalationRules.notificationIds": notificationId }] },
+			{
+				$pull: {
+					notifications: notificationId,
+					"escalationRules.$[].notificationIds": notificationId,
+				},
+			}
+		);
 	};
 
 	updateNotifications = async (
@@ -351,6 +359,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationRules = (doc.escalationRules ?? []).map((rule) => ({
+			afterMinutes: rule.afterMinutes,
+			notificationIds: (rule.notificationIds ?? []).map((notification) => toStringId(notification)),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +386,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationRules,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -410,6 +423,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationRules = (doc.escalationRules ?? []).map((rule) => ({
+			afterMinutes: rule.afterMinutes,
+			notificationIds: (rule.notificationIds ?? []).map((notification: unknown) => toStringId(notification)),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +450,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationRules,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
