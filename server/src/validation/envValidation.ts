@@ -14,7 +14,7 @@ const envSchema = z.object({
 	TOKEN_TTL: z.string().default("99d"),
 
 	// Client Configuration
-	CLIENT_HOST: z.string().url("CLIENT_HOST must be a valid URL"),
+	CLIENT_HOST: z.string().min(1, "CLIENT_HOST is required"),
 
 	// Optional
 	ORIGIN: z.string().optional(),

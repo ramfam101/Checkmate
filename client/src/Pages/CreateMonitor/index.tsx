@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -212,6 +212,11 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+
+	const { fields: escalationFields, append: appendEscalation, remove: removeEscalation } = useFieldArray({
+		control,
+		name: "escalationRules",
+	});
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +767,150 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => (
+							<Stack
+								key={field.id}
+								direction="row"
+								alignItems="flex-start"
+								spacing={theme.spacing(SPACING.LG)}
+								sx={{
+									p: theme.spacing(SPACING.LG),
+									border: `1px solid ${theme.palette.divider}`,
+									borderRadius: theme.shape.borderRadius,
+								}}
+							>
+								<Stack
+									spacing={theme.spacing(SPACING.LG)}
+									flex={1}
+								>
+									<Controller
+										name={`escalationRules.${index}.waitTime`}
+										control={control}
+										render={({ field: selectField }) => (
+											<Select
+												{...selectField}
+												value={selectField.value ?? 60000}
+												fieldLabel={t(
+													"pages.createMonitor.form.escalationRules.option.waitTime.label"
+												)}
+											>
+												<MenuItem value={60000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.oneMinute"
+													)}
+												</MenuItem>
+												<MenuItem value={120000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.twoMinutes"
+													)}
+												</MenuItem>
+												<MenuItem value={180000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.threeMinutes"
+													)}
+												</MenuItem>
+												<MenuItem value={300000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.fiveMinutes"
+													)}
+												</MenuItem>
+												<MenuItem value={600000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.tenMinutes"
+													)}
+												</MenuItem>
+												<MenuItem value={900000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.fifteenMinutes"
+													)}
+												</MenuItem>
+												<MenuItem value={1800000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.thirtyMinutes"
+													)}
+												</MenuItem>
+												<MenuItem value={3600000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.oneHour"
+													)}
+												</MenuItem>
+												<MenuItem value={7200000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.twoHours"
+													)}
+												</MenuItem>
+												<MenuItem value={14400000}>
+													{t(
+														"pages.createMonitor.form.escalationRules.option.waitTime.value.fourHours"
+													)}
+												</MenuItem>
+											</Select>
+										)}
+									/>
+									<Controller
+										name={`escalationRules.${index}.notificationIds`}
+										control={control}
+										render={({ field: notifField }) => {
+											const notificationOptions = (notifications ?? []).map(
+												(n) => ({
+													...n,
+													name: n.notificationName,
+												})
+											);
+											const selectedNotifications = notificationOptions.filter(
+												(n) => (notifField.value ?? []).includes(n.id)
+											);
+											return (
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selectedNotifications}
+													getOptionLabel={(option) => option.name}
+													onChange={(
+														_: unknown,
+														newValue: typeof notificationOptions
+													) => {
+														notifField.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) =>
+														option.id === value.id
+													}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalationRules.option.notifications.label"
+													)}
+												/>
+											);
+										}}
+									/>
+								</Stack>
+								<IconButton
+									size="small"
+									onClick={() => removeEscalation(index)}
+									aria-label="Remove escalation rule"
+									sx={{ mt: theme.spacing(SPACING.LG) }}
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						))}
+						<Button
+							variant="outlined"
+							onClick={() =>
+								appendEscalation({ waitTime: 180000, notificationIds: [] })
+							}
+							startIcon={<Plus size={16} />}
+						>
+							{t("pages.createMonitor.form.escalationRules.addRule")}
+						</Button>
+					</Stack>
 				}
 			/>
 
