@@ -10,7 +10,7 @@ export const useSettingsForm = ({ data = null }: UseSettingsFormOptions = {}) =>
 	return useMemo(() => {
 		const defaults: SettingsFormInput = {
 			systemEmailIgnoreTLS: data?.systemEmailIgnoreTLS ?? false,
-			systemEmailRequireTLS: data?.systemEmailRequireTLS ?? false,
+			systemEmailRequireTLS: data?.systemEmailRequireTLS ?? true,
 			systemEmailRejectUnauthorized: data?.systemEmailRejectUnauthorized ?? true,
 			systemEmailSecure: data?.systemEmailSecure ?? false,
 			systemEmailPool: data?.systemEmailPool ?? false,

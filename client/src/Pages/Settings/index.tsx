@@ -156,38 +156,57 @@ export const SettingsPage = () => {
 	const handleSendTestEmail = async () => {
 		const formValues = form.getValues();
 		if (!user) {
-			alert("User not authenticated");
-			return;
-		}
-		if (
-			!formValues.systemEmailHost ||
-			!formValues.systemEmailPort ||
-			!formValues.systemEmailAddress ||
-			!formValues.systemEmailPassword
-		) {
-			alert("Please fill in all required email fields before testing.");
+			toastError("User not authenticated");
 			return;
 		}
 
-		await sendTestEmail("/settings/test-email", {
-			to: user.email,
-			systemEmailHost: formValues.systemEmailHost,
-			systemEmailPort: formValues.systemEmailPort,
-			systemEmailAddress: formValues.systemEmailAddress,
-			systemEmailPassword: formValues.systemEmailPassword,
-			systemEmailSecure: formValues.systemEmailSecure,
-			systemEmailPool: formValues.systemEmailPool,
-			systemEmailIgnoreTLS: formValues.systemEmailIgnoreTLS,
-			systemEmailRequireTLS: formValues.systemEmailRequireTLS,
-			systemEmailRejectUnauthorized: formValues.systemEmailRejectUnauthorized,
-			...(formValues.systemEmailUser && { systemEmailUser: formValues.systemEmailUser }),
-			...(formValues.systemEmailTLSServername && {
-				systemEmailTLSServername: formValues.systemEmailTLSServername,
-			}),
-			...(formValues.systemEmailConnectionHost && {
-				systemEmailConnectionHost: formValues.systemEmailConnectionHost,
-			}),
-		});
+		// Validate required fields
+		const missingFields: string[] = [];
+		if (!formValues.systemEmailHost) missingFields.push("SMTP Host");
+		if (!formValues.systemEmailPort) missingFields.push("SMTP Port");
+		if (!formValues.systemEmailAddress) missingFields.push("From Email Address");
+		if (!formValues.systemEmailPassword) missingFields.push("SMTP Password");
+
+		if (missingFields.length > 0) {
+			toastError(`Missing required fields: ${missingFields.join(", ")}`);
+			return;
+		}
+
+		const parsedPort =
+			typeof formValues.systemEmailPort === "number"
+				? formValues.systemEmailPort
+				: Number(formValues.systemEmailPort);
+
+		if (!Number.isFinite(parsedPort) || parsedPort <= 0) {
+			toastError("SMTP Port must be a valid positive number");
+			return;
+		}
+
+		try {
+			await sendTestEmail("/settings/test-email", {
+				to: user.email,
+				systemEmailHost: formValues.systemEmailHost,
+				systemEmailPort: parsedPort,
+				systemEmailAddress: formValues.systemEmailAddress,
+				systemEmailPassword: formValues.systemEmailPassword,
+				systemEmailSecure: formValues.systemEmailSecure ?? false,
+				systemEmailPool: formValues.systemEmailPool ?? false,
+				systemEmailIgnoreTLS: formValues.systemEmailIgnoreTLS ?? false,
+				systemEmailRequireTLS: formValues.systemEmailRequireTLS ?? true,
+				systemEmailRejectUnauthorized: formValues.systemEmailRejectUnauthorized ?? true,
+				...(formValues.systemEmailUser && { systemEmailUser: formValues.systemEmailUser }),
+				...(formValues.systemEmailTLSServername && {
+					systemEmailTLSServername: formValues.systemEmailTLSServername,
+				}),
+				...(formValues.systemEmailConnectionHost && {
+					systemEmailConnectionHost: formValues.systemEmailConnectionHost,
+				}),
+			});
+		} catch (error: unknown) {
+			if (error instanceof Error) {
+				logger.error("Failed to send test email", error);
+			}
+		}
 	};
 
 	const handleClearStats = async () => {
@@ -834,12 +853,6 @@ export const SettingsPage = () => {
 									variant="contained"
 									loading={isSendingTestEmail}
 									onClick={handleSendTestEmail}
-									disabled={
-										!form.watch("systemEmailHost") ||
-										!form.watch("systemEmailPort") ||
-										!form.watch("systemEmailAddress") ||
-										!form.watch("systemEmailPassword")
-									}
 								>
 									{t("common.buttons.sendTestEmail")}
 								</Button>

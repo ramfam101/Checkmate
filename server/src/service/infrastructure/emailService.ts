@@ -36,6 +36,7 @@ export class EmailService implements IEmailService {
 	private transporter: ReturnType<typeof import("nodemailer").createTransport> | null = null;
 	private templateLookup: Record<string, ((context: Record<string, unknown>) => string) | undefined>;
 	private loadTemplate: (templateName: string) => ((context: Record<string, unknown>) => string) | undefined;
+	private resolveTemplatePath: (templateName: string) => string | undefined;
 
 	constructor(
 		settingsService: ISettingsService,
@@ -55,6 +56,7 @@ export class EmailService implements IEmailService {
 		this.logger = logger;
 		this.templateLookup = {};
 		this.loadTemplate = () => undefined;
+		this.resolveTemplatePath = () => undefined;
 		this.init();
 	}
 
@@ -63,9 +65,36 @@ export class EmailService implements IEmailService {
 	}
 
 	init = () => {
+		this.resolveTemplatePath = (templateName) => {
+			const candidates = [
+				this.path.join(__dirname, `../../templates/${templateName}.mjml`),
+				this.path.join(process.cwd(), `dist/templates/${templateName}.mjml`),
+				this.path.join(process.cwd(), `src/templates/${templateName}.mjml`),
+				this.path.join(process.cwd(), `templates/${templateName}.mjml`),
+			];
+
+			for (const candidate of candidates) {
+				if (this.fs.existsSync(candidate)) {
+					return candidate;
+				}
+			}
+
+			this.logger.error({
+				message: `Template ${templateName} not found in expected locations`,
+				service: SERVICE_NAME,
+				method: "resolveTemplatePath",
+				details: { candidates },
+			});
+
+			return undefined;
+		};
+
 		this.loadTemplate = (templateName) => {
 			try {
-				const templatePath = this.path.join(__dirname, `../../templates/${templateName}.mjml`);
+				const templatePath = this.resolveTemplatePath(templateName);
+				if (!templatePath) {
+					return undefined;
+				}
 				const templateContent = this.fs.readFileSync(templatePath, "utf8");
 				return this.compile(templateContent);
 			} catch (error: unknown) {
@@ -94,8 +123,33 @@ export class EmailService implements IEmailService {
 			if (!mjml) {
 				throw new Error(`Template ${template} not found`);
 			}
-			const html = await this.mjml2html(mjml);
-			return html.html;
+			const renderResult = await this.mjml2html(mjml);
+
+			if (renderResult.errors?.length) {
+				this.logger.warn({
+					message: `MJML render warnings for template ${template}`,
+					service: SERVICE_NAME,
+					method: "buildEmail",
+					details: {
+						errors: renderResult.errors,
+					},
+				});
+			}
+
+			if (!renderResult.html || !renderResult.html.trim()) {
+				this.logger.error({
+					message: `MJML render produced empty HTML for template ${template}`,
+					service: SERVICE_NAME,
+					method: "buildEmail",
+					details: {
+						hasErrors: Boolean(renderResult.errors?.length),
+						errors: renderResult.errors,
+					},
+				});
+				return undefined;
+			}
+
+			return renderResult.html;
 		} catch (error: unknown) {
 			this.logger.error({
 				message: error instanceof Error ? error.message : "Unknown error",
@@ -128,53 +182,162 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		// Validate required configuration
+		if (!systemEmailHost || !systemEmailPort || !systemEmailPassword || !systemEmailAddress) {
+			this.logger.error({
+				message: "Email configuration is incomplete. Missing required fields for SMTP.",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					hasHost: !!systemEmailHost,
+					hasPort: !!systemEmailPort,
+					hasPassword: !!systemEmailPassword,
+					hasAddress: !!systemEmailAddress,
+				},
+			});
+			return false;
+		}
+
+		const sanitizedUser = systemEmailUser?.trim() || systemEmailAddress?.trim();
+		const sanitizedConnectionHost = systemEmailConnectionHost?.trim() || undefined;
+		const sanitizedTLSServername = systemEmailTLSServername?.trim() || undefined;
+		const normalizedHost = systemEmailHost?.trim().toLowerCase();
+		const normalizedPort = Number(systemEmailPort);
+		const isGmailSmtp = normalizedHost === "smtp.gmail.com";
+		const gmailOnSubmissionPort = isGmailSmtp && normalizedPort === 587;
+
+		const effectiveRequireTLS = gmailOnSubmissionPort ? true : Boolean(systemEmailRequireTLS);
+		const effectiveIgnoreTLS = gmailOnSubmissionPort ? false : Boolean(systemEmailIgnoreTLS);
+		const effectiveSecure = Boolean(systemEmailSecure);
+
+		// Avoid forcing EHLO name to localhost for public SMTP services like Gmail.
+		const effectiveConnectionHost =
+			sanitizedConnectionHost && sanitizedConnectionHost.toLowerCase() !== "localhost"
+				? sanitizedConnectionHost
+				: undefined;
+
 		const emailConfig = {
 			host: systemEmailHost,
-			port: Number(systemEmailPort),
-			secure: systemEmailSecure,
+			port: normalizedPort,
+			secure: effectiveSecure,
 			auth: {
-				user: systemEmailUser || systemEmailAddress,
+				user: sanitizedUser,
 				pass: systemEmailPassword,
 			},
-			name: systemEmailConnectionHost || "localhost",
-			connectionTimeout: 5000,
-			pool: systemEmailPool,
+			connectionTimeout: 10000,
+			pool: Boolean(systemEmailPool),
+			ignoreTLS: effectiveIgnoreTLS,
+			requireTLS: effectiveRequireTLS,
 			tls: {
-				rejectUnauthorized: systemEmailRejectUnauthorized,
-				ignoreTLS: systemEmailIgnoreTLS,
-				requireTLS: systemEmailRequireTLS,
-				servername: systemEmailTLSServername,
+				rejectUnauthorized:
+					typeof systemEmailRejectUnauthorized === "boolean" ? systemEmailRejectUnauthorized : true,
+				...(sanitizedTLSServername ? { servername: sanitizedTLSServername } : {}),
 			},
+			...(effectiveConnectionHost ? { name: effectiveConnectionHost } : {}),
 		};
+
+		this.logger.debug({
+			message: "Creating email transporter with configuration",
+			service: SERVICE_NAME,
+			method: "sendEmail",
+			details: {
+				host: systemEmailHost,
+				port: systemEmailPort,
+				secure: effectiveSecure,
+				requireTLS: effectiveRequireTLS,
+				ignoreTLS: effectiveIgnoreTLS,
+				isGmailSmtp,
+				user: systemEmailUser || systemEmailAddress,
+				pool: systemEmailPool,
+			},
+		});
+
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
 		try {
 			await this.transporter.verify();
-		} catch (error: unknown) {
-			this.logger.warn({
-				message: "Email transporter verification failed",
+			this.logger.debug({
+				message: "Email transporter verified successfully",
 				service: SERVICE_NAME,
-				method: "verifyTransporter",
+				method: "sendEmail",
+			});
+		} catch (error: unknown) {
+			const errorMessage = error instanceof Error ? error.message : "Unknown error";
+			const typedError = error as {
+				code?: string;
+				response?: string;
+				command?: string;
+			};
+			this.logger.error({
+				message: `Email transporter verification failed: ${errorMessage}`,
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					host: systemEmailHost,
+					port: systemEmailPort,
+					user: sanitizedUser,
+					code: typedError.code,
+					response: typedError.response,
+					command: typedError.command,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
 		}
 
 		try {
+			this.logger.debug({
+				message: "Sending email",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					to,
+					from: systemEmailAddress,
+					subject,
+				},
+			});
+
 			const info = await this.transporter.sendMail({
 				to: to,
 				from: systemEmailAddress,
 				subject: subject,
 				html: html,
 			});
-			return info?.messageId;
-		} catch (error: unknown) {
-			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
+
+			this.logger.info({
+				message: "Email sent successfully",
 				service: SERVICE_NAME,
 				method: "sendEmail",
+				details: {
+					messageId: info?.messageId,
+					to,
+					from: systemEmailAddress,
+				},
+			});
+
+			return info?.messageId;
+		} catch (error: unknown) {
+			const errorMessage = error instanceof Error ? error.message : "Unknown error";
+			const typedError = error as {
+				code?: string;
+				response?: string;
+				command?: string;
+			};
+			this.logger.error({
+				message: `Email send failed: ${errorMessage}`,
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					recipient: to,
+					from: systemEmailAddress,
+					subject,
+					code: typedError.code,
+					response: typedError.response,
+					command: typedError.command,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
+			return false;
 		}
 	};
 }

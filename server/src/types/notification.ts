@@ -7,6 +7,7 @@ export interface Notification {
 	teamId: string;
 	type: NotificationChannel;
 	notificationName: string;
+	alertTimes?: number[];
 	address?: string;
 	phone?: string;
 	homeserverUrl?: string;
