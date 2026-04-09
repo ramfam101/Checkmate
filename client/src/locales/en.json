@@ -911,6 +911,18 @@
 				],
 				"title": "Notification channles are used to:"
 			},
+			"escalationRules": {
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"title": "Escalation Rules",
+					"option": {
+						"minutes": {
+							"label": "Escalation after (minutes)"
+						},
+						"notifications": {
+							"label": "Escalation notification channels"
+						}
+					}
+				},
 			"form": {
 				"accessToken": {
 					"optionAccessToken": "Access token",
