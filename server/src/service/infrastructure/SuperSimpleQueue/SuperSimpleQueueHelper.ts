@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -157,7 +157,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
+				const shouldHandleNotifications =
+					decision.shouldSendNotification ||
+					(statusChangeResult.monitor.status === "down" &&
+						statusChangeResult.monitor.escDelayMinutes &&
+						statusChangeResult.monitor.escNotifId?.length);
+
+				if (shouldHandleNotifications) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,

@@ -36,6 +36,7 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationTimers: Map<string, NodeJS.Timeout> = new Map();
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -132,13 +133,116 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	private clearEscalationTimer(monitorId: string) {
+		const existingTimer = this.escalationTimers.get(monitorId);
+		if (existingTimer) {
+			clearTimeout(existingTimer);
+			this.escalationTimers.delete(monitorId);
+			this.logger.info({
+				message: `Cleared escalation timer for monitor`,
+				service: SERVICE_NAME,
+				method: "clearEscalationTimer",
+				details: { monitorId },
+			});
+		}
+	}
+
+	private scheduleEscalation(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) {
+		const monitorId = monitor.id;
+		if (this.escalationTimers.has(monitorId)) {
+			this.logger.debug({
+				message: `Escalation timer already exists for monitor`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalation",
+				details: { monitorId },
+			});
+			return;
+		}
+
+		const delayMs = monitor.escDelayMinutes! * 60 * 1000;
+		this.logger.info({
+			message: `[ESCALATION] Scheduling escalation notification`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalation",
+			details: {
+				monitorId,
+				monitorName: monitor.name,
+				escalationDelayMinutes: monitor.escDelayMinutes,
+				escalationDelayMs: delayMs,
+				escalationNotificationIds: monitor.escNotifId,
+			},
+		});
+
+		const timer = setTimeout(async () => {
+			this.escalationTimers.delete(monitorId);
+			try {
+				this.logger.info({
+					message: `[ESCALATION] Escalation timeout fired, checking monitor status`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+					details: { monitorId },
+				});
+
+				const updatedMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+				if (updatedMonitor.status === "down") {
+					this.logger.info({
+						message: `[ESCALATION] Monitor still down, sending escalation notifications`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalation",
+						details: { monitorId },
+					});
+
+					const escalationNotifications = await this.notificationsRepository.findNotificationsByIds(updatedMonitor.escNotifId || []);
+					const settings = this.settingsService.getSettings();
+					const clientHost = settings.clientHost || "Host not defined";
+					const escalationDecision: MonitorActionDecision = {
+						...decision,
+						shouldSendNotification: true,
+						notificationReason: "escalation",
+						shouldCreateIncident: false,
+						shouldResolveIncident: false,
+					};
+
+					const escalationMessage = this.notificationMessageBuilder.buildMessage(updatedMonitor, monitorStatusResponse, escalationDecision, clientHost);
+					await Promise.all(
+						escalationNotifications.map((n) =>
+							this.send(n, updatedMonitor, monitorStatusResponse, escalationDecision, escalationMessage)
+						)
+					);
+				}
+			} catch (err) {
+				this.logger.error({
+					message: "Error sending escalation notification",
+					service: SERVICE_NAME,
+					stack: err instanceof Error ? err.stack : undefined,
+				});
+			}
+		}, delayMs);
+
+		this.escalationTimers.set(monitorId, timer);
+	}
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+		const hasEscalationConfig = Boolean(monitor.escDelayMinutes && monitor.escDelayMinutes > 0 && monitor.escNotifId && monitor.escNotifId.length > 0);
+
+		if (monitor.status !== "down") {
+			this.clearEscalationTimer(monitor.id);
+		}
+
+		if (!decision.shouldSendNotification && !(monitor.status === "down" && hasEscalationConfig)) {
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const sent = decision.shouldSendNotification ? await this.sendNotifications(monitor, monitorStatusResponse, decision) : false;
+
+		if (monitor.status === "down" && hasEscalationConfig) {
+			this.scheduleEscalation(monitor, monitorStatusResponse, decision);
+		} else if (monitor.status !== "down" || !hasEscalationConfig) {
+			this.clearEscalationTimer(monitor.id);
+		}
+
+		return sent;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

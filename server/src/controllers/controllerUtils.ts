@@ -8,7 +8,7 @@ export const fetchMonitorCertificate = async (checker: SSLCheckerType, monitor: 
 	const hostname = monitorUrl.hostname;
 	const cert = await checker(hostname);
 	if (cert?.validTo === null || cert?.validTo === undefined) {
-		throw new Error("Certificate not found");
+		throw new AppError({ message: "Certificate not found", status: 404, service: "monitorController", method: "getMonitorCertificate" });
 	}
 	return cert;
 };

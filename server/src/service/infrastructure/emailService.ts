@@ -2,6 +2,7 @@ import { fileURLToPath } from "url";
 import { EmailTransportConfig } from "@/types/index.js";
 import { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
+import { AppError } from "@/utils/AppError.js";
 import fs from "node:fs";
 import path from "node:path";
 import nodemailer from "nodemailer";
@@ -127,6 +128,15 @@ export class EmailService implements IEmailService {
 			systemEmailRequireTLS,
 			systemEmailRejectUnauthorized,
 		} = config;
+
+		if (!systemEmailHost || !systemEmailAddress || !systemEmailPassword) {
+			throw new AppError({
+				message: "Email SMTP settings are not configured. Set them in Settings > Email before sending test emails.",
+				status: 400,
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+		}
 
 		const emailConfig = {
 			host: systemEmailHost,

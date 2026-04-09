@@ -3,8 +3,10 @@ import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
 import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { zodResolver } from "@hookform/resolvers/zod/dist/zod.js";
 import { useTheme } from "@mui/material";
+import MuiAutocomplete from "@mui/material/Autocomplete";
+import MuiTextField from "@mui/material/TextField";
 import Stack from "@mui/material/Stack";
 import RadioGroup from "@mui/material/RadioGroup";
 import FormControl from "@mui/material/FormControl";
@@ -24,7 +26,6 @@ import {
 	Button,
 	TextField,
 	Select,
-	Autocomplete,
 	SwitchComponent as Switch,
 	SliderWithLabel,
 	Dialog,
@@ -715,15 +716,21 @@ const CreateMonitorPage = () => {
 							);
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
-									<Autocomplete
+									<MuiAutocomplete
 										multiple
 										options={notificationOptions}
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
-										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+										onChange={(_, newValue) => {
+											field.onChange((newValue as typeof notificationOptions).map((n) => n.id));
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
+										renderInput={(params) => (
+											<MuiTextField
+												{...params}
+												label={t("pages.createMonitor.form.notifications.title")}
+											/>
+										)}
 									/>
 									{selectedNotifications.length > 0 && (
 										<Stack
@@ -764,6 +771,96 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? undefined : Number(val));
+									}}
+									type="number"
+									fieldLabel="Escalation after (minutes)"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+
+						<Controller
+							name="escNotifId"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedIds = Array.isArray(field.value) ? field.value : [];
+								const selectedNotifications = notificationOptions.filter((n) => selectedIds.includes(n.id));
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<MuiAutocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_, newValue) => {
+												field.onChange((newValue as typeof notificationOptions).map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											renderInput={(params) => (
+												<MuiTextField
+													{...params}
+													label="Escalation notifications"
+												/>
+											)}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>{notification.notificationName}</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(selectedIds.filter((id: string) => id !== notification.id));
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+						
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
@@ -953,19 +1050,24 @@ const CreateMonitorPage = () => {
 											);
 											return (
 												<Stack spacing={theme.spacing(LAYOUT.MD)}>
-													<Autocomplete
+													<MuiAutocomplete
 														multiple
 														options={locationOptions}
 														value={selectedLocations}
 														getOptionLabel={(option) => option.name}
-														onChange={(_: unknown, newValue: typeof locationOptions) => {
-															field.onChange(newValue.map((loc) => loc.id));
+														onChange={(_, newValue) => {
+															field.onChange((newValue as typeof locationOptions).map((loc) => loc.id));
 														}}
 														isOptionEqualToValue={(option, value) =>
 															option.id === value.id
 														}
-														fieldLabel={t(
-															"pages.createMonitor.form.geoChecks.option.locations.label"
+														renderInput={(params) => (
+															<MuiTextField
+																{...params}
+																label={t(
+																	"pages.createMonitor.form.geoChecks.option.locations.label"
+																)}
+															/>
 														)}
 													/>
 													{selectedLocations.length > 0 && (

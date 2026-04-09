@@ -53,6 +53,10 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -81,6 +85,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return "critical";
+			case "escalation":
+				return "critical";
 			case "threshold_breach":
 				return "warning";
 			case "monitor_up":
@@ -97,6 +103,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -121,6 +129,31 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		// Add error message if available
 		if (monitorStatusResponse.message) {
 			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Escalation: ${monitor.name} is still down`;
+		const summary = `Monitor "${monitor.name}" has been down for the configured escalation interval.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		if (monitor.escDelayMinutes !== undefined && monitor.escDelayMinutes !== null) {
+			details.push(`Escalation delay: ${monitor.escDelayMinutes} minute(s)`);
 		}
 
 		return {
