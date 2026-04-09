@@ -1,6 +1,6 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
-import { supportsGeoCheck } from "@/types/monitor.js";
+import { supportsGeoCheck, MonitorStatuses } from "@/types/monitor.js";
 import { AppError } from "@/utils/AppError.js";
 import {
 	ICheckService,
@@ -107,6 +107,61 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
 	}
 
+	private isEscalationTimeReached = async (monitor: Monitor): Promise<boolean> => {
+		this.logger.debug({
+			message: `Checking escalation for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "isEscalationTimeReached",
+			details: {
+				escalationDelayMinutes: monitor.escalationDelayMinutes,
+				hasEscalationNotifications: !!monitor.escalationNotifications?.length,
+				monitorStatus: monitor.status,
+			},
+		});
+		if (monitor.status !== "down") {
+			this.logger.debug({ message: `Monitor is not down (status: ${monitor.status})`, service: SERVICE_NAME, method: "isEscalationTimeReached" });
+			return false;
+		}
+		if (!monitor.escalationDelayMinutes || monitor.escalationDelayMinutes <= 0) {
+			this.logger.debug({ message: `No escalation delay set`, service: SERVICE_NAME, method: "isEscalationTimeReached" });
+			return false;
+		}
+		if (!monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+			this.logger.debug({ message: `No escalation notifications configured`, service: SERVICE_NAME, method: "isEscalationTimeReached" });
+			return false;
+		}
+		let activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			// If monitor is down but no incident exists, create one now
+			// This handles cases where downtime started before server restart
+			this.logger.debug({ message: `No active incident found, creating one`, service: SERVICE_NAME, method: "isEscalationTimeReached" });
+			activeIncident = await this.incidentsRepository.create({
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				startTime: new Date().toISOString(),
+				status: true,
+				statusCode: 503,
+				message: "Auto-created incident for ongoing downtime",
+			});
+		}
+		if (activeIncident.escalationNotificationSent) {
+			this.logger.debug({ message: `Escalation already sent for incident`, service: SERVICE_NAME, method: "isEscalationTimeReached" });
+			return false;
+		}
+		const incidentDurationMs = Date.now() - new Date(activeIncident.startTime).getTime();
+		const escalationDelayMs = monitor.escalationDelayMinutes * 60 * 1000;
+		const timeReached = incidentDurationMs >= escalationDelayMs;
+		this.logger.debug({
+			message: `Incident duration: ${incidentDurationMs}ms, escalation delay: ${escalationDelayMs}ms, time reached: ${timeReached}`,
+			service: SERVICE_NAME,
+			method: "isEscalationTimeReached",
+		});
+		if (timeReached) {
+			await this.incidentsRepository.updateOne(activeIncident.id, { escalationNotificationSent: true });
+		}
+		return timeReached;
+	};
+
 	getHeartbeatJob = () => {
 		return async (monitor: Monitor) => {
 			try {
@@ -157,15 +212,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+				const shouldSendEscalation = await this.isEscalationTimeReached(statusChangeResult.monitor);
+				this.logger.debug({
+					message: `Escalation check for monitor ${statusChangeResult.monitor.id}: shouldSendEscalation=${shouldSendEscalation}, shouldSendNotification=${decision.shouldSendNotification}`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+				});
+				if (decision.shouldSendNotification || shouldSendEscalation) {
+					this.notificationsService
+						.handleNotifications(statusChangeResult.monitor, status, decision, shouldSendEscalation)
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)

@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IMonitorsRepository, INotificationsRepository, IIncidentsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -13,7 +13,12 @@ export interface INotificationsService {
 	findNotificationsByTeamId: (teamId: string) => Promise<Notification[]>;
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
-	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation?: boolean
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -26,6 +31,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -40,6 +46,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -53,6 +60,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -107,14 +115,58 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private isEscalationTimeReached = (incidentStartTime: Date, escalationDelayMinutes: number | undefined): boolean => {
+		if (!escalationDelayMinutes || escalationDelayMinutes <= 0) {
+			return false;
+		}
+		const incidentDurationMs = Date.now() - incidentStartTime.getTime();
+		const escalationDelayMs = escalationDelayMinutes * 60 * 1000;
+		return incidentDurationMs >= escalationDelayMs;
+	};
+
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation: boolean = false
+	) => {
+		this.logger.info({
+			message: `SendNotifications called for monitor ${monitor.id}: isEscalation=${isEscalation} (param), shouldSendNotification=${decision.shouldSendNotification}`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+		});
+
+		// Determine which notification channels to use
+		let notificationIds = monitor.notifications ?? [];
+		let isEscalationFlag = isEscalation;
+
+		// Check if escalation should be triggered (check on every notification, not just initial)
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (activeIncident && this.isEscalationTimeReached(new Date(activeIncident.startTime), monitor.escalationDelayMinutes)) {
+			// Use escalation notifications if available and delay time has been reached
+			if (monitor.escalationNotifications && monitor.escalationNotifications.length > 0) {
+				notificationIds = monitor.escalationNotifications;
+				isEscalationFlag = true;
+				this.logger.info({
+					message: `Using escalation notifications for monitor ${monitor.id} (incident duration exceeded ${monitor.escalationDelayMinutes} minutes)`,
+					service: SERVICE_NAME,
+					method: "sendNotifications",
+				});
+			}
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost, isEscalationFlag);
+
+		this.logger.info({
+			message: `Building notification message for monitor ${monitor.id}: isEscalation=${isEscalationFlag}, messageType=${notificationMessage.type}, reason=${notificationMessage.metadata.notificationReason}`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+		});
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -132,13 +184,18 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
+	handleNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		isEscalation: boolean = false
+	) => {
+		if (!decision.shouldSendNotification && !isEscalation) {
 			return false;
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, isEscalation);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

@@ -252,6 +252,7 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		logger.debug("Form submission data:", data);
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -762,6 +763,108 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("Escalation Rules")}
+				subtitle={t(
+					"If the monitor stays down for the specified time, notify additional channels."
+				)}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? undefined : Number(val));
+									}}
+									type="number"
+									fieldLabel={t("Escalation After (minutes)")}
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationNotifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											options={notificationOptions}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue) => {
+												if (
+													newValue &&
+													typeof newValue === "object" &&
+													"id" in newValue
+												) {
+													const currentIds = field.value ?? [];
+													if (!currentIds.includes(newValue.id)) {
+														field.onChange([...currentIds, newValue.id]);
+													}
+												}
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											renderInput={(params) => (
+												<TextField
+													{...params}
+													fieldLabel={t("Escalation Notification Channels")}
+												/>
+											)}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove channel"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 

@@ -1,0 +1,138 @@
+{
+	"responderUsername": "",
+	"initialLocation": "panel",
+	"requests": [
+		{
+			"requestId": "request_eb01e297-c934-4056-b4e7-3ea2b757ff2d",
+			"message": {
+				"parts": [
+					{
+						"range": {
+							"start": 0,
+							"endExclusive": 185
+						},
+						"editorRange": {
+							"startLineNumber": 1,
+							"startColumn": 1,
+							"endLineNumber": 1,
+							"endColumn": 186
+						},
+						"text": "Check for inconsistent variable names related to escalation (enableEscalation vs escalationEnabled vs watchedEnableEscalation) and fix them so they are consistent across this component.",
+						"kind": "text"
+					}
+				],
+				"text": "Check for inconsistent variable names related to escalation (enableEscalation vs escalationEnabled vs watchedEnableEscalation) and fix them so they are consistent across this component."
+			},
+			"variableData": {
+				"variables": [
+					{
+						"id": "vscode.instructions.file.root__file:///c%3A/Users/dglee/OneDrive/Documents/GitHub/Checkmate/CLAUDE.md",
+						"name": "prompt:CLAUDE.md",
+						"value": {
+							"$mid": 1,
+							"external": "file:///c%3A/Users/dglee/OneDrive/Documents/GitHub/Checkmate/CLAUDE.md",
+							"path": "/c:/Users/dglee/OneDrive/Documents/GitHub/Checkmate/CLAUDE.md",
+							"scheme": "file"
+						},
+						"kind": "promptFile",
+						"modelDescription": "Prompt instructions file",
+						"isRoot": true,
+						"automaticallyAdded": true
+					},
+					{
+						"id": "vscode.customizations.index",
+						"name": "prompt:customizationsIndex",
+						"value": "<skills>\nHere is a list of skills that contain domain specific knowledge on a variety of topics.\nEach skill comes with a description of the topic and a file path that contains the detailed instructions.\nWhen a user asks you to perform a task that falls within the domain of a skill, use the #tool:read/readFile tool to acquire the full instructions from the file URI.\n<skill>\n<name>agent-customization</name>\n<description>**WORKFLOW SKILL** — Create, update, review, fix, or debug VS Code agent customization files (.instructions.md, .prompt.md, .agent.md, SKILL.md, copilot-instructions.md, AGENTS.md). USE FOR: saving coding preferences; troubleshooting why instructions/skills/agents are ignored or not invoked; configuring applyTo patterns; defining tool restrictions; creating custom agent modes or specialized workflows; packaging domain knowledge; fixing YAML frontmatter syntax. DO NOT USE FOR: general coding questions (use default agent); runtime debugging or error diagnosis; MCP server configuration (use MCP docs directly); VS Code extension development. INVOKES: file system tools (read/write customization files), ask-questions tool (interview user for requirements), subagents for codebase exploration. FOR SINGLE OPERATIONS: For quick YAML frontmatter fixes or creating a single file from a known pattern, edit the file directly — no skill needed.</description>\n<file>c:\\Users\\dglee\\.vscode\\extensions\\github.copilot-chat-0.43.0\\assets\\prompts\\skills\\agent-customization\\SKILL.md</file>\n</skill>\n</skills>\n\n",
+						"kind": "promptText",
+						"modelDescription": "Chat customizations index",
+						"automaticallyAdded": true,
+						"toolReferences": [
+							{
+								"kind": "tool",
+								"id": "copilot_readFile",
+								"name": "Read File",
+								"range": {
+									"start": 291,
+									"endExclusive": 310
+								}
+							}
+						]
+					}
+				]
+			},
+			"response": [],
+			"agent": {
+				"id": "copilotcli",
+				"name": "cli",
+				"fullName": "Copilot CLI",
+				"description": "Delegate tasks to a background agent running locally on your machine. The agent iterates via chat and works asynchronously in a Git worktree to implement changes isolated from your main workspace using the GitHub Copilot CLI.",
+				"isDefault": false,
+				"isCore": false,
+				"isDynamic": true,
+				"slashCommands": [
+					{
+						"name": "delegate",
+						"description": "Delegate chat session to cloud agent and create associated PR",
+						"when": "config.github.copilot.chat.cloudAgent.enabled"
+					},
+					{
+						"name": "compact",
+						"description": "Free up context by compacting the conversation history"
+					}
+				],
+				"locations": ["panel"],
+				"modes": ["agent", "ask"],
+				"disambiguation": [],
+				"metadata": {
+					"themeIcon": {
+						"id": "worktree"
+					}
+				},
+				"capabilities": {
+					"supportsFileAttachments": true,
+					"supportsProblemAttachments": true,
+					"supportsToolAttachments": false,
+					"supportsImageAttachments": true,
+					"supportsSymbolAttachments": true,
+					"supportsSearchResultAttachments": true,
+					"supportsSourceControlAttachments": true,
+					"supportsPromptAttachments": true,
+					"supportsHandOffs": true
+				},
+				"canAccessPreviousChatHistory": true,
+				"extensionId": {
+					"value": "GitHub.copilot-chat",
+					"_lower": "github.copilot-chat"
+				},
+				"extensionVersion": "0.43.0",
+				"extensionDisplayName": "GitHub Copilot Chat",
+				"extensionPublisherId": "GitHub"
+			},
+			"timestamp": 1775673204973,
+			"modeInfo": {
+				"kind": "agent",
+				"isBuiltin": true,
+				"modeId": "agent",
+				"modeName": "agent",
+				"permissionLevel": "default"
+			},
+			"responseId": "response_00b1e71a-1f88-4b18-8016-0e0ac16651c7",
+			"result": {
+				"errorDetails": {
+					"message": "Language model unavailable",
+					"responseIsIncomplete": true,
+					"isQuotaExceeded": false,
+					"isRateLimited": false
+				}
+			},
+			"followups": [],
+			"modelState": {
+				"value": 3,
+				"completedAt": 1775673205068
+			},
+			"contentReferences": [],
+			"codeCitations": [],
+			"timeSpentWaiting": 0
+		}
+	]
+}
