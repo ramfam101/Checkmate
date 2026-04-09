@@ -37,8 +37,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,13 +155,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 6.5. Handle escalation notifications (best effort, don't wait)
+				if (decision.shouldSendEscalation) {
+					this.notificationsService.sendEscalationNotification(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -418,7 +431,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -426,11 +439,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
 		if (!statusChanged) {
+			// Even if no status change, check for escalation if monitor is down or breached
+			if ((monitor.status === "down" || monitor.status === "breached") && monitor.notificationEscalationEnabled) {
+				decision.shouldSendEscalation = await this.checkEscalation(monitor);
+			}
 			return decision;
 		}
 
@@ -454,5 +472,28 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async checkEscalation(monitor: Monitor): Promise<boolean> {
+		try {
+			// Find the active incident for this monitor
+			const incident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!incident) {
+				return false;
+			}
+			const now = new Date();
+			const incidentStart = new Date(incident.createdAt);
+			const durationMs = now.getTime() - incidentStart.getTime();
+			const delayMs = (monitor.notificationEscalationDelayMinutes || 0) * 60 * 1000;
+			return durationMs >= delayMs;
+		} catch (error) {
+			this.logger.error({
+				message: `Error checking escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "checkEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	}
 }

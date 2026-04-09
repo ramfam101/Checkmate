@@ -252,6 +252,8 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		
+
 		let result;
 		if (isEditMode && monitorId) {
 			result = await patch(`/monitors/${monitorId}`, data);
@@ -1043,6 +1045,94 @@ const CreateMonitorPage = () => {
 					}
 				/>
 			)}
+
+<ConfigBox
+	title={t("pages.createMonitor.form.escalation.title")}
+	subtitle={t("pages.createMonitor.form.escalation.description")}
+	rightContent={
+		<Stack spacing={theme.spacing(LAYOUT.MD)}>
+			<Controller
+				name="notificationEscalationEnabled"
+				control={control}
+				render={({ field }) => (
+					<Stack
+						direction="row"
+						alignItems="center"
+						spacing={theme.spacing(SPACING.LG)}
+					>
+						<Switch
+							checked={field.value ?? false}
+							onChange={(e) => field.onChange(e.target.checked)}
+						/>
+						<Typography>
+							{t("pages.createMonitor.form.escalation.option.enabled.label")}
+						</Typography>
+					</Stack>
+				)}
+			/>
+
+			{watch("notificationEscalationEnabled") && (
+				<Stack spacing={theme.spacing(LAYOUT.MD)}>
+					<Controller
+						name="notificationEscalationDelayMinutes"
+						control={control}
+						render={({ field, fieldState }) => (
+							<TextField
+								{...field}
+								value={field.value ?? ""}
+								onChange={(e) => {
+									const value = e.target.value;
+									field.onChange(value === "" ? undefined : Number(value));
+								}}
+								type="number"
+								fieldLabel={t(
+									"pages.createMonitor.form.escalation.option.delay.label"
+								)}
+								placeholder={t(
+									"pages.createMonitor.form.escalation.option.delay.placeholder"
+								)}
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+							/>
+						)}
+					/>
+
+					<Controller
+						name="notificationEscalationNotifications"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+
+							const selectedNotifications = notificationOptions.filter((n) =>
+								(field.value ?? []).includes(n.id)
+							);
+
+							return (
+								<Autocomplete
+									multiple
+									options={notificationOptions}
+									value={selectedNotifications}
+									getOptionLabel={(option) => option.name}
+									onChange={(_, newValue) => {
+										field.onChange(newValue.map((n) => n.id));
+									}}
+									isOptionEqualToValue={(option, value) => option.id === value.id}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.notifications.label"
+									)}
+								/>
+							);
+						}}
+					/>
+				</Stack>
+			)}
+		</Stack>
+	}
+/>
 
 			<Stack
 				direction="row"
