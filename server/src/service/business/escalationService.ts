@@ -183,8 +183,17 @@ export class EscalationService implements IEscalationService {
 				`ESCALATION: Issue has persisted for ${minutesActive} minutes without resolution.`;
 
 			// Send escalation notifications
-			// Note: We'll need to implement this in the notifications service
-			// For now, we'll mark the incident as escalated
+			const sent = await this.notificationsService.sendEscalationNotifications(monitor, incident, escalationMessage);
+			if (!sent) {
+				this.logger.warn({
+					message: `Escalation notifications could not be sent for incident ${incidentId}`,
+					service: SERVICE_NAME,
+					method: "triggerEscalation",
+					details: { incidentId, monitorId: monitor.id },
+				});
+				return false;
+			}
+
 			await this.markIncidentEscalated(incidentId);
 
 			this.logger.info({
