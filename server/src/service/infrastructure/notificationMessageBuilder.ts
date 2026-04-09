@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Incident, Monitor, MonitorStatusResponse } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationContent(monitor: Monitor, delayMinutes: number, incident: Incident): NotificationContent;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -135,6 +136,27 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	buildEscalationContent(monitor: Monitor, delayMinutes: number, incident: Incident): NotificationContent {
+		const title = `Escalation: Monitor ${monitor.name} is still down after ${delayMinutes} minutes`;
+		const summary = `Monitor "${monitor.name}" remains down after ${delayMinutes} minutes and requires immediate attention.`;
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`, `Escalation Delay: ${delayMinutes} minutes`];
+
+		// Add incident information
+		if (incident) {
+			const incidentStartTime = new Date(incident.createdAt);
+			const downTimeMinutes = Math.floor((Date.now() - incidentStartTime.getTime()) / (1000 * 60));
+			details.push(`Down since: ${incidentStartTime.toISOString()}`);
+			details.push(`Total downtime: ${downTimeMinutes} minutes`);
+		}
 
 		return {
 			title,

@@ -115,6 +115,17 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		return this.toEntity(incident);
 	};
 
+	findLatestByMonitorId = async (monitorId: string, teamId: string): Promise<Incident | null> => {
+		const incident = await IncidentModel.findOne({
+			monitorId: new mongoose.Types.ObjectId(monitorId),
+			teamId: new mongoose.Types.ObjectId(teamId),
+		}).sort({ createdAt: -1 });
+		if (!incident) {
+			return null;
+		}
+		return this.toEntity(incident);
+	};
+
 	findByTeamId = async (
 		teamId: string,
 		startDate: Date | undefined,
