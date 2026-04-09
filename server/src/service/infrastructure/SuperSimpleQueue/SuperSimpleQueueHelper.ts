@@ -556,7 +556,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Find all monitors with pending escalations
 				const monitors = await this.monitorsRepository.findAll();
-				const monitorsWithPendingEscalations = monitors.filter(
+				const monitorsWithPendingEscalations = (monitors || []).filter(
 					(monitor) =>
 						monitor.escalationEnabled &&
 						monitor.escalationScheduledAt &&

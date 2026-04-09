@@ -5,6 +5,7 @@ import { INotificationProvider } from "./notificationProviders/INotificationProv
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
+import { AppError } from "@/utils/AppError.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 
 export interface INotificationsService {
@@ -199,35 +200,69 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
+		let success = false;
+
 		switch (notification.type) {
 			case "email":
-				return await this.emailProvider.sendTestAlert(notification);
+				success = await this.emailProvider.sendTestAlert(notification);
+				break;
 			case "slack":
-				return await this.slackProvider.sendTestAlert(notification);
+				success = await this.slackProvider.sendTestAlert(notification);
+				break;
 			case "discord":
-				return await this.discordProvider.sendTestAlert(notification);
+				success = await this.discordProvider.sendTestAlert(notification);
+				break;
 			case "pager_duty":
-				return await this.pagerDutyProvider.sendTestAlert(notification);
+				success = await this.pagerDutyProvider.sendTestAlert(notification);
+				break;
 			case "matrix":
-				return await this.matrixProvider.sendTestAlert(notification);
+				success = await this.matrixProvider.sendTestAlert(notification);
+				break;
 			case "webhook":
-				return await this.webhookProvider.sendTestAlert(notification);
+				success = await this.webhookProvider.sendTestAlert(notification);
+				break;
 			case "teams":
-				return await this.teamsProvider.sendTestAlert(notification);
+				success = await this.teamsProvider.sendTestAlert(notification);
+				break;
 			default:
-				return false;
+				throw new AppError({
+					message: `Unsupported notification type: ${notification.type ?? "unknown"}`,
+					status: 400,
+					service: SERVICE_NAME,
+					method: "sendTestNotification",
+				});
 		}
+
+		if (!success) {
+			const providerHint =
+				notification.type === "email"
+					? "Check the SMTP host, username, password/App Password, and TLS settings in Email Settings."
+					: `Check the ${notification.type ?? "unknown"} notification configuration and server logs.`;
+
+			throw new AppError({
+				message: `Failed to send ${notification.type ?? "unknown"} test notification. ${providerHint}`,
+				status: 500,
+				service: SERVICE_NAME,
+				method: "sendTestNotification",
+			});
+		}
+
+		return true;
 	};
 
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
+		const outcomes = await Promise.allSettled(notifications.map((notification) => this.sendTestNotification(notification)));
+		const failed = outcomes.filter((outcome) => outcome.status === "rejected");
+
+		if (failed.length > 0) {
+			const firstFailure = failed[0];
+			if (firstFailure.status === "rejected") {
+				throw firstFailure.reason;
+			}
 			return false;
 		}
+
 		return true;
 	};
 

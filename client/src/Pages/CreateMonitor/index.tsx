@@ -771,114 +771,65 @@ const CreateMonitorPage = () => {
 				rightContent={
 					<Stack spacing={theme.spacing(LAYOUT.MD)}>
 						<Controller
-							name="escalationEnabled"
+							name="escalationDelayMinutes"
 							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
-									/>
-									<Typography>
-										{t("pages.createMonitor.form.escalation.option.enabled.label")}
-									</Typography>
-								</Stack>
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value === 0 ? "" : field.value}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? 0 : Number(val));
+									}}
+									type="number"
+									fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+									placeholder="30"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
 							)}
 						/>
-						{watch("escalationEnabled") && (
-							<>
-								<Controller
-									name="escalationDelayMinutes"
-									control={control}
-									render={({ field, fieldState }) => (
-										<TextField
+						<Controller
+							name="escalationEmail"
+							control={control}
+							render={({ field, fieldState }) => {
+								const emailNotifications = (notifications ?? []).filter(
+									(n) => n.type === "email"
+								);
+								return (
+									<>
+										<Select
 											{...field}
-											value={field.value === 0 ? "" : field.value}
-											onChange={(e) => {
-												const val = e.target.value;
-												field.onChange(val === "" ? 0 : Number(val));
-											}}
-											type="number"
-											fieldLabel={t(
-												"pages.createMonitor.form.escalation.option.delay.label"
-											)}
-											placeholder="30"
+											value={field.value ?? ""}
 											fullWidth
-											error={!!fieldState.error}
-											helperText={fieldState.error?.message ?? ""}
-										/>
-									)}
-								/>
-
-								<Controller
-									name="escalationEmail"
-									control={control}
-									render={({ field, fieldState }) => {
-										// Filter to only email notifications
-										const emailNotifications = (notifications ?? []).filter(
-											(n) => n.type === "email"
-										);
-										return (
-											<Select
-												{...field}
-												fieldLabel={t(
-													"pages.createMonitor.form.escalation.option.email.label"
-												)}
-												placeholder="Select escalation email"
-												fullWidth
-												error={!!fieldState.error}
+											displayEmpty
+										>
+											<MenuItem value="">Select escalation email</MenuItem>
+											{emailNotifications.map((notification) => (
+												<MenuItem
+													key={notification.id}
+													value={notification.address || ""}
+												>
+													{notification.notificationName} ({notification.address})
+												</MenuItem>
+											))}
+										</Select>
+										{fieldState.error ? (
+											<Typography
+												color="error"
+												variant="caption"
 											>
-												{emailNotifications.map((notification) => (
-													<MenuItem
-														key={notification.id}
-														value={notification.address || ""}
-													>
-														{notification.notificationName} ({notification.address})
-													</MenuItem>
-												))}
-											</Select>
-										);
-									}}
-								/>
-							</>
-						)}
+												{fieldState.error.message}
+											</Typography>
+										) : null}
+									</>
+								);
+							}}
+						/>
 					</Stack>
 				}
 			/>
-
-			{(watchedType === "http" ||
-				watchedType === "grpc" ||
-				watchedType === "websocket") && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.ignoreTls.title")}
-					subtitle={t("pages.createMonitor.form.ignoreTls.description")}
-					rightContent={
-						<Controller
-							name="ignoreTlsErrors"
-							control={control}
-							render={({ field }) => (
-								<Stack
-									direction="row"
-									alignItems="center"
-									spacing={theme.spacing(SPACING.LG)}
-								>
-									<Switch
-										checked={field.value ?? false}
-										onChange={(e) => field.onChange(e.target.checked)}
-									/>
-									<Typography>
-										{t("pages.createMonitor.form.ignoreTls.option.tls.label")}
-									</Typography>
-								</Stack>
-							)}
-						/>
-					}
-				/>
-			)}
 
 			{watchedType === "http" && (
 				<ConfigBox
