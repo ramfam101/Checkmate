@@ -533,6 +533,15 @@
 						"checks": {
 							"label": "Number of checks in sliding window"
 						},
+						"escalationEnabled": {
+							"label": "Enable incident escalation"
+						},
+						"escalationMinutes": {
+							"label": "Escalate if downtime reaches this many minutes"
+						},
+						"escalationChannels": {
+							"label": "Notification channels for escalated incidents"
+						},
 						"percentage": {
 							"label": "What percentage of checks in the sliding window fail/succeed before monitor status changes?"
 						}

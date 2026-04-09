@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchIncidentEscalationEnabled = watch("incidentEscalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -693,6 +694,112 @@ const CreateMonitorPage = () => {
 								/>
 							)}
 						/>
+						<Controller
+							name="incidentEscalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t(
+											"pages.createMonitor.form.incidents.option.escalationEnabled.label"
+										)}
+									</Typography>
+								</Stack>
+							)}
+						/>
+						{watchIncidentEscalationEnabled && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Controller
+									name="incidentEscalationMinutes"
+									control={control}
+									render={({ field }) => (
+										<SliderWithLabel
+											{...field}
+											sliderMaxWidth={{ xs: "100%", md: "50%" }}
+											fieldLabel={t(
+												"pages.createMonitor.form.incidents.option.escalationMinutes.label"
+											)}
+											min={1}
+											max={240}
+											valueLabelDisplay="auto"
+											valueLabelFormat={(value) => `${value}m`}
+										/>
+									)}
+								/>
+								<Controller
+									name="incidentEscalationNotificationIds"
+									control={control}
+									render={({ field }) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedNotifications = notificationOptions.filter((n) =>
+											(field.value ?? []).includes(n.id)
+										);
+
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selectedNotifications}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: typeof notificationOptions) => {
+														field.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+													fieldLabel={t(
+														"pages.createMonitor.form.incidents.option.escalationChannels.label"
+													)}
+												/>
+												{selectedNotifications.length > 0 && (
+													<Stack
+														flex={1}
+														width="100%"
+													>
+														{selectedNotifications.map((notification, index) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={notification.id}
+																width="100%"
+															>
+																<Typography flexGrow={1}>
+																	{notification.notificationName}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		field.onChange(
+																			(field.value ?? []).filter(
+																				(id: string) => id !== notification.id
+																			)
+																		);
+																	}}
+																	aria-label="Remove escalation channel"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{index < selectedNotifications.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</Stack>
+						)}
 					</Stack>
 				}
 			/>

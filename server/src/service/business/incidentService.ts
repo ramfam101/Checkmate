@@ -16,6 +16,7 @@ export interface IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null>;
+	evaluateEscalationNotification(monitor: Monitor): Promise<MonitorActionDecision | null>;
 	resolveIncident(incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string): Promise<Incident>;
 	getIncidentsByTeam(
 		teamId: string,
@@ -106,6 +107,63 @@ export class IncidentService implements IIncidentService {
 		}
 
 		return null;
+	};
+
+	evaluateEscalationNotification = async (monitor: Monitor): Promise<MonitorActionDecision | null> => {
+		if (!monitor.incidentEscalationEnabled) {
+			return null;
+		}
+
+		const escalationNotificationIds = monitor.incidentEscalationNotificationIds ?? [];
+		if (escalationNotificationIds.length === 0) {
+			return null;
+		}
+
+		const thresholdMinutes = monitor.incidentEscalationMinutes ?? 30;
+		if (thresholdMinutes < 1) {
+			return null;
+		}
+
+		if (monitor.status !== "down" && monitor.status !== "breached") {
+			return null;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return null;
+		}
+
+		if (activeIncident.escalatedAt) {
+			return null;
+		}
+
+		const startTimeMs = new Date(activeIncident.startTime).getTime();
+		if (!Number.isFinite(startTimeMs)) {
+			return null;
+		}
+
+		const downtimeMinutes = Math.floor((Date.now() - startTimeMs) / 60000);
+		if (downtimeMinutes < thresholdMinutes) {
+			return null;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalatedAt: new Date().toISOString(),
+		});
+
+		return {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "incident_escalation",
+			escalationNotificationIds,
+			escalationContext: {
+				incidentId: activeIncident.id,
+				downtimeMinutes,
+				thresholdMinutes,
+			},
+		};
 	};
 
 	private buildThresholdBreachMessage(monitor: Monitor, monitorStatusResponse?: MonitorStatusResponse): string {
