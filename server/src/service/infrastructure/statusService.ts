@@ -233,12 +233,12 @@ export class StatusService implements IStatusService {
 			}
 
 			const prevStatus = monitor.status;
-			let newStatus: MonitorStatus = status === true ? "up" : "down";
+			let newStatus: MonitorStatus = prevStatus;
 			let statusChanged = false;
 
-			// Return early if not enough data points
+			// Keep new monitors in an initializing state until the status window is fully populated.
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				monitor.status = prevStatus === "initializing" ? "initializing" : prevStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -249,19 +249,23 @@ export class StatusService implements IStatusService {
 				};
 			}
 
-			// Check if threshold has been met
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 			const currentCheckFailed = status === false;
 			const currentCheckPassed = status === true;
+			const thresholdStatus: MonitorStatus = failureRate >= monitor.statusWindowThreshold ? "down" : "up";
 
+			if (prevStatus === "initializing") {
+				newStatus = thresholdStatus;
+				statusChanged = true;
+			}
 			// Only declare a monitor down on a failing check that pushes the rolling window past the threshold.
-			if (currentCheckFailed && failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+			else if (currentCheckFailed && thresholdStatus === "down" && prevStatus !== "down") {
 				newStatus = "down";
 				statusChanged = true;
 			}
 			// Only recover on a passing check once the rolling failure rate falls back below the threshold.
-			else if (currentCheckPassed && failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			else if (currentCheckPassed && thresholdStatus === "up" && prevStatus === "down") {
 				newStatus = "up";
 				statusChanged = true;
 			}
