@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IMonitorsRepository, INotificationsRepository, IIncidentsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	checkEscalations: () => Promise<void>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -36,10 +37,12 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private incidentsRepository: IIncidentsRepository;
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -60,6 +63,7 @@ export class NotificationsService implements INotificationsService {
 		this.pagerDutyProvider = pagerDutyProvider;
 		this.matrixProvider = matrixProvider;
 		this.teamsProvider = teamsProvider;
+		this.incidentsRepository = incidentsRepository;
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
@@ -159,6 +163,65 @@ export class NotificationsService implements INotificationsService {
 				return await this.teamsProvider.sendTestAlert(notification);
 			default:
 				return false;
+		}
+	};
+
+	checkEscalations = async (): Promise<void> => {
+		const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+		for (const incident of activeIncidents) {
+			const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+			if (!monitor || monitor.status !== "down" || !monitor.escalationSteps || monitor.escalationSteps.length === 0) {
+				continue;
+			}
+
+			const now = Date.now();
+			const incidentStart = new Date(incident.startTime).getTime();
+			const durationMinutes = (now - incidentStart) / (1000 * 60);
+			const sentIndexes = incident.sentEscalationIndexes ?? [];
+
+			for (let i = 0; i < monitor.escalationSteps.length; i++) {
+				const step = monitor.escalationSteps[i];
+				if (!step || sentIndexes.includes(i) || !step.email) {
+					continue;
+				}
+
+				if (durationMinutes < step.delayMinutes) {
+					continue;
+				}
+
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+				const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incident, step, clientHost);
+
+				const escalationNotification: Notification = {
+					id: "",
+					userId: "",
+					teamId: monitor.teamId,
+					type: "email",
+					notificationName: `Escalation: ${step.email}`,
+					address: step.email,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				};
+
+				try {
+					await this.emailProvider.sendMessage!(escalationNotification, notificationMessage);
+					sentIndexes.push(i);
+					await this.incidentsRepository.updateById(incident.id, incident.teamId, { sentEscalationIndexes: sentIndexes });
+					this.logger.info({
+						message: `Escalation email sent to ${step.email} for incident ${incident.id}`,
+						service: SERVICE_NAME,
+						method: "checkEscalations",
+					});
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Failed to send escalation email to ${step.email}`,
+						service: SERVICE_NAME,
+						method: "checkEscalations",
+						details: { error: error instanceof Error ? error.message : "Unknown error" },
+					});
+				}
+			}
 		}
 	};
 

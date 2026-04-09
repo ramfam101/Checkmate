@@ -543,6 +543,29 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Send a one-time escalation email when an incident stays active longer than the configured delay.",
+					"title": "Escalation",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation email"
+						},
+						"email": {
+							"label": "Escalation email",
+							"placeholder": "team@example.com"
+						},
+						"delay": {
+							"label": "Escalation after",
+							"value": {
+								"oneMinute": "1 minute",
+								"twoMinutes": "2 minutes",
+								"fiveMinutes": "5 minutes",
+								"tenMinutes": "10 minutes",
+								"fifteenMinutes": "15 minutes"
+							}
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

@@ -45,6 +45,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			default: true,
 			index: true,
 		},
+		sentEscalationIndexes: {
+			type: [Number],
+			default: [],
+		},
 		message: {
 			type: String,
 			default: null,

@@ -54,6 +54,18 @@ const startApp = async () => {
 		logger.info({ message: `Server started on port:${env.PORT}` });
 	});
 
+	const escalationIntervalMs = 60 * 1000;
+	setInterval(() => {
+		services.notificationsService.checkEscalations().catch((error: unknown) => {
+			logger.error({
+				message: error instanceof Error ? error.message : "Escalation check failed",
+				service: "Server",
+				method: "escalationInterval",
+				details: { stack: error instanceof Error ? error.stack : undefined },
+			});
+		});
+	}, escalationIntervalMs);
+
 	initShutdownListener(server, services);
 };
 
