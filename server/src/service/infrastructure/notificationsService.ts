@@ -107,8 +107,13 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		overrideNotificationIds?: string[]
+	) => {
+		const notificationIds = overrideNotificationIds ?? monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -138,7 +143,36 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		const result = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		const escalationDelay = monitor.escalationDelay
+			? monitor.escalationDelay * 60000
+			: undefined;
+
+		if (escalationDelay && monitor.escalationNotifications?.length) {
+			const checkEscalation = async () => {
+				const updatedMon = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+				if (updatedMon && updatedMon.escalationNotifications?.length) {
+					this.logger.info({
+						message: "Escalation triggered",
+						service: SERVICE_NAME,
+						method: "handleNotifications",
+					});
+
+					await this.sendNotifications(
+						updatedMon,
+						monitorStatusResponse,
+						decision,
+						updatedMon.escalationNotifications
+					);
+				}
+			};
+
+			setTimeout(checkEscalation, escalationDelay);
+		}
+
+		return result;
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
