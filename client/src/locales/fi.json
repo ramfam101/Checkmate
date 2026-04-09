@@ -1104,5 +1104,19 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Jos monitori pysyy poissa käytöstä määritetyn ajan, ilmoita lisäkanaville.",
+					"title": "Eskalaatiosäännöt",
+					"minutesLabel": "Eskaloi jälkeen (minuuttia)",
+					"minutesHelper": "Aseta 0 poistaaksesi eskalaation käytöstä",
+					"channelsLabel": "Eskalaatioilmoituskanavat",
+					"info": "Aseta 0 poistaaksesi eskalaation käytöstä"
+				}
+			}
+		}
+	}
 }

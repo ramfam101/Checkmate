@@ -1115,5 +1115,19 @@
 			"disk_selection_info": "現在ディスクが検出されていません。",
 			"disk_selection_description": "監視したい特定のディスクを選択してください。"
 		}
+	},
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "モニターが指定された時間ダウンし続けた場合、追加のチャンネルに通知します。",
+					"title": "エスカレーションルール",
+					"minutesLabel": "エスカレートするまでの時間（分）",
+					"minutesHelper": "エスカレーションを無効にするには0を設定してください",
+					"channelsLabel": "エスカレーション通知チャンネル",
+					"info": "エスカレーションを無効にするには0を設定してください"
+				}
+			}
+		}
 	}
 }

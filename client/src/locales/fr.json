@@ -1136,5 +1136,19 @@
 			"disk_selection_info": "Aucun disque détecté pour le moment.",
 			"disk_selection_description": "Sélectionnez les disques spécifiques que vous souhaitez surveiller."
 		}
+	},
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Si le moniteur reste hors ligne pendant le temps spécifié, notifiez des canaux supplémentaires.",
+					"title": "Règles d'escalade",
+					"minutesLabel": "Escalader après (minutes)",
+					"minutesHelper": "Définir à 0 pour désactiver l'escalade",
+					"channelsLabel": "Canaux de notification d'escalade",
+					"info": "Définir à 0 pour désactiver l'escalade"
+				}
+			}
+		}
 	}
 }

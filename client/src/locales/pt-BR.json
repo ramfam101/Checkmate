@@ -1136,5 +1136,19 @@
 			"disk_selection_info": "Nenhum disco detectado no momento.",
 			"disk_selection_description": "Selecione os discos específicos que você deseja monitorar."
 		}
+	},
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Se o monitor ficar indisponível pelo tempo especificado, notifique canais adicionais.",
+					"title": "Regras de Escalonamento",
+					"minutesLabel": "Escalonar após (minutos)",
+					"minutesHelper": "Defina como 0 para desativar o escalonamento",
+					"channelsLabel": "Canais de notificação de escalonamento",
+					"info": "Defina como 0 para desativar o escalonamento"
+				}
+			}
+		}
 	}
 }

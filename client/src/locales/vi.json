@@ -834,5 +834,19 @@
 			"selectEnabled": "",
 			"title": ""
 		}
+	},
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Nếu màn hình tiếp tục ngoại tuyến trong thời gian đã chỉ định, hãy thông báo cho các kênh bổ sung.",
+					"title": "Quy tắc leo thang",
+					"minutesLabel": "Leo thang sau (phút)",
+					"minutesHelper": "Đặt thành 0 để tắt leo thang",
+					"channelsLabel": "Kênh thông báo leo thang",
+					"info": "Đặt thành 0 để tắt leo thang"
+				}
+			}
+		}
 	}
 }

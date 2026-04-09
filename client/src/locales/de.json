@@ -1136,5 +1136,19 @@
 			"disk_selection_info": "Momentan wurde keine Festplatte erkannt.",
 			"disk_selection_description": "Wählen Sie die spezifischen Festplatten aus, die Sie überwachen möchten."
 		}
+	},
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Wenn der Monitor für die angegebene Zeit ausfällt, benachrichtigen Sie zusätzliche Kanäle.",
+					"title": "Eskalationsregeln",
+					"minutesLabel": "Eskalieren nach (Minuten)",
+					"minutesHelper": "Auf 0 setzen, um Eskalation zu deaktivieren",
+					"channelsLabel": "Eskalationsbenachrichtigungskanäle",
+					"info": "Auf 0 setzen, um Eskalation zu deaktivieren"
+				}
+			}
+		}
 	}
 }

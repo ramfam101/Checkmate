@@ -1104,5 +1104,19 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Monitör belirtilen süre boyunca çevrimdışı kalırsa, ek kanallara bildirim gönderin.",
+					"title": "Yükseltme Kuralları",
+					"minutesLabel": "Yükseltme süresi (dakika)",
+					"minutesHelper": "Yükseltmeyi devre dışı bırakmak için 0 olarak ayarlayın",
+					"channelsLabel": "Yükseltme bildirim kanalları",
+					"info": "Yükseltmeyi devre dışı bırakmak için 0 olarak ayarlayın"
+				}
+			}
+		}
+	}
 }

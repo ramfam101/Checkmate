@@ -1104,5 +1104,19 @@
 	"packetsReceivedRate": "",
 	"packetsSent": "",
 	"rate": "",
-	"selectInterface": ""
+	"selectInterface": "",
+	"pages": {
+		"createMonitor": {
+			"form": {
+				"escalationRules": {
+					"description": "Pokud monitor zůstane nedostupný po zadanou dobu, upozorněte další kanály.",
+					"title": "Pravidla eskalace",
+					"minutesLabel": "Eskalovat po (minutách)",
+					"minutesHelper": "Nastavte na 0 pro zakázání eskalace",
+					"channelsLabel": "Eskalační oznamovací kanály",
+					"info": "Nastavte na 0 pro zakázání eskalace"
+				}
+			}
+		}
+	}
 }
