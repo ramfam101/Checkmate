@@ -118,7 +118,7 @@ export class NotificationsService implements INotificationsService {
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
 		if (isEscalation) {
-			notificationMessage.content.subject = `ESCALATION: Monitor ${monitor.name} is still down`;
+			notificationMessage.content.subject = `ESCALATION: ${monitor.name} is still down`;
 		}
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
