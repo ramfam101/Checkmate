@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: checkmate-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    plan: free
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: info
+      - key: TOKEN_TTL
+        value: 99d
+      - key: JWT_SECRET
+        sync: false
+      - key: DB_CONNECTION_STRING
+        sync: false
+      - key: CLIENT_HOST
+        sync: false
+      - key: ORIGIN
+        sync: false
+
+  - type: web
+    name: checkmate-client
+    runtime: static
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    plan: free
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: VITE_APP_API_BASE_URL
+        sync: false
+      - key: VITE_APP_API_V2_BASE_URL
+        sync: false
+      - key: VITE_APP_CLIENT_HOST
+        sync: false
+      - key: VITE_APP_LOG_LEVEL
+        value: info
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -66,6 +66,17 @@ type SuperSimpleQueueHelperDeps = {
 	geoChecksRepository?: IGeoChecksRepository;
 };
 
+const isSuperSimpleQueueHelperDeps = (value: ILogger | SuperSimpleQueueHelperDeps): value is SuperSimpleQueueHelperDeps => {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"networkService" in value &&
+		"statusService" in value &&
+		"notificationsService" in value &&
+		"maintenanceWindowsRepository" in value
+	);
+};
+
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	static SERVICE_NAME = SERVICE_NAME;
 
@@ -123,27 +134,26 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		geoChecksService?: IGeoChecksService,
 		geoChecksRepository?: IGeoChecksRepository
 	) {
-		const deps =
-			typeof loggerOrDeps === "object" && loggerOrDeps !== null && "logger" in loggerOrDeps
-				? loggerOrDeps
-				: {
-						logger: loggerOrDeps,
-						networkService: networkService!,
-						statusService: statusService!,
-						notificationsService: notificationsService!,
-						checkService: checkService!,
-						settingsService,
-						buffer: buffer!,
-						incidentService: incidentService!,
-						maintenanceWindowsRepository: maintenanceWindowsRepository!,
-						monitorsRepository,
-						teamsRepository,
-						monitorStatsRepository,
-						checksRepository,
-						incidentsRepository,
-						geoChecksService,
-						geoChecksRepository,
-					};
+		const deps = isSuperSimpleQueueHelperDeps(loggerOrDeps)
+			? loggerOrDeps
+			: {
+					logger: loggerOrDeps,
+					networkService: networkService!,
+					statusService: statusService!,
+					notificationsService: notificationsService!,
+					checkService: checkService!,
+					settingsService,
+					buffer: buffer!,
+					incidentService: incidentService!,
+					maintenanceWindowsRepository: maintenanceWindowsRepository!,
+					monitorsRepository,
+					teamsRepository,
+					monitorStatsRepository,
+					checksRepository,
+					incidentsRepository,
+					geoChecksService,
+					geoChecksRepository,
+				};
 
 		this.logger = deps.logger;
 		this.networkService = deps.networkService;
