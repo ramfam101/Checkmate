@@ -14,6 +14,11 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -107,8 +112,12 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationIds: string[]
+	) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -138,7 +147,20 @@ export class NotificationsService implements INotificationsService {
 		}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, monitor.notifications ?? []);
+	};
+
+	handleEscalationNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
+		const escalationChannels = monitor.escalationNotificationChannels ?? [];
+		if (!decision.shouldSendNotification || escalationChannels.length === 0) {
+			return false;
+		}
+
+		return await this.sendNotifications(monitor, monitorStatusResponse, decision, escalationChannels);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

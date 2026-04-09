@@ -38,7 +38,8 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	escalationDurationMinutes?: number;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -177,6 +178,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications for prolonged outages (best effort, don't wait)
+				this.handleEscalationNotification(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +198,54 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private handleEscalationNotification = async (
+		monitor: Monitor,
+		status: Awaited<ReturnType<INetworkService["requestStatus"]>>
+	) => {
+		if (monitor.status !== "down") {
+			return;
+		}
+
+		const escalationAfterMinutes = monitor.escalationAfterMinutes;
+		const escalationChannels = monitor.escalationNotificationChannels ?? [];
+		if (!escalationAfterMinutes || escalationAfterMinutes < 1 || escalationChannels.length === 0) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalationSentAt) {
+			return;
+		}
+
+		const startedAt = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(startedAt)) {
+			return;
+		}
+
+		const downDurationMinutes = Math.floor((Date.now() - startedAt) / 60000);
+		if (downDurationMinutes < escalationAfterMinutes) {
+			return;
+		}
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: "status_down",
+			notificationReason: "escalation",
+			escalationDurationMinutes: downDurationMinutes,
+		};
+
+		const success = await this.notificationsService.handleEscalationNotifications(monitor, status, escalationDecision);
+		if (!success) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalationSentAt: new Date().toISOString(),
+		});
 	};
 
 	getCleanupOrphanedJob = () => {
