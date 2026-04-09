@@ -167,8 +167,20 @@ export class EmailService implements IEmailService {
 				subject: subject,
 				html: html,
 			});
+
+			this.logger.info({
+				message: "Email sent successfully",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					to,
+					subject,
+					messageId: info?.messageId,
+				},
+			});
+
 			return info?.messageId;
-		} catch (error: unknown) {
+        } catch (error: unknown) {
 			this.logger.error({
 				message: error instanceof Error ? error.message : "Unknown error",
 				service: SERVICE_NAME,

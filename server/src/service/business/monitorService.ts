@@ -567,9 +567,13 @@ export class MonitorService implements IMonitorService {
 			id: "",
 			teamId,
 			userId,
+			status: "initializing",
+			statusWindow: [],
 			recentChecks: [],
 			createdAt: "",
 			updatedAt: "",
+			escalationAfterMinutes: (monitor as Partial<Monitor>).escalationAfterMinutes ?? 0,
+			escalationNotifications: (monitor as Partial<Monitor>).escalationNotifications ?? [],
 		}));
 
 		const createdMonitors = await this.createMonitors(cleanedMonitors);

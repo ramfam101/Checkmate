@@ -79,6 +79,8 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalationAfterMinutes: number;
+	escalationNotifications: string[];
 }
 
 export type MonitorWithChecks = Monitor;

@@ -237,6 +237,7 @@ const NotificationsCreatePage = () => {
 				spacing={theme.spacing(2)}
 			>
 				<Button
+					type="button"
 					variant="contained"
 					color="primary"
 					onClick={handleTest}
