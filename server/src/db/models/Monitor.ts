@@ -363,6 +363,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [Number],
 			default: [],
 		},
+		escalationNotificationIds: {
+			type: [String],
+			default: [],
+		},
 	},
 	{
 		timestamps: true,

@@ -120,6 +120,12 @@ export class NotificationsService implements INotificationsService {
 		escalationContext?: { escalationLevel: number; incidentId: string }
 	) => {
 		const notificationIds = monitor.notifications ?? [];
+		this.logger.debug({
+			message: `Sending notifications for monitor ${monitor.id}, found ${notificationIds.length} notification IDs`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+			details: { notificationIds, decision },
+		});
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -156,6 +162,12 @@ export class NotificationsService implements INotificationsService {
 		escalationContext?: { escalationLevel: number; incidentId: string }
 	) => {
 		if (!decision.shouldSendNotification) {
+			this.logger.debug({
+				message: `Skipping notifications for monitor ${monitor.id}: shouldSendNotification=false`,
+				service: SERVICE_NAME,
+				method: "handleNotifications",
+				details: { decision },
+			});
 			return false;
 		}
 

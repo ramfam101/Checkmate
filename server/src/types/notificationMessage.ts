@@ -49,5 +49,7 @@ export interface NotificationMessage {
 	metadata: {
 		teamId: string;
 		notificationReason: string;
+		escalationLevel?: number;
+		incidentId?: string;
 	};
 }

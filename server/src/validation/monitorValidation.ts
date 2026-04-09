@@ -80,6 +80,7 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckInterval: z.number().min(300000).optional(),
 	escalationEnabled: z.boolean().optional(),
 	escalationIntervals: z.array(z.number().min(0, "Interval must be non-negative")).optional(),
+	escalationNotificationIds: z.array(z.string()).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -111,6 +112,7 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckInterval: z.number().min(300000).optional(),
 	escalationEnabled: z.boolean().optional(),
 	escalationIntervals: z.array(z.number().min(0, "Interval must be non-negative")).optional(),
+	escalationNotificationIds: z.array(z.string()).optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({

@@ -123,7 +123,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationContent {
 		let title = `Monitor Down: ${monitor.name}`;
 		if (escalationContext && escalationContext.escalationLevel > 0) {
-			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+			title = `Escalated: ${title}`;
 		}
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
@@ -152,7 +152,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationContent {
 		let title = `Monitor Recovered: ${monitor.name}`;
 		if (escalationContext && escalationContext.escalationLevel > 0) {
-			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+			title = `Escalated: ${title}`;
 		}
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
@@ -172,7 +172,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationContent {
 		let title = `Threshold Exceeded: ${monitor.name}`;
 		if (escalationContext && escalationContext.escalationLevel > 0) {
-			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+			title = `Escalated: ${title}`;
 		}
 		const summary = `Monitor "${monitor.name}" has exceeded one or more thresholds.`;
 		const details = [`URL: ${monitor.url}`, `Status: Threshold exceeded`, `Type: ${monitor.type}`];
@@ -194,7 +194,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationContent {
 		let title = `Thresholds Resolved: ${monitor.name}`;
 		if (escalationContext && escalationContext.escalationLevel > 0) {
-			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+			title = `Escalated: ${title}`;
 		}
 		const summary = `Monitor "${monitor.name}" thresholds have returned to normal.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
@@ -213,7 +213,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationContent {
 		let title = `Monitor: ${monitor.name}`;
 		if (escalationContext && escalationContext.escalationLevel > 0) {
-			title = `Escalation [${escalationContext.escalationLevel}]: ${title}`;
+			title = `Escalated: ${title}`;
 		}
 		return {
 			title,

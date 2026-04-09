@@ -256,7 +256,7 @@ const CreateMonitorPage = () => {
 		const transformedData = {
 			...data,
 			escalationEnabled: (data.escalationMinutes ?? 0) > 0,
-			escalationIntervals: (data.escalationMinutes ?? 0) > 0 ? [(data.escalationMinutes ?? 0) * 60 * 1000] : [], // Convert minutes to milliseconds
+			escalationIntervals: (data.escalationMinutes ?? 0) > 0 ? [data.escalationMinutes ?? 0] : [],
 		};
 
 		let result;
@@ -712,7 +712,10 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							const notificationOptions = notifications ?? [];
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -801,22 +804,32 @@ const CreateMonitorPage = () => {
 													minutesField.onChange(parseInt(e.target.value) || 0)
 												}
 												size="small"
-														/>
+												helperText={t("pages.createMonitor.form.escalationRules.minutesHelper")}
+											/>
 
-														<Autocomplete
-															multiple
-															options={notificationOptions}
-															value={selectedNotifications}
-															getOptionLabel={(option) => option.notificationName}
-															onChange={(_: unknown, newValue: Notification[]) => {
-																notificationsField.onChange(newValue.map((n) => n.id));
-															}}
-															isOptionEqualToValue={(option, value) => option.id === value.id}
-															renderInput={(params) => (
-																<TextField {...params} fieldLabel={t("pages.createMonitor.form.escalationRules.channelsLabel")} />
-															)}
-															disabled={!notifications || notifications.length === 0}
-														/>
+											{/* Channel search bar - similar to notifications */}
+											<Autocomplete
+												multiple
+												options={notificationOptions}
+												value={selectedNotifications}
+												getOptionLabel={(option) => option.notificationName}
+												onChange={(_: unknown, newValue: Notification[]) => {
+													notificationsField.onChange(newValue.map((n) => n.id));
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												renderInput={(params) => (
+													<TextField {...params} fieldLabel={t("pages.createMonitor.form.escalationRules.channelsLabel")} />
+												)}
+												disabled={!notifications || notifications.length === 0}
+											/>
+
+											{/* Selected channels display - similar to notifications */}
+											{selectedNotifications.length > 0 && (
+												<Stack
+													flex={1}
+													width="100%"
+												>
+													{selectedNotifications.map((notification, index) => (
 														<Stack
 															direction="row"
 															alignItems="center"
@@ -845,9 +858,6 @@ const CreateMonitorPage = () => {
 												</Stack>
 											)}
 
-											<Typography variant="body2" color="text.secondary">
-												{t("pages.createMonitor.form.escalationRules.info")}
-											</Typography>
 										</Stack>
 									);
 								}}

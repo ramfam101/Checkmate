@@ -226,8 +226,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					// Build escalation notification
 					const escalationLevel = incident.escalationsSent + 1;
 
-					// Get existing notification configurations for this monitor
-					const notificationIds = monitorData.notifications ?? [];
+					// Get escalation notification configurations for this monitor
+					const notificationIds = monitorData.escalationNotificationIds ?? [];
 					const existingNotifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 					// Send escalation notifications using existing infrastructure
