@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -17,6 +17,7 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, incident: Incident, notificationIds: string[]) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -33,6 +34,7 @@ export class NotificationsService implements INotificationsService {
 	private pagerDutyProvider: INotificationProvider;
 	private matrixProvider: INotificationProvider;
 	private teamsProvider: INotificationProvider;
+	private telegramProvider: INotificationProvider;
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
@@ -47,6 +49,7 @@ export class NotificationsService implements INotificationsService {
 		pagerDutyProvider: INotificationProvider,
 		matrixProvider: INotificationProvider,
 		teamsProvider: INotificationProvider,
+		telegramProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
 		notificationMessageBuilder: INotificationMessageBuilder
@@ -60,6 +63,7 @@ export class NotificationsService implements INotificationsService {
 		this.pagerDutyProvider = pagerDutyProvider;
 		this.matrixProvider = matrixProvider;
 		this.teamsProvider = teamsProvider;
+		this.telegramProvider = telegramProvider;
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
@@ -97,6 +101,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.emailProvider.sendMessage!(notification, notificationMessage);
 			case "teams":
 				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
+			case "telegram":
+				return await this.telegramProvider.sendMessage!(notification, notificationMessage);
 			default:
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
@@ -141,7 +147,50 @@ export class NotificationsService implements INotificationsService {
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
 
+	sendEscalationNotifications = async (monitor: Monitor, incident: Incident, notificationIds: string[]): Promise<boolean> => {
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		// Build notification message for escalation
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			{} as MonitorStatusResponse, // Placeholder, as escalation doesn't have current status
+			{
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "escalation",
+			},
+			clientHost
+		);
+
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, {} as MonitorStatusResponse, {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "escalation",
+			}, notificationMessage)
+		);
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation notification send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+		return succeeded === notifications.length;
+	};
+
 	sendTestNotification = async (notification: Partial<Notification>) => {
+		  console.log("Testing notification:", notification.type, notification.notificationName);
 		switch (notification.type) {
 			case "email":
 				return await this.emailProvider.sendTestAlert(notification);
@@ -157,22 +206,33 @@ export class NotificationsService implements INotificationsService {
 				return await this.webhookProvider.sendTestAlert(notification);
 			case "teams":
 				return await this.teamsProvider.sendTestAlert(notification);
+			case "telegram":
+				return await this.telegramProvider.sendTestAlert(notification);
 			default:
 				return false;
 		}
 	};
 
-	testAllNotifications = async (notificationIds: string[]) => {
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			return false;
-		}
-		return true;
-	};
+testAllNotifications = async (notificationIds: string[]) => {
+  try {
+    const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+    const tasks = notifications.map((notification) => this.sendTestNotification(notification));
+    const outcomes = await Promise.all(tasks);
+    const succeeded = outcomes.filter(Boolean).length;
+    const failed = outcomes.length - succeeded;
+    
+    console.log("Test notifications - Succeeded:", succeeded, "Failed:", failed);
+    
+    if (failed > 0) {
+      console.error("Some notifications failed to send");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("testAllNotifications error:", error);
+    return false;
+  }
+};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {
 		notificationData.userId = userId;

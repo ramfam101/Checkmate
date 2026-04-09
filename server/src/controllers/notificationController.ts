@@ -135,33 +135,41 @@ class NotificationController implements INotificationController {
 		}
 	};
 
-	testAllNotifications = async (req: Request, res: Response, next: NextFunction) => {
-		try {
-			const validatedBody = testAllNotificationsBodyValidation.parse(req.body);
+testAllNotifications = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    console.log("1. testAllNotifications called");
+    const validatedBody = testAllNotificationsBodyValidation.parse(req.body);
+    console.log("2. Validated body:", validatedBody);
 
-			const teamId = requireTeamId(req.user?.teamId);
+    const teamId = requireTeamId(req.user?.teamId);
+    console.log("3. Team ID:", teamId);
 
-			const monitor = await this.monitorsRepository.findById(validatedBody.monitorId, teamId);
-			const notifications = monitor.notifications || [];
+    const monitor = await this.monitorsRepository.findById(validatedBody.monitorId, teamId);
+    console.log("4. Monitor found:", monitor?.id);
 
-			if (notifications.length === 0) {
-				throw new AppError({ message: "No notifications", status: 400 });
-			}
+    const notifications = monitor.notifications || [];
+    console.log("5. Notifications:", notifications);
 
-			const result = await this.notificationsService.testAllNotifications(notifications);
+    if (notifications.length === 0) {
+      throw new AppError({ message: "No notifications", status: 400 });
+    }
 
-			if (!result) {
-				throw new AppError({ message: "Failed to send all notifications", status: 500 });
-			}
+    const result = await this.notificationsService.testAllNotifications(notifications);
+    console.log("6. Test result:", result);
 
-			return res.status(200).json({
-				success: true,
-				msg: "All notifications sent successfully",
-			});
-		} catch (error) {
-			next(error);
-		}
-	};
+    if (!result) {
+      throw new AppError({ message: "Failed to send all notifications", status: 500 });
+    }
+
+    return res.status(200).json({
+      success: true,
+      msg: "All notifications sent successfully",
+    });
+  } catch (error) {
+    console.error("testAllNotifications error:", error);
+    next(error);
+  }
+};
 }
 
 export default NotificationController;

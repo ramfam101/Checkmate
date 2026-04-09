@@ -17,7 +17,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		if (!monitors.length) {
 			return [];
 		}
-		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined }));
+		const payload = monitors.map((monitor) => ({ ...monitor, notifications: undefined, escalations: undefined }));
 		try {
 			const inserted = await MonitorModel.insertMany(payload, { ordered: false });
 			return this.mapDocuments(inserted);
@@ -352,6 +352,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
 
+		const escalations = (doc.escalations ?? []).map((escalation) => ({
+			delayMinutes: escalation.delayMinutes,
+			notificationIds: escalation.notificationIds.map((id) => toStringId(id)),
+		}));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -374,6 +379,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -411,6 +417,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
+		const escalations = (doc.escalations ?? []).map((escalation) => ({
+			delayMinutes: escalation.delayMinutes,
+			notificationIds: escalation.notificationIds.map((id) => toStringId(id)),
+		}));
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -433,6 +444,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalations,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
