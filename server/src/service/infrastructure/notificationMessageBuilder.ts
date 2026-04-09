@@ -15,6 +15,11 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: import("@/types/incident.js").Incident,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +53,34 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		incident: import("@/types/incident.js").Incident,
+		clientHost: string
+	): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Use monitor_down for escalation
+		const severity: NotificationSeverity = "critical";
+		const content = this.buildEscalationContent(monitor, incident);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: "down",
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
 			},
 		};
 	}
@@ -178,6 +211,32 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			title: `Monitor: ${monitor.name}`,
 			summary: `Status update for monitor "${monitor.name}".`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, incident: import("@/types/incident.js").Incident): NotificationContent {
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: Down`,
+			`Type: ${monitor.type}`,
+			`Incident Start: ${new Date(incident.startTime).toISOString()}`,
+		];
+
+		if (incident.message) {
+			details.push(`Error: ${incident.message}`);
+		}
+
+		if (incident.statusCode) {
+			details.push(`Status Code: ${incident.statusCode}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
 			timestamp: new Date(),
 		};
 	}
