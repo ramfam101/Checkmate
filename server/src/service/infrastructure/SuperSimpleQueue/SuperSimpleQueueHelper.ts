@@ -177,6 +177,57 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications
+				const currentMonitor = statusChangeResult.monitor;
+				if (
+					currentMonitor.status === "down" &&
+					!currentMonitor.escalationSent &&
+					currentMonitor.escalationWaitMinutes > 0 &&
+					(currentMonitor.escalationNotifications?.length ?? 0) > 0
+				) {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(currentMonitor.id, currentMonitor.teamId);
+					if (activeIncident) {
+						const downtimeMs = Date.now() - new Date(activeIncident.startTime).getTime();
+						const waitMs = currentMonitor.escalationWaitMinutes * 60 * 1000;
+						if (downtimeMs >= waitMs) {
+							const escalationDecision: MonitorActionDecision = {
+								shouldCreateIncident: false,
+								shouldResolveIncident: false,
+								shouldSendNotification: true,
+								incidentReason: null,
+								notificationReason: "status_change",
+							};
+							this.notificationsService.handleEscalationNotifications(currentMonitor, status, escalationDecision).then(() => {
+								this.monitorsRepository.updateById(currentMonitor.id, currentMonitor.teamId, { escalationSent: true } as Partial<Monitor>).catch((error: unknown) => {
+									this.logger.error({
+										message: `Error marking escalation sent for monitor ${currentMonitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+									});
+								});
+							}).catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending escalation notifications for monitor ${currentMonitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+						}
+					}
+				}
+
+				// Step 9. Reset escalation flag on recovery
+				if (decision.shouldResolveIncident && currentMonitor.escalationSent) {
+					this.monitorsRepository.updateById(currentMonitor.id, currentMonitor.teamId, { escalationSent: false } as Partial<Monitor>).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error resetting escalation flag for monitor ${currentMonitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
