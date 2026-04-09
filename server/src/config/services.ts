@@ -234,6 +234,7 @@ export const initializeServices = async ({
 	const notificationsService = new NotificationsService(
 		notificationsRepository,
 		monitorsRepository,
+		incidentsRepository,
 		webhookProvider,
 		emailProvider,
 		slackProvider,
@@ -305,6 +306,9 @@ export const initializeServices = async ({
 		statusPagesRepository,
 		incidentsRepository,
 	});
+
+	// Set monitor service in queue helper to resolve circular dependency
+	superSimpleQueueHelper.setMonitorService(monitorService);
 
 	const statusPageService = new StatusPageService(statusPagesRepository);
 

@@ -8,6 +8,7 @@ import {
 	INotificationsService,
 	ISettingsService,
 	IStatusService,
+	IMonitorService,
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
@@ -54,6 +55,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private networkService: INetworkService;
 	private statusService: IStatusService;
 	private notificationsService: INotificationsService;
+	private monitorService?: IMonitorService;
 	private checkService: ICheckService;
 	private settingsService: ISettingsService;
 	private buffer: IBufferService;
@@ -88,8 +90,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.logger = logger;
 		this.networkService = networkService;
 		this.statusService = statusService;
+		this.notificationsService = notificationsService;
 		this.checkService = checkService;
-		this.settingsService = settingsService;
 		this.buffer = buffer;
 		this.notificationsService = notificationsService;
 		this.incidentService = incidentService;
@@ -105,6 +107,10 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 	get serviceName() {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
+	}
+
+	setMonitorService(monitorService: IMonitorService) {
+		this.monitorService = monitorService;
 	}
 
 	getHeartbeatJob = () => {
@@ -152,6 +158,18 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.buffer.addToBuffer(check);
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
+
+				// Step 4.5. Check for escalation if monitor is down
+				if (statusChangeResult.monitor.status === 'down' && this.monitorService) {
+					this.monitorService.checkAndSendEscalation(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error checking escalation for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);

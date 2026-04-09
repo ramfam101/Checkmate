@@ -36,7 +36,7 @@ export interface IMonitorService {
 	createMonitor(teamId: string, userId: string, body: Partial<Monitor>): Promise<void>;
 	createMonitors(monitors: Array<Monitor>): Promise<Monitor[] | null>;
 	addDemoMonitors(args: { userId: string; teamId: string }): Promise<Monitor[]>;
-
+	checkAndSendEscalation(monitor: Monitor): Promise<void>;
 	// read
 	getUptimeDetailsById(args: { teamId: string; monitorId: string; dateRange: string }): Promise<UptimeDetailsResult>;
 	getHardwareDetailsById(args: { teamId: string; monitorId: string; dateRange: string }): Promise<HardwareDetailsResult>;
@@ -584,5 +584,80 @@ export class MonitorService implements IMonitorService {
 		}
 
 		return { imported: createdMonitors.length, errors };
+	};
+
+	checkAndSendEscalation = async (monitor: Monitor): Promise<void> => {
+		// Check if escalation is configured
+		if (!monitor.escalationDelay || !monitor.escalationEmail) {
+			return;
+		}
+
+		try {
+			// Find active incident to get downtime start time
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+			if (!activeIncident || !activeIncident.startTime) {
+				this.logger.warn({
+					message: `No active incident found for monitor ${monitor.id} during escalation check`,
+					service: SERVICE_NAME,
+					method: "checkAndSendEscalation",
+				});
+				return;
+			}
+
+			// Calculate downtime duration
+			const downtimeStart = parseInt(activeIncident.startTime);
+			const currentTime = Date.now();
+			const downtimeDuration = currentTime - downtimeStart;
+
+			// Check if escalation delay has been exceeded
+			if (downtimeDuration >= monitor.escalationDelay) {
+				this.logger.info({
+					message: `Sending escalation email for monitor ${monitor.id} - downtime: ${downtimeDuration}ms, delay: ${monitor.escalationDelay}ms`,
+					service: SERVICE_NAME,
+					method: "checkAndSendEscalation",
+				});
+
+				// Build escalation email content
+				const subject = `🚨 ESCALATION: ${monitor.name} is still down`;
+				const html = `
+					<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+						<h2 style="color: #dc3545;">ESCALATION ALERT</h2>
+						<p><strong>Monitor:</strong> ${monitor.name}</p>
+						<p><strong>URL:</strong> ${monitor.url}</p>
+						<p><strong>Status:</strong> DOWN</p>
+						<p><strong>Downtime Duration:</strong> ${Math.floor(downtimeDuration / 1000 / 60)} minutes</p>
+						<p><strong>Escalation Delay:</strong> ${Math.floor(monitor.escalationDelay / 1000 / 60)} minutes</p>
+						<p>This monitor has been down longer than the configured escalation delay and requires immediate attention.</p>
+						<hr>
+						<p style="color: #666; font-size: 12px;">This is an automated escalation notification from Checkmate monitoring system.</p>
+					</div>
+				`;
+
+				// Send escalation email
+				const result = await this.emailService.sendEmail(monitor.escalationEmail, subject, html);
+
+				if (result) {
+					this.logger.info({
+						message: `Escalation email sent successfully for monitor ${monitor.id}`,
+						service: SERVICE_NAME,
+						method: "checkAndSendEscalation",
+					});
+				} else {
+					this.logger.error({
+						message: `Failed to send escalation email for monitor ${monitor.id}`,
+						service: SERVICE_NAME,
+						method: "checkAndSendEscalation",
+					});
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error checking escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "checkAndSendEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	};
 }
