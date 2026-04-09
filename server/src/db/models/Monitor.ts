@@ -355,6 +355,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		escalation: {
+			delayMinutes: { type: Number },
+			channelId: { type: String },
+		},
 	},
 	{
 		timestamps: true,

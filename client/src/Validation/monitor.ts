@@ -4,30 +4,65 @@ import { GeoContinents } from "@/Types/GeoCheck";
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
-// Common base schema for all monitor types
-const baseSchema = z.object({
-	name: z
-		.string()
-		.min(1, "Monitor name is required")
-		.max(50, "Monitor name must be at most 50 characters"),
-	description: z.string().optional(),
-	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
-	notifications: z.array(z.string()),
-	statusWindowSize: z
-		.number({ message: "Status window size is required" })
-		.min(1, "Status window size must be at least 1")
-		.max(25, "Status window size must be at most 25"),
-	statusWindowThreshold: z
-		.number({ message: "Threshold percentage is required" })
-		.min(1, "Incident percentage must be at least 1")
-		.max(100, "Incident percentage must be at most 100"),
-	geoCheckEnabled: z.boolean().optional(),
-	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
-	geoCheckInterval: z
-		.number()
-		.min(300000, "Interval must be at least 5 minutes")
-		.optional(),
+// Escalation schema (used conditionally)
+const escalationSchema = z.object({
+	delayMinutes: z
+		.number({ required_error: "Escalation delay is required" })
+		.int("Escalation delay must be an integer")
+		.min(1, "Delay must be at least 1 minute"),
+	channelId: z
+		.string({ required_error: "Escalation channel is required" })
+		.min(1, "Escalation channel is required"),
 });
+
+const baseSchema = z
+	.object({
+		name: z
+			.string()
+			.min(1, "Monitor name is required")
+			.max(50, "Monitor name must be at most 50 characters"),
+		description: z.string().optional(),
+		interval: z.number().min(15000, "Interval must be at least 15 seconds"),
+		notifications: z.array(z.string()),
+		statusWindowSize: z
+			.number({ message: "Status window size is required" })
+			.min(1, "Status window size must be at least 1")
+			.max(25, "Status window size must be at most 25"),
+		statusWindowThreshold: z
+			.number({ message: "Threshold percentage is required" })
+			.min(1, "Incident percentage must be at least 1")
+			.max(100, "Incident percentage must be at most 100"),
+		geoCheckEnabled: z.boolean().optional(),
+		geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+		geoCheckInterval: z
+			.number()
+			.min(300000, "Interval must be at least 5 minutes")
+			.optional(),
+		escalationEnabled: z.boolean().optional(),
+		escalation: z.any().optional(), // Will be refined below
+	})
+	// Conditional escalation validation
+	.superRefine((data, ctx) => {
+		if (data.escalationEnabled) {
+			if (!data.escalation) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: ["escalation"],
+					message: "Escalation details are required when escalation is enabled",
+				});
+			} else {
+				const result = escalationSchema.safeParse(data.escalation);
+				if (!result.success) {
+					for (const issue of result.error.issues) {
+						ctx.addIssue({
+							...issue,
+							path: ["escalation", ...(issue.path ?? [])],
+						});
+					}
+				}
+			}
+		}
+	});
 
 // HTTP monitor schema
 const httpSchema = baseSchema.extend({
