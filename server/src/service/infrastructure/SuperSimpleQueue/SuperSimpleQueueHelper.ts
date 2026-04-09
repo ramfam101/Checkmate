@@ -156,27 +156,95 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
-						});
-					});
-				}
-
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+				// Step 6. Handle incidents first
+				let incident = null;
+				try {
+					incident = await this.incidentService.handleIncident(
+						statusChangeResult.monitor,
+						statusChangeResult.code,
+						decision,
+						status
+					);
+				} catch (error: unknown) {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
 					});
-				});
+				}
+
+				// Step 7. Send normal notifications on status-change / breach events
+				if (decision.shouldSendNotification) {
+					this.notificationsService
+						.handleNotifications(statusChangeResult.monitor, status, decision)
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${
+									error instanceof Error ? error.message : "Unknown error"
+								}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+				}
+
+				// Step 8. Send escalation notifications for ongoing active incidents
+				if (
+					statusChangeResult.monitor.status === "down" ||
+					statusChangeResult.monitor.status === "breached"
+				) {
+					try {
+						const activeIncident =
+							incident ??
+							(await this.incidentsRepository.findActiveByMonitorId(
+								statusChangeResult.monitor.id,
+								statusChangeResult.monitor.teamId
+							));
+
+						if (activeIncident) {
+							const dueEscalations = this.incidentService.getDueEscalations(activeIncident);
+
+							for (const rule of dueEscalations) {
+								const escalationDecision: MonitorActionDecision = {
+									shouldCreateIncident: false,
+									shouldResolveIncident: false,
+									shouldSendNotification: true,
+									incidentReason:
+										statusChangeResult.monitor.status === "breached"
+											? "threshold_breach"
+											: "status_down",
+									notificationReason:
+										statusChangeResult.monitor.status === "breached"
+											? "threshold_breach"
+											: "status_change",
+								};
+
+								const success =
+									await this.notificationsService.handleEscalationNotifications(
+										statusChangeResult.monitor,
+										status,
+										rule.notifications,
+										escalationDecision
+									);
+
+								if (success) {
+									await this.incidentService.markEscalationsSent(activeIncident, [rule]);
+								}
+							}
+						}
+					} catch (error: unknown) {
+						this.logger.warn({
+							message: `Error sending escalation notifications for job ${monitor.id}: ${
+								error instanceof Error ? error.message : "Unknown error"
+							}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
