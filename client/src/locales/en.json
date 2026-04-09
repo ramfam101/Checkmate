@@ -545,7 +545,7 @@
 				},
 				"escalation": {
 					"title": "Escalation rules",
-					"description": "Send a one-time escalation email if an outage continues past the configured delay.",
+					"description": "Configure escalation alerts to notify your team when an outage persists beyond a set time.",
 					"baseRequired": "Select at least one base notification channel to enable escalation.",
 					"option": {
 						"delayMinutes": {

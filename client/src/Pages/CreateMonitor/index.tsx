@@ -765,7 +765,7 @@ const CreateMonitorPage = () => {
 																)
 															);
 														}}
-														aria-label="Remove notification"
+														aria-label="Remove escalation channel"
 													>
 														<Trash2 size={16} />
 													</IconButton>
