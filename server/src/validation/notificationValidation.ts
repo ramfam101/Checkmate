@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+export const EscalationSchema = z.object({
+	delayMinutes: z.number().min(0),
+	channelId: z.string().min(1),
+});
+
 //****************************************
 // Notification Validations
 //****************************************
@@ -13,6 +18,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 	// Webhook notification
 	z.object({
@@ -22,6 +28,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 	// Slack notification
 	z.object({
@@ -31,6 +38,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 	// Discord notification
 	z.object({
@@ -40,6 +48,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 	// PagerDuty notification
 	z.object({
@@ -49,6 +58,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 	// Matrix notification
 	z.object({
@@ -58,12 +68,22 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
 		roomId: z.string().min(1, "Room ID is required"),
 		accessToken: z.string().min(1, "Access Token is required"),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 	// Teams notification
 	z.object({
 		notificationName: z.string().min(1, "Notification name is required"),
 		type: z.literal("teams"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
+		escalations: z.array(EscalationSchema).optional(),
+	}),
+	// Telegram notification
+	z.object({
+		notificationName: z.string().min(1, "Notification name is required"),
+		type: z.literal("telegram"),
+		address: z.string().min(1, "Chat ID is required"),
+		accessToken: z.string().min(1, "Bot token is required"),
+		escalations: z.array(EscalationSchema).optional(),
 	}),
 ]);
 
