@@ -543,6 +543,25 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+    				"title": "Escalating notifications",
+    				"description": "Send another notification after the initial alert if the incident is still active.",
+    				"option": {
+        				"delay": {
+            				"label": "Escalation delay",
+            				"placeholder": "Select a delay",
+            				"value": {
+                				"oneMinute": "1 minute",
+                				"fifteenMinutes": "15 minutes",
+                				"thirtyMinutes": "30 minutes",
+                				"oneHour": "1 hour",
+                				"twoHours": "2 hours",
+                				"fourHours": "4 hours",
+                				"oneDay": "24 hours"
+            				}
+        				}
+    				}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
