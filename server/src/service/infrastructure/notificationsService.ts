@@ -133,13 +133,46 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
-			return false;
-		}
+        if (!decision.shouldSendNotification) {
+            return false;
+        }
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
-	};
+        // If monitor defines an escalation_time (minutes) and the notification is for a status change to `down`,
+        // schedule sending to escalation channels after the specified minutes, but still send base notifications immediately.
+        const escalationMinutes = (monitor as any).escalation_time ?? 0;
+        const escalationMs = escalationMinutes > 0 ? escalationMinutes * 60000 : 0;
+        if (escalationMs > 0 && decision.notificationReason === "status_change" && monitor.status === "down") {
+            setTimeout(async () => {
+                try {
+                    const latest = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+                    if (latest && latest.status === "down") {
+                        // Use escalation_notifications if provided, otherwise fallback to base notifications
+                        const escalationIds: string[] = (latest as any).escalation_notifications ?? latest.notifications ?? [];
+                        if (!Array.isArray(escalationIds) || escalationIds.length === 0) {
+                            this.logger.warn({
+                                message: `No escalation notification channels configured for monitor ${monitor.id}`,
+                                service: SERVICE_NAME,
+                                method: "handleNotifications",
+                            });
+                            return;
+                        }
+                        // Create a temporary monitor object that uses escalationIds as the notifications list
+                        const tempMonitor = { ...latest, notifications: escalationIds };
+                        await this.sendNotifications(tempMonitor, monitorStatusResponse, decision);
+                    }
+                } catch (err: unknown) {
+                    this.logger.error({
+                        message: `Escalation send failed for monitor ${monitor.id}: ${err instanceof Error ? err.message : String(err)}`,
+                        service: SERVICE_NAME,
+                        method: "handleNotifications",
+                    });
+                }
+            }, escalationMs);
+        }
+
+        // Send base notifications immediately
+        return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+    };
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {

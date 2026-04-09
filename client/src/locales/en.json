@@ -423,6 +423,24 @@
 		},
 		"createMonitor": {
 			"form": {
+				"escalation": {
+  "title": "Escalation Rules",
+  "description": "Configure secondary alerts if the monitor remains down.",
+  "option": {
+    "time": {
+      "label": "Escalation Time (Minutes)",
+      "placeholder": "e.g. 1"
+    }
+  },
+  "channels": {
+    "title": "Escalation Channels",
+    "description": "Who should we notify when this escalates?"
+  }
+},
+
+
+
+
 				"advanced": {
 					"description": "Optional settings for advanced use cases",
 					"option": {
@@ -442,6 +460,8 @@
 							"include": "Include",
 							"regex": "Regex"
 						}
+						
+
 					},
 					"title": "Advanced settings"
 				},

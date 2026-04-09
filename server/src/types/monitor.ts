@@ -37,6 +37,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	escalation_notifications: string[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
@@ -46,6 +47,7 @@ export interface Monitor {
 	diskAlertCounter: number;
 	tempAlertThreshold: number;
 	tempAlertCounter: number;
+	escalation_time?: number;
 	selectedDisks: string[];
 	gameId?: string;
 	grpcServiceName?: string;
