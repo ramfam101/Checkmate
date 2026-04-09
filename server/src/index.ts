@@ -1,3 +1,6 @@
+import { config } from "dotenv";
+config(); // Load environment variables
+
 import { initializeServices } from "./config/services.js";
 import { initializeControllers } from "./config/controllers.js";
 import { createApp } from "./app.js";

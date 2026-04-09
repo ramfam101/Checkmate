@@ -4,6 +4,12 @@ export { default as MongoMonitorsRepository } from "@/repositories/monitors/Mong
 export * from "@/repositories/checks/IChecksRepository.js";
 export { default as MongoChecksRepository } from "@/repositories/checks/MongoChecksRepistory.js";
 
+export * from "@/repositories/escalation-notification-logs/IEscalationNotificationLogsRepository.js";
+export { default as MongoEscalationNotificationLogsRepository } from "@/repositories/escalation-notification-logs/MongoEscalationNotificationLogsRepository.js";
+
+export * from "@/repositories/escalation-notifications/IEscalationNotificationsRepository.js";
+export { default as MongoEscalationNotificationsRepository } from "@/repositories/escalation-notifications/MongoEscalationNotificationsRepository.js";
+
 export * from "@/repositories/monitor-stats/IMonitorStatsRepository.js";
 export { default as MongoMonitorStatsRepository } from "@/repositories/monitor-stats/MongoMonitorStatsRepository.js";
 

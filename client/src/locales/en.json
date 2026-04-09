@@ -959,6 +959,17 @@
 				}
 			}
 		},
+		"escalationConfiguration": {
+			"title": "Escalation Configuration",
+			"configureEscalations": "Configure Escalations",
+			"description": "Set up escalation rules to automatically notify teams when monitors remain in an incident state for specified periods. Escalations are triggered in order of level, with only the highest qualifying escalation being sent.",
+			"escalationLevel": "Escalation Level",
+			"delaySeconds": "Delay (seconds)",
+			"notificationChannel": "Notification Channel",
+			"addEscalation": "Add Escalation Rule",
+			"confirmDelete": "Confirm Delete",
+			"confirmDeleteMessage": "Are you sure you want to delete this escalation rule? This action cannot be undone."
+		},
 		"pageSpeed": {
 			"charts": {
 				"common": {

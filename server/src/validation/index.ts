@@ -18,6 +18,7 @@ export * from "./checkValidation.js";
 export * from "./maintenanceWindowValidation.js";
 export * from "./settingsValidation.js";
 export * from "./statusPageValidation.js";
+export * from "./escalationNotificationValidation.js";
 export * from "./notificationValidation.js";
 export * from "./userValidation.js";
 export * from "./incidentValidation.js";
