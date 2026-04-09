@@ -275,7 +275,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 	buildEscalationMessage(monitor: Monitor, clientHost: string): NotificationMessage {
 		const type: NotificationType = "monitor_down"; // Escalation is for ongoing down status
-		const severity: NotificationSeverity = "error"; // Escalations are high priority
+		const severity: NotificationSeverity = "critical"; // Escalations are high priority
 
 		const content: NotificationContent = {
 			title: `ESCALATION: Monitor Still Down - ${monitor.name}`,
@@ -305,7 +305,6 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: "escalation",
-				escalationEmail: monitor.escalationEmail,
 			},
 		};
 	}
