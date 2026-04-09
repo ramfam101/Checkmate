@@ -1,12 +1,13 @@
 import { Schema, model, type Types } from "mongoose";
-import { IncidentResolutionTypes, type Incident } from "@/types/incident.js";
+import { IncidentResolutionTypes, type Incident, type EscalationHistoryEntry } from "@/types/incident.js";
 
-type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt"> & {
+type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt" | "escalationHistory"> & {
 	monitorId: Types.ObjectId;
 	teamId: Types.ObjectId;
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	escalationHistory?: EscalationHistoryEntry[];
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -72,6 +73,28 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationHistory: [
+			{
+				delayMinutes: {
+					type: Number,
+					required: true,
+				},
+				firedAt: {
+					type: Date,
+					default: null,
+				},
+				channels: {
+					type: [String],
+					default: [],
+				},
+				status: {
+					type: String,
+					enum: ["pending", "sent", "cancelled"],
+					default: "pending",
+				},
+				_id: false,
+			},
+		],
 	},
 	{ timestamps: true }
 );

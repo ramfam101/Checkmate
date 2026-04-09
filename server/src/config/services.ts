@@ -9,6 +9,7 @@ import {
 	SuperSimpleQueue,
 	SuperSimpleQueueHelper,
 	NotificationsService,
+	EscalationService,
 	StatusService,
 	NotificationMessageBuilder,
 	MonitorService,
@@ -34,6 +35,7 @@ import {
 	IBufferService,
 	ISuperSimpleQueue,
 	INotificationsService,
+	IEscalationService,
 	IStatusService,
 	IMonitorService,
 	IUserService,
@@ -127,6 +129,7 @@ export type InitializedServices = {
 	maintenanceWindowService: IMaintenanceWindowService;
 	monitorService: IMonitorService;
 	incidentService: IIncidentService;
+	escalationService: IEscalationService;
 	logger: ILogger;
 	notificationsService: INotificationsService;
 	statusPageService: IStatusPageService;
@@ -246,11 +249,27 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(
+		incidentsRepository,
+		notificationsRepository,
+		webhookProvider,
+		emailProvider,
+		slackProvider,
+		discordProvider,
+		pagerDutyProvider,
+		matrixProvider,
+		teamsProvider,
+		settingsService,
+		logger,
+		notificationMessageBuilder
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
 		statusService,
 		notificationsService,
+		escalationService,
 		checkService,
 		settingsService,
 		bufferService,
@@ -324,6 +343,7 @@ export const initializeServices = async ({
 		maintenanceWindowService,
 		monitorService,
 		incidentService,
+		escalationService,
 		logger,
 		notificationsService,
 		statusPageService,

@@ -40,6 +40,8 @@ import {
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import type { EscalationRule } from "@/Types/Escalation";
+import { EscalationRulesSection } from "@/Components/monitors/EscalationRulesSection";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -763,6 +765,18 @@ const CreateMonitorPage = () => {
 						}}
 					/>
 				}
+			/>
+
+			<Controller
+				name="escalationRules"
+				control={control}
+				defaultValue={[]}
+				render={({ field }) => (
+					<EscalationRulesSection
+						rules={field.value ?? []}
+						onRulesChange={field.onChange}
+					/>
+				)}
 			/>
 
 			{(watchedType === "http" ||

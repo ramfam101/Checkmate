@@ -13,11 +13,12 @@ export * from "./envValidation.js";
 
 // Domain-specific validations
 export * from "./authValidation.js";
-export * from "./monitorValidation.js";
 export * from "./checkValidation.js";
+export * from "./escalationValidation.js";
+export * from "./incidentValidation.js";
 export * from "./maintenanceWindowValidation.js";
+export * from "./monitorValidation.js";
+export * from "./notificationValidation.js";
 export * from "./settingsValidation.js";
 export * from "./statusPageValidation.js";
-export * from "./notificationValidation.js";
 export * from "./userValidation.js";
-export * from "./incidentValidation.js";
