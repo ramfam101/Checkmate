@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
 
+const escalationSchema = z.object({
+	delayMinutes: z
+		.number({ message: "Delay is required" })
+		.int("Delay must be a whole number")
+		.min(1, "Delay must be at least 1 minute"),
+	channelId: z.string().min(1, "Channel ID is required"),
+});
+
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
@@ -27,6 +35,7 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalations: z.array(escalationSchema).optional(),
 });
 
 // HTTP monitor schema
