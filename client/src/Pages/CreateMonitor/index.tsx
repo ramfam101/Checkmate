@@ -765,6 +765,93 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalations.title")}
+				subtitle={t("pages.createMonitor.form.escalations.description")}
+				rightContent={
+					<Controller
+						name="escalations"
+						control={control}
+						render={({ field }) => {
+							const escalationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const selectedEscalations = escalationOptions.filter((n) =>
+									(field.value?.notificationIds ?? []).includes(n.id)
+								);
+								const delayMinutes = field.value?.delayMinutes ?? 0;
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<TextField
+											fieldLabel={t("pages.createMonitor.form.escalations.option.threshold.label")}
+											type="number"
+											value={delayMinutes}
+											onChange={(e) => {
+												const parsed = Number(e.target.value);
+												field.onChange({
+													...(field.value ?? { delayMinutes: 0, notificationIds: [] }),
+													delayMinutes: Number.isNaN(parsed) ? 0 : parsed,
+												});
+											}}
+											inputProps={{ min: 0 }}
+										/>
+										<Autocomplete
+											multiple
+											fieldLabel={t("pages.createMonitor.form.escalations.option.channels.label")}
+											options={escalationOptions}
+											value={selectedEscalations}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof escalationOptions) => {
+												field.onChange({
+													...(field.value ?? { delayMinutes: 0, notificationIds: [] }),
+													notificationIds: newValue.map((e) => e.id),
+												});
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedEscalations.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedEscalations.map((escalation, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={escalation.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{escalation.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+                                                field.onChange({
+                                                        ...(field.value ?? { delayMinutes: 0, notificationIds: [] }),
+                                                        notificationIds: (field.value?.notificationIds ?? []).filter(
+                                                                (id: string) => id !== escalation.id
+                                                        ),
+                                                });
+                                            }}
+                                            aria-label="Remove notification"
+                                        >
+                                            <Trash2 size={16} />
+                                        </IconButton>
+                                        {index < selectedEscalations.length - 1 && <Divider />}
+                                    </Stack>
+                                ))}
+                            </Stack>
+                        )}
+                    </Stack>
+                );
+            }}
+        />
+    }
+                />
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

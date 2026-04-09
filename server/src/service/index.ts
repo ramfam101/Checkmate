@@ -12,6 +12,7 @@ export * from "@/service/business/userService.js";
 // Infrastructure services
 export * from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 export * from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
+export * from "@/service/infrastructure/escalationJobQueue.js";
 export * from "@/service/infrastructure/notificationMessageBuilder.js";
 export * from "@/service/infrastructure/bufferService.js";
 export * from "@/service/infrastructure/emailService.js";

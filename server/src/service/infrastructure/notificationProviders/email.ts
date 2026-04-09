@@ -5,11 +5,13 @@ import { buildTestEmail } from "@/service/infrastructure/notificationProviders/u
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import type { ILogger } from "@/utils/logger.js";
 import { IEmailService } from "@/service/infrastructure/emailService.js";
+import { ISettingsService } from "@/service/system/settingsService.js";
+
 export class EmailProvider implements INotificationProvider {
 	private emailService: IEmailService;
 	private logger: ILogger;
 
-	constructor(emailService: IEmailService, logger: ILogger) {
+	constructor(emailService: IEmailService, logger: ILogger, settingsService: ISettingsService) {
 		this.emailService = emailService;
 		this.logger = logger;
 	}
@@ -81,6 +83,8 @@ export class EmailProvider implements INotificationProvider {
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
+			case "monitor_escalation":
+				return `Escalation: Monitor ${message.monitor.name} is still down`;
 			case "monitor_up":
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":

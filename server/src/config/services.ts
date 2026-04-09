@@ -8,6 +8,7 @@ import {
 	GlobalPingService,
 	SuperSimpleQueue,
 	SuperSimpleQueueHelper,
+	EscalationJobQueue,
 	NotificationsService,
 	StatusService,
 	NotificationMessageBuilder,
@@ -33,6 +34,7 @@ import {
 	IEmailService,
 	IBufferService,
 	ISuperSimpleQueue,
+	IEscalationJobQueue,
 	INotificationsService,
 	IStatusService,
 	IMonitorService,
@@ -129,6 +131,7 @@ export type InitializedServices = {
 	incidentService: IIncidentService;
 	logger: ILogger;
 	notificationsService: INotificationsService;
+	escalationJobQueue: IEscalationJobQueue;
 	statusPageService: IStatusPageService;
 	notificationMessageBuilder: INotificationMessageBuilder;
 
@@ -225,7 +228,7 @@ export const initializeServices = async ({
 	// Notification providers
 	const webhookProvider = new WebhookProvider(logger);
 	const slackProvider = new SlackProvider(logger);
-	const emailProvider = new EmailProvider(emailService, logger);
+	const emailProvider = new EmailProvider(emailService, logger, settingsService);
 	const discordProvider = new DiscordProvider(logger);
 	const pagerDutyProvider = new PagerDutyProvider(logger);
 	const matrixProvider = new MatrixProvider(logger);
@@ -245,6 +248,15 @@ export const initializeServices = async ({
 		logger,
 		notificationMessageBuilder
 	);
+
+	const escalationJobQueue = new EscalationJobQueue(
+		logger,
+		notificationsService,
+		monitorsRepository
+	);
+
+	// Set the escalation job queue on the notifications service
+	(notificationsService as any).escalationJobQueue = escalationJobQueue;
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
@@ -326,6 +338,7 @@ export const initializeServices = async ({
 		incidentService,
 		logger,
 		notificationsService,
+		escalationJobQueue,
 		statusPageService,
 		notificationMessageBuilder,
 

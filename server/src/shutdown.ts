@@ -16,6 +16,7 @@ export const initShutdownListener = (server: Server, services: InitializedServic
 
 		try {
 			server.close();
+			await services.escalationJobQueue.shutdown();
 			await services.jobQueue.shutdown();
 			await services.db.disconnect();
 			logger.info({ message: "Graceful shutdown complete" });

@@ -6,6 +6,7 @@ import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimple
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { IEscalationJobQueue } from "./escalationJobQueue.js";
 
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
@@ -14,6 +15,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendNotification: (teamId: string, notificationId: string, type: string, data: any) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -36,6 +38,7 @@ export class NotificationsService implements INotificationsService {
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationJobQueue: IEscalationJobQueue | null;
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
@@ -49,7 +52,8 @@ export class NotificationsService implements INotificationsService {
 		teamsProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		escalationJobQueue?: IEscalationJobQueue
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
@@ -63,6 +67,7 @@ export class NotificationsService implements INotificationsService {
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationJobQueue = escalationJobQueue || null;
 	}
 
 	private send = async (
@@ -137,8 +142,111 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		// Send immediate notifications based on decision
+		const immediateResult = await this.sendNotifications(monitor, monitorStatusResponse, decision);
+
+		// Schedule escalation notifications if monitor went down and has escalation configurations
+		if (monitor.status === "down" && monitor.escalations && monitor.escalations.notificationIds.length > 0 && this.escalationJobQueue) {
+			try {
+				this.logger.info({
+					message: `[NOTIFICATION DEBUG] Scheduling escalations for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+					details: {
+						escalationDelay: monitor.escalations.delayMinutes,
+						escalationNotificationIds: monitor.escalations.notificationIds,
+					},
+				});
+				await this.scheduleEscalationNotifications(monitor, monitorStatusResponse);
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error scheduling escalation notifications for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}
+
+		return immediateResult;
+	};
+
+	sendNotification = async (teamId: string, notificationId: string, type: string, data: any) => {
+		const notification = await this.notificationsRepository.findById(notificationId, teamId);
+		if (!notification) {
+			this.logger.warn({
+				message: `Notification ${notificationId} not found`,
+				service: SERVICE_NAME,
+				method: "sendNotification",
+			});
+			return false;
+		}
+
+		// Get the monitor from the repository
+		const monitor = await this.monitorsRepository.findById(data.monitorId, teamId);
+		if (!monitor) {
+			this.logger.warn({
+				message: `Monitor ${data.monitorId} not found`,
+				service: SERVICE_NAME,
+				method: "sendNotification",
+			});
+			return false;
+		}
+
+		// Create a mock monitor status response for escalation notifications
+		const monitorStatusResponse = {
+			monitorId: data.monitorId,
+			teamId,
+			type: monitor.type,
+			status: false,
+			code: 0,
+			message: data.escalationDelay || "Escalation notification",
+		};
+
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: type === "monitor_escalation" ? "escalation" : "status_change",
+		};
+
+		// Build notification message
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		return this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+	};
+
+	private scheduleEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		if (!this.escalationJobQueue) {
+			this.logger.warn({
+				message: "Escalation job queue not available, skipping escalation scheduling",
+				service: SERVICE_NAME,
+				method: "scheduleEscalationNotifications",
+			});
+			return;
+		}
+
+		if (monitor.escalations.notificationIds.length === 0) {
+			return;
+		}
+
+		this.logger.info({
+			message: `Scheduling escalation notification for monitor ${monitor.id} with ${monitor.escalations.delayMinutes} minute delay`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalationNotifications",
+			details: { escalationDelay: monitor.escalations.delayMinutes, notificationIds: monitor.escalations.notificationIds },
+		});
+
+		// Schedule escalation job for this monitor's escalation configuration
+		await this.escalationJobQueue.scheduleEscalation(
+			monitor.id,
+			monitor.teamId,
+			monitor.escalations.delayMinutes,
+			monitor.escalations.notificationIds
+		);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

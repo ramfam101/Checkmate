@@ -67,6 +67,7 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalations: z.object({delayMinutes: z.number().min(0, "Delay must be at least 0"), notificationIds: z.array(z.string()),}).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +90,12 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalations: z
+		.object({
+			delayMinutes: z.number().min(0, "Delay must be at least 0"),
+			notificationIds: z.array(z.string()),
+		})
+		.optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -156,6 +163,12 @@ const importedMonitorSchema = z.object({
 	selectedDisks: z.array(z.string()).default([]),
 	gameId: z.union([z.string(), z.literal("")]).optional(),
 	grpcServiceName: z.union([z.string(), z.literal("")]).default(""),
+	escalations: z
+		.object({
+			delayMinutes: z.number().min(0, "Delay must be at least 0").default(0),
+			notificationIds: z.array(z.string()).default([]),
+		})
+		.default({ delayMinutes: 0, notificationIds: [] }),
 	group: z.union([z.string().max(50).trim(), z.null()]).default(null),
 	geoCheckEnabled: z.boolean().default(false),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),

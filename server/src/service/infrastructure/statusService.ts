@@ -236,13 +236,14 @@ export class StatusService implements IStatusService {
 			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
-			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
+				// Check if this is a recovery from down/breached state
+				const isRecovery = (prevStatus === "down" || prevStatus === "breached") && newStatus === "up";
 				monitor.status = newStatus;
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
-					statusChanged: false,
+					statusChanged: isRecovery,
 					prevStatus,
 					code,
 					timestamp: Date.now(),
