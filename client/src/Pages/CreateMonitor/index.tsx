@@ -15,7 +15,7 @@ import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
-import { HeaderDeleteControls } from "@/Components/monitors";
+import { HeaderDeleteControls, EscalationManager } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -764,6 +764,14 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			{isEditMode && existingMonitor && (
+				<EscalationManager
+					monitor={existingMonitor}
+					allNotifications={notifications || []}
+					onUpdate={() => refetchMonitor()}
+				/>
+			)}
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

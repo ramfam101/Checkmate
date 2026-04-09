@@ -81,6 +81,8 @@ export interface IMonitorService {
 
 	// notifications
 	updateNotifications(args: { teamId: string; monitorIds: string[]; notificationIds: string[]; action: "add" | "remove" | "set" }): Promise<number>;
+	addEscalation(args: { teamId: string; monitorId: string; notificationId: string; delayMinutes: number; escalationChannelId: string }): Promise<Monitor>;
+	removeEscalation(args: { teamId: string; monitorId: string; notificationId: string }): Promise<Monitor>;
 
 	// other
 	exportMonitorsToJSON(args: { teamId: string }): Promise<Monitor[]>;
@@ -462,6 +464,92 @@ export class MonitorService implements IMonitorService {
 		}
 
 		return modifiedCount;
+	};
+
+	addEscalation = async ({
+		teamId,
+		monitorId,
+		notificationId,
+		delayMinutes,
+		escalationChannelId,
+		escalationId,
+	}: {
+		teamId: string;
+		monitorId: string;
+		notificationId: string;
+		delayMinutes: number;
+		escalationChannelId: string;
+		escalationId?: string;
+	}): Promise<Monitor> => {
+		const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+
+		// Verify notification exists on monitor
+		if (!monitor.notifications.includes(notificationId)) {
+			throw new AppError({
+				message: "Notification is not attached to this monitor",
+				status: 400,
+			});
+		}
+
+		if (escalationId) {
+			// Replace specific escalation entry (remove old -> append new)
+			const updated = await this.monitorsRepository.updateById(monitorId, teamId, {
+				notificationEscalations: [
+					...(monitor.notificationEscalations || []).filter((e: any) => {
+						const eId = (e as any).id || ((e as any)._id ? (e as any)._id.toString() : "");
+						return eId !== escalationId;
+					}),
+					{ notificationId, delayMinutes, escalationChannelId },
+				],
+			});
+			await this.jobQueue.updateJob(updated);
+			return updated;
+		}
+
+		// Add new escalation
+		const updated = await this.monitorsRepository.updateById(monitorId, teamId, {
+			notificationEscalations: [
+				...(monitor.notificationEscalations || []),
+				{ notificationId, delayMinutes, escalationChannelId },
+			],
+		});
+		await this.jobQueue.updateJob(updated);
+		return updated;
+	};
+
+	removeEscalation = async ({
+		teamId,
+		monitorId,
+		escalationId,
+		notificationId,
+	}: {
+		teamId: string;
+		monitorId: string;
+		escalationId?: string;
+		notificationId?: string;
+	}): Promise<Monitor> => {
+		const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+
+		let updated;
+		if (escalationId) {
+			updated = await this.monitorsRepository.updateById(monitorId, teamId, {
+				notificationEscalations: (monitor.notificationEscalations || []).filter((e: any) => {
+					const eId = (e as any).id || ((e as any)._id ? (e as any)._id.toString() : "");
+					return eId !== escalationId;
+				}),
+			});
+		} else if (notificationId) {
+			updated = await this.monitorsRepository.updateById(monitorId, teamId, {
+				notificationEscalations: (monitor.notificationEscalations || []).filter(
+					(e: any) => e.notificationId !== notificationId
+				),
+			});
+		} else {
+			throw new AppError({ message: "No escalationId or notificationId provided", status: 400 });
+		}
+
+		await this.jobQueue.updateJob(updated);
+		return updated;
 	};
 
 	pauseMonitor = async ({ teamId, monitorId }: { teamId: string; monitorId: string }): Promise<Monitor> => {

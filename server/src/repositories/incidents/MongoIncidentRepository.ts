@@ -60,6 +60,10 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationsSent: (doc.escalationsSent ?? []).map((record: any) => ({
+				notificationId: this.toStringId(record.notificationId),
+				sentAt: this.toDateString(record.sentAt),
+			})),
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};

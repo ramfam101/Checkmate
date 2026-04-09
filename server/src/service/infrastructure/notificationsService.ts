@@ -14,6 +14,11 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	/**
+	 * Send a single notification by its id for the given monitor and status.
+	 * Returns true if send succeeded.
+	 */
+	sendNotificationById: (notificationId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -178,6 +183,50 @@ export class NotificationsService implements INotificationsService {
 		notificationData.userId = userId;
 		notificationData.teamId = teamId;
 		return await this.notificationsRepository.create(notificationData);
+	};
+
+	// Send a single notification by id (used for escalations)
+	sendNotificationById = async (notificationId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		try {
+			this.logger.debug({
+				message: `sendNotificationById: looking up notification ${notificationId}`,
+				service: SERVICE_NAME,
+				method: "sendNotificationById",
+			});
+			const notification = await this.notificationsRepository.findById(notificationId, monitor.teamId);
+			this.logger.debug({
+				message: `sendNotificationById: found notification type=${notification.type}`,
+				service: SERVICE_NAME,
+				method: "sendNotificationById",
+				details: { notificationId, notificationType: notification.type },
+			});
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+			this.logger.debug({
+				message: `sendNotificationById: built message, sending to provider`,
+				service: SERVICE_NAME,
+				method: "sendNotificationById",
+				details: { notificationId, notificationType: notification.type, messageType: notificationMessage.type },
+			});
+			const result = await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+			this.logger.info({
+				message: `sendNotificationById: send result=${result}`,
+				service: SERVICE_NAME,
+				method: "sendNotificationById",
+				details: { notificationId, notificationType: notification.type, result },
+			});
+			return result;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: error instanceof Error ? error.message : "Unknown error",
+				service: SERVICE_NAME,
+				method: "sendNotificationById",
+				details: { notificationId },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 
 	findById = async (id: string, teamId: string): Promise<Notification> => {

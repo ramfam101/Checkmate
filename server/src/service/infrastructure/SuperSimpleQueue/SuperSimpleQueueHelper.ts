@@ -177,6 +177,153 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalations asynchronously (after incident handling completes)
+				// Fire and forget, but log errors
+				(async () => {
+					try {
+						// Small delay to ensure incident is committed to DB
+						await new Promise((resolve) => setTimeout(resolve, 100));
+
+						// Fetch active incident for this monitor (if any)
+						const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+						if (!activeIncident) {
+							this.logger.debug({
+								message: `No active incident found for monitor ${monitorId}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+							return;
+						}
+
+						// If monitor has escalation rules, evaluate them
+						const escalations = statusChangeResult.monitor.notificationEscalations || [];
+						if (!Array.isArray(escalations) || escalations.length === 0) {
+							this.logger.debug({
+								message: `No escalation rules for monitor ${monitorId}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+							return;
+						}
+
+						this.logger.debug({
+							message: `Evaluating ${escalations.length} escalation rule(s) for monitor ${monitorId}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+
+						const now = Date.now();
+						for (const esc of escalations) {
+							try {
+								const escalationNotificationId = esc.escalationChannelId;
+								const delayMinutes = Number(esc.delayMinutes) || 0;
+								if (!escalationNotificationId || delayMinutes <= 0) {
+									this.logger.debug({
+										message: `Skipping escalation: missing notificationId or invalid delayMinutes`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: { escalationNotificationId, delayMinutes },
+									});
+									continue;
+								}
+
+								// Check if already sent for this incident
+								const alreadySent = (activeIncident.escalationsSent || []).some((s: any) => s.notificationId === escalationNotificationId);
+								if (alreadySent) {
+									this.logger.debug({
+										message: `Escalation already sent for this incident`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										details: { notificationId: escalationNotificationId, incidentId: activeIncident.id },
+									});
+									continue;
+								}
+
+								const incidentStart = new Date(activeIncident.startTime).getTime();
+								const elapsedMs = now - incidentStart;
+								const delayMs = delayMinutes * 60 * 1000;
+
+								this.logger.debug({
+									message: `Escalation timing check`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									details: {
+										incidentId: activeIncident.id,
+										monitorId,
+										elapsedMs,
+										delayMs,
+										shouldSend: elapsedMs >= delayMs,
+										delayMinutes,
+									},
+								});
+
+								if (elapsedMs >= delayMs) {
+									// Build a decision for escalation notification
+									const escalationDecision: MonitorActionDecision = {
+										shouldCreateIncident: false,
+										shouldResolveIncident: false,
+										shouldSendNotification: true,
+										incidentReason: null,
+										notificationReason: "escalation",
+									};
+
+									this.logger.info({
+										message: `Sending escalation for incident ${activeIncident.id} to notification ${escalationNotificationId}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+									});
+
+									// Send escalation to the configured notification channel
+									const sent = await this.notificationsService.sendNotificationById(
+										escalationNotificationId,
+										statusChangeResult.monitor,
+										status,
+										escalationDecision
+									);
+
+									if (sent) {
+										// Record escalation sent on incident
+										const updatedEscalations = [
+											...(activeIncident.escalationsSent || []),
+											{ notificationId: escalationNotificationId, sentAt: new Date().toISOString() },
+										];
+										await this.incidentsRepository.updateById(activeIncident.id, teamId, { escalationsSent: updatedEscalations });
+										this.logger.info({
+											message: `Escalation sent successfully for incident ${activeIncident.id}`,
+											service: SERVICE_NAME,
+											method: "getMonitorJob",
+											details: { notificationId: escalationNotificationId },
+										});
+									} else {
+										this.logger.warn({
+											message: `Failed to send escalation notification`,
+											service: SERVICE_NAME,
+											method: "getMonitorJob",
+											details: { notificationId: escalationNotificationId, incidentId: activeIncident.id },
+										});
+									}
+								}
+							} catch (errInner) {
+								this.logger.warn({
+									message: "Failed to process escalation entry",
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									details: errInner instanceof Error ? errInner.message : String(errInner),
+									stack: errInner instanceof Error ? errInner.stack : undefined,
+								});
+							}
+						}
+					} catch (err) {
+						this.logger.warn({
+							message: "Error handling escalations",
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							details: err instanceof Error ? err.message : String(err),
+							stack: err instanceof Error ? err.stack : undefined,
+						});
+					}
+				})();
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

@@ -177,3 +177,22 @@ export const getHardwareDetailsByIdParamValidation = z.object({
 export const getHardwareDetailsByIdQueryValidation = z.object({
 	dateRange: z.enum(["recent", "hour", "day", "week", "month", "all"]).optional(),
 });
+
+export const updateMonitorEscalationBodyValidation = z.object({
+	monitorId: z.string().min(1, "Monitor ID is required"),
+	notificationId: z.string().min(1, "Notification ID is required"),
+	delayMinutes: z.number().int().min(1, "Delay must be at least 1 minute"),
+	escalationChannelId: z.string().min(1, "Escalation channel ID is required"),
+	escalationId: z.string().optional(),
+});
+
+export const removeMonitorEscalationBodyValidation = z
+	.object({
+		monitorId: z.string().min(1, "Monitor ID is required"),
+		escalationId: z.string().optional(),
+		notificationId: z.string().optional(),
+	})
+	.refine((val) => !!val.escalationId || !!val.notificationId, {
+		message: "Either escalationId or notificationId must be provided",
+		path: ["escalationId"],
+	});

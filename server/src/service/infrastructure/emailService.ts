@@ -128,6 +128,36 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		// Validate required email configuration
+		if (!systemEmailHost || !systemEmailPort || !systemEmailAddress) {
+			this.logger.warn({
+				message: "sendEmail: missing required email configuration",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					hasHost: !!systemEmailHost,
+					hasPort: !!systemEmailPort,
+					hasAddress: !!systemEmailAddress,
+					to,
+					subject,
+				},
+			});
+			return false;
+		}
+
+		this.logger.debug({
+			message: "sendEmail: creating transporter",
+			service: SERVICE_NAME,
+			method: "sendEmail",
+			details: {
+				host: systemEmailHost,
+				port: systemEmailPort,
+				secure: systemEmailSecure,
+				user: systemEmailUser || systemEmailAddress,
+				to,
+			},
+		});
+
 		const emailConfig = {
 			host: systemEmailHost,
 			port: Number(systemEmailPort),
@@ -149,32 +179,77 @@ export class EmailService implements IEmailService {
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
 		try {
+			this.logger.debug({
+				message: "sendEmail: verifying transporter",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
 			await this.transporter.verify();
+			this.logger.debug({
+				message: "sendEmail: transporter verified successfully",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
 		} catch (error: unknown) {
 			this.logger.warn({
 				message: "Email transporter verification failed",
 				service: SERVICE_NAME,
-				method: "verifyTransporter",
+				method: "sendEmail",
+				details: {
+					host: systemEmailHost,
+					port: systemEmailPort,
+					errorMessage: error instanceof Error ? error.message : String(error),
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
 		}
 
 		try {
+			this.logger.debug({
+				message: "sendEmail: sending mail",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: { to, subject, htmlLength: html.length },
+			});
+
 			const info = await this.transporter.sendMail({
 				to: to,
 				from: systemEmailAddress,
 				subject: subject,
 				html: html,
 			});
-			return info?.messageId;
-		} catch (error: unknown) {
-			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
+
+			if (!info?.messageId) {
+				this.logger.warn({
+					message: "sendEmail: no messageId in response",
+					service: SERVICE_NAME,
+					method: "sendEmail",
+					details: { to, subject, info },
+				});
+				return undefined;
+			}
+
+			this.logger.info({
+				message: "sendEmail: email sent successfully",
 				service: SERVICE_NAME,
 				method: "sendEmail",
+				details: { to, subject, messageId: info.messageId },
+			});
+			return info.messageId;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: "sendEmail: exception during send",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					to,
+					subject,
+					errorMessage: error instanceof Error ? error.message : String(error),
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
+			return undefined;
 		}
 	};
 }

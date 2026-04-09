@@ -60,6 +60,7 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	notificationEscalations?: MonitorNotificationEscalation[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;
@@ -79,6 +80,13 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+}
+
+export interface MonitorNotificationEscalation {
+	id?: string;
+	notificationId: string;
+	delayMinutes: number;
+	escalationChannelId: string;
 }
 
 export type MonitorWithChecks = Monitor;

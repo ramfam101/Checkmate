@@ -14,6 +14,8 @@ import {
 	getUptimeDetailsByIdParamValidation,
 	getUptimeDetailsByIdQueryValidation,
 	importMonitorsBodyValidation,
+	updateMonitorEscalationBodyValidation,
+	removeMonitorEscalationBodyValidation,
 } from "@/validation/monitorValidation.js";
 import sslChecker from "ssl-checker";
 import { fetchMonitorCertificate, requireTeamId, requireUserId } from "@/controllers/controllerUtils.js";
@@ -43,6 +45,8 @@ export interface IMonitorController {
 	getAllGames: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getGroupsByTeamId: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	updateNotifications: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	addEscalation: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	removeEscalation: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class MonitorController implements IMonitorController {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -448,6 +452,90 @@ class MonitorController implements IMonitorController {
 				success: true,
 				msg: `Notifications updated successfully on ${modifiedCount} monitor(s)`,
 				data: { modifiedCount },
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	addEscalation = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedBody = updateMonitorEscalationBodyValidation.parse(req.body);
+			const teamId = requireTeamId(req.user?.teamId);
+
+			// Verify both notification IDs belong to this team
+			const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+			const validNotificationIds = teamNotifications.map((n) => n.id);
+
+			if (!validNotificationIds.includes(validatedBody.notificationId)) {
+				throw new AppError({
+					message: "The notification channel does not belong to your team",
+					status: 403,
+				});
+			}
+
+			if (!validNotificationIds.includes(validatedBody.escalationChannelId)) {
+				throw new AppError({
+					message: "The escalation channel does not belong to your team",
+					status: 403,
+				});
+			}
+
+			const monitor = await this.monitorService.addEscalation({
+				teamId,
+				monitorId: validatedBody.monitorId,
+				notificationId: validatedBody.notificationId,
+				delayMinutes: validatedBody.delayMinutes,
+				escalationChannelId: validatedBody.escalationChannelId,
+				escalationId: (validatedBody as any).escalationId,
+			});
+
+			return res.status(200).json({
+				success: true,
+				msg: "Escalation rule added successfully",
+				data: monitor,
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	removeEscalation = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedBody = removeMonitorEscalationBodyValidation.parse(req.body);
+			const teamId = requireTeamId(req.user?.teamId);
+
+			// If escalationId provided, verify it exists on the monitor and belongs to the team
+			const monitorToCheck = await this.monitorService.getMonitorById({ teamId, monitorId: validatedBody.monitorId });
+			if ((validatedBody as any).escalationId) {
+				const found = (monitorToCheck.notificationEscalations || []).find((e: any) => (e.id ?? (e as any)._id?.toString()) === (validatedBody as any).escalationId);
+				if (!found) {
+					throw new AppError({ message: "Escalation entry not found for this monitor", status: 403 });
+				}
+			} else if ((validatedBody as any).notificationId) {
+				// Verify the notification ID belongs to this team
+				const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+				const validNotificationIds = teamNotifications.map((n) => n.id);
+
+				if (!validNotificationIds.includes((validatedBody as any).notificationId)) {
+					throw new AppError({
+						message: "The notification channel does not belong to your team",
+						status: 403,
+					});
+				}
+			}
+
+			const monitor = await this.monitorService.removeEscalation({
+				teamId,
+				monitorId: validatedBody.monitorId,
+				escalationId: (validatedBody as any).escalationId,
+				notificationId: (validatedBody as any).notificationId,
+			});
+
+			return res.status(200).json({
+				success: true,
+				msg: "Escalation rule removed successfully",
+				data: monitor,
 			});
 		} catch (error) {
 			next(error);

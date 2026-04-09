@@ -50,31 +50,67 @@ export class EmailProvider implements INotificationProvider {
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
 		if (!notification.address) {
-			return false;
-		}
-
-		const subject = this.buildSubject(message);
-		const html = await this.buildEmailFromMessage(message);
-
-		if (!html) {
 			this.logger.warn({
-				message: "Failed to build email content",
+				message: "Email notification skipped - no address provided",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { notificationId: notification.id },
 			});
 			return false;
 		}
 
-		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
-		if (!messageId) {
-			this.logger.warn({
-				message: "Email notification failed",
+		try {
+			const subject = this.buildSubject(message);
+			const html = await this.buildEmailFromMessage(message);
+
+			if (!html) {
+				this.logger.warn({
+					message: "Failed to build email content",
+					service: SERVICE_NAME,
+					method: "sendMessage",
+					details: { address: notification.address, monitorName: message.monitor.name },
+				});
+				return false;
+			}
+
+			this.logger.debug({
+				message: "Sending email via emailService",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { address: notification.address, subject, htmlLength: html.length },
+			});
+
+			const messageId = await this.emailService.sendEmail(notification.address, subject, html);
+			if (!messageId) {
+				this.logger.warn({
+					message: "Email notification failed - sendEmail returned null/falsy",
+					service: SERVICE_NAME,
+					method: "sendMessage",
+					details: { address: notification.address, subject },
+				});
+				return false;
+			}
+
+			this.logger.info({
+				message: "Email notification sent successfully",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+				details: { address: notification.address, messageId, subject },
+			});
+			return true;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: "Exception while sending email",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+				details: {
+					address: notification.address,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
 		}
-		return true;
 	}
 
 	private buildSubject(message: NotificationMessage): string {
