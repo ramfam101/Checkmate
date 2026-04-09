@@ -765,6 +765,51 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title="Escalation Settings"
+				subtitle="Configure escalation notifications when monitors remain down for an extended period"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelay"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? undefined : Number(val));
+									}}
+									type="number"
+									fieldLabel="Escalation Delay in Minutes"
+									placeholder="Enter delay in minutes (optional)"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationEmail"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									type="email"
+									fieldLabel="Escalation Email Address"
+									placeholder="Enter email address for escalation alerts (optional)"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+					</Stack>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

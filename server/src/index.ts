@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { initializeServices } from "./config/services.js";
 import { initializeControllers } from "./config/controllers.js";
 import { createApp } from "./app.js";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 import fs from "fs";
 import { runMigrations } from "./db/migration/index.js";
+
 
 import Logger, { ILogger } from "@/utils/logger.js";
 import { SettingsService } from "@/service/index.js";
@@ -55,6 +57,20 @@ const startApp = async () => {
 	});
 
 	initShutdownListener(server, services);
+	// --- TEMPORARY FORCE-FIRE FOR SCREENSHOT ---
+    setTimeout(async () => {
+        console.log("FORCE-FIRE: Attempting to trigger escalation email...");
+        const teamId = "69d6f0de534872b58bba83d7"; 
+        const monitorId = "69d6f830e6d9632fda863dec"; 
+        
+        try {
+            const monitor = await services.monitorService.getMonitorById({teamId, monitorId});
+            await services.monitorService.checkAndSendEscalation(monitor);
+            console.log("FORCE-FIRE: Process complete. Check your Gmail!");
+        } catch (e) {
+            console.error("FORCE-FIRE ERROR:", e);
+        }
+    }, 5000);
 };
 
 startApp().catch((error) => {
