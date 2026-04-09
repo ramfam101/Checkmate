@@ -7,50 +7,49 @@ import Stack from "@mui/material/Stack";
 import { FieldLabel } from "./FieldLabel";
 
 interface TextInputProps extends Omit<TextFieldProps, "label"> {
-	fieldLabel?: string;
-	required?: boolean;
+    fieldLabel?: string;
+    required?: boolean;
 }
 
 export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
-	{ fieldLabel, required, ...props },
-	ref
+    { fieldLabel, required, ...props },
+    ref
 ) {
-	const theme = useTheme();
-
-	const input = (
-		<TextField
-			{...props}
-			inputRef={ref}
-			sx={{
-				"& .MuiOutlinedInput-root": {
-					borderRadius: theme.shape.borderRadius,
-					height: 34,
-					fontSize: typographyLevels.base,
-				},
-				"& .MuiOutlinedInput-notchedOutline": {
-					borderColor: theme.palette.divider,
-				},
-				"&:hover .MuiOutlinedInput-notchedOutline": {
-					borderColor: theme.palette.divider,
-				},
-				"& .MuiFormHelperText-root": {
-					marginLeft: 0,
-					marginRight: 0,
-					marginTop: theme.spacing(1),
-				},
-			}}
-		/>
-	);
-
-	if (fieldLabel) {
-		return (
-			<Stack spacing={theme.spacing(2)}>
-				<FieldLabel required={required}>{fieldLabel}</FieldLabel>
-				{input}
-			</Stack>
-		);
-	}
-
-	return input;
+    const theme = useTheme();
+    const input = (
+        <TextField
+            {...props}
+            inputRef={ref}
+            sx={{
+                "& .MuiOutlinedInput-root": {
+                    borderRadius: theme.shape.borderRadius,
+                    height: 34,
+                    fontSize: typographyLevels.base,
+                },
+                "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: theme.palette.divider,
+                },
+                "&:hover .MuiOutlinedInput-notchedOutline": {
+                    borderColor: theme.palette.divider,
+                },
+                "& .MuiFormHelperText-root": {
+                    marginLeft: 0,
+                    marginRight: 0,
+                    marginTop: theme.spacing(1),
+                },
+                ...props.sx,  // 👈 add this at the bottom
+            }}
+        />
+    );
+    if (fieldLabel) {
+        return (
+            <Stack spacing={theme.spacing(2)}>
+                <FieldLabel required={required}>{fieldLabel}</FieldLabel>
+                {input}
+            </Stack>
+        );
+    }
+    return input;
 });
+
 TextInput.displayName = "TextInput";

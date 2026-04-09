@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { GeoContinents } from "@/Types/GeoCheck";
 
+// Escalation schema
+const escalationSchema = z.object({
+	minutesAfterStart: z.number().min(1, "Minutes must be at least 1").optional(),
+	notificationId: z.string().min(1, "Notification is required").optional(),
+}).optional();
+
 // URL schema with custom error message
 const urlSchema = z.url({ message: "Please enter a valid URL" });
 
@@ -13,6 +19,7 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalation: escalationSchema,
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

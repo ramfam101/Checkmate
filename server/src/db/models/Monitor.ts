@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, CheckSnapshot, MonitorEscalation } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -18,11 +18,12 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "escalation" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	escalation?: MonitorEscalation;
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -146,6 +147,14 @@ const snapshotNetworkInterfaceSchema = new Schema<CheckNetworkInterfaceInfo>(
 		drop_out: { type: Number },
 		fifo_in: { type: Number },
 		fifo_out: { type: Number },
+	},
+	{ _id: false }
+);
+
+const monitorEscalationSchema = new Schema(
+	{
+		minutesAfterStart: { type: Number, required: true },
+		notificationId: { type: Schema.Types.ObjectId, ref: "Notification", required: true },
 	},
 	{ _id: false }
 );
@@ -284,6 +293,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalation: monitorEscalationSchema,
 		secret: {
 			type: String,
 		},

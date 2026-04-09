@@ -13,8 +13,19 @@ export interface INotificationsService {
 	findNotificationsByTeamId: (teamId: string) => Promise<Notification[]>;
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
-	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;	sendNotificationById: (
+		notificationId: string,
+		teamId: string,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationMetadata?: {
+			levelIndex: number;
+			minutesAfterStart: number;
+			sourceNotificationId: string;
+			message?: string;
+		}
+	) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -130,6 +141,38 @@ export class NotificationsService implements INotificationsService {
 		}
 		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
+	};
+
+	sendNotificationById = async (
+		notificationId: string,
+		teamId: string,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		escalationMetadata?: {
+			levelIndex: number;
+			minutesAfterStart: number;
+			sourceNotificationId: string;
+		}
+	): Promise<boolean> => {
+		const notification = await this.notificationsRepository.findById(notificationId, teamId);
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+
+		if (escalationMetadata) {
+			notificationMessage.metadata = {
+				...notificationMessage.metadata,
+				escalation: {
+					levelIndex: escalationMetadata.levelIndex,
+					minutesAfterStart: escalationMetadata.minutesAfterStart,
+					sourceNotificationId: escalationMetadata.sourceNotificationId,
+				},
+			};
+			notificationMessage.content.summary = `${notificationMessage.content.summary} (Escalation after ${escalationMetadata.minutesAfterStart} minutes)`;
+		}
+
+		return await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {

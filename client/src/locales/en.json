@@ -541,7 +541,14 @@
 				},
 				"notifications": {
 					"description": "Select the notification channels you want to use",
-					"title": "Notifications"
+					"title": "Notifications",
+					"escalationEnabled": "Escalation ({{count}} levels)"
+				},
+				"escalation": {
+					"title": "Escalation",
+					"description": "Send additional notifications if the incident remains unresolved",
+					"minutesAfterStart": "Escalate after (minutes)",
+					"notification": "Escalation notification channels"
 				},
 				"type": {
 					"description": "Select the type of check to perform",

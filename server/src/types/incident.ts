@@ -1,3 +1,5 @@
+import type { EscalationSent } from "@/types/escalation.js";
+
 // export type IncidentResolutionType = "automatic" | "manual" | null;
 
 export const IncidentResolutionTypes = ["automatic", "manual", null] as const;
@@ -16,6 +18,7 @@ export interface Incident {
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;
+	escalationsSent?: EscalationSent[];
 	createdAt: string;
 	updatedAt: string;
 }

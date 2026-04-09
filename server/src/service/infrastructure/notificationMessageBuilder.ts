@@ -13,7 +13,13 @@ export interface INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalationMetadata?: {
+			levelIndex: number;
+			minutesAfterStart: number;
+			sourceNotificationId: string;
+			message?: string;
+		}
 	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
@@ -27,11 +33,31 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
-		clientHost: string
+		clientHost: string,
+		escalationMetadata?: {
+			levelIndex: number;
+			minutesAfterStart: number;
+			sourceNotificationId: string;
+			message?: string;
+		}
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
+
+		const metadata: NotificationMessage["metadata"] = {
+			teamId: monitor.teamId,
+			notificationReason: decision.notificationReason || "status_change",
+		};
+
+		if (escalationMetadata) {
+			metadata.escalation = {
+				levelIndex: escalationMetadata.levelIndex,
+				minutesAfterStart: escalationMetadata.minutesAfterStart,
+				sourceNotificationId: escalationMetadata.sourceNotificationId,
+				message: escalationMetadata.message,
+			};
+		}
 
 		return {
 			type,
@@ -45,10 +71,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			},
 			content,
 			clientHost,
-			metadata: {
-				teamId: monitor.teamId,
-				notificationReason: decision.notificationReason || "status_change",
-			},
+			metadata,
 		};
 	}
 
