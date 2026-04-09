@@ -41,6 +41,11 @@ import {
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
 
+interface EscalationStep {
+	delayMinutes: number;
+	notificationIds: string[];
+}
+
 interface GeneralSettingsConfig {
 	urlLabel: string;
 	urlPlaceholder: string;
@@ -271,6 +276,7 @@ const CreateMonitorPage = () => {
 	};
 
 	const onError = (errors: unknown) => {
+		console.error("VALIDATION ERRORS:", errors);
 		logger.debug("Monitor creation validation errors", errors);
 	};
 
@@ -764,6 +770,100 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			            <ConfigBox
+                title={t("pages.createMonitor.form.escalatedNotifications.title")}
+                subtitle={t("pages.createMonitor.form.escalatedNotifications.description")}
+                rightContent={
+                    <Controller
+                        name="escalatedNotifications"
+                        control={control}
+                        render={({ field }) => {
+                            const steps = ((field.value ?? []) as unknown) as EscalationStep[];
+                            
+                            // Map notifications to have 'name' property (same as existing notifications section)
+                            const notificationOptions = (notifications ?? []).map((n) => ({
+                                ...n,
+                                name: n.notificationName,
+                            }));
+                            
+                            const addStep = () => {
+                                field.onChange([...steps, { delayMinutes: 1, notificationIds: [] }]);
+                            };
+                            
+                            const updateStep = (index: number, updatedStep: EscalationStep) => {
+                                const newSteps = [...steps];
+                                newSteps[index] = updatedStep;
+                                field.onChange(newSteps);
+                            };
+                            
+                            const removeStep = (index: number) => {
+                                field.onChange(steps.filter((_, i) => i !== index));
+                            };
+
+							console.log("ESC field value:", field.value);
+                            
+                            return (
+                                <Stack spacing={theme.spacing(LAYOUT.MD)}>
+                                    {steps.map((step, index) => {
+                                        const selectedNotifications = notificationOptions.filter((n) =>
+                                            (step.notificationIds ?? []).includes(n.id)
+                                        );
+                                        
+                                        return (
+                                            <Stack key={index} spacing={theme.spacing(LAYOUT.SM)}>
+                                                <Typography variant="subtitle2">
+                                                    {t("pages.createMonitor.form.escalatedNotifications.step", { number: index + 1 })}
+                                                </Typography>
+                                                
+                                                <TextField
+                                                    fieldLabel={t("pages.createMonitor.form.escalatedNotifications.delay")}
+                                                    type="number"
+                                                    value={step.delayMinutes}
+                                                    onChange={(e) => updateStep(index, {
+                                                        ...step,
+                                                        delayMinutes: parseInt(e.target.value) || 1
+                                                    })}
+                                                />
+                                                
+                                                <Autocomplete
+                                                    multiple
+                                                    options={notificationOptions}
+                                                    value={selectedNotifications}
+                                                    getOptionLabel={(option) => option.name}
+                                                    onChange={(_: unknown, newValue: typeof notificationOptions) => {
+                                                        updateStep(index, {
+                                                            ...step,
+                                                            notificationIds: newValue.map((n) => n.id)
+                                                        });
+                                                    }}
+                                                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                                                />
+                                                
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => removeStep(index)}
+                                                    aria-label="Remove escalation step"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </IconButton>
+                                            </Stack>
+                                        );
+                                    })}
+                                    
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={addStep}
+                                    >
+                                        {t("pages.createMonitor.form.escalatedNotifications.addStep")}
+                                    </Button>
+                                </Stack>
+                            );
+                        }}
+                    />
+                }
+            />
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
