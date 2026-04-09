@@ -230,11 +230,11 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		statusWindowSize: {
 			type: Number,
-			default: 5,
+			default: 1,
 		},
 		statusWindowThreshold: {
 			type: Number,
-			default: 60,
+			default: 100,
 		},
 		type: {
 			type: String,
@@ -279,6 +279,16 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			default: undefined,
 		},
 		notifications: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		escalationAfter: {
+			type: Number,
+			default: 0,
+		},
+		escalationNotificationChannels: [
 			{
 				type: Schema.Types.ObjectId,
 				ref: "Notification",
