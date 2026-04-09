@@ -72,8 +72,31 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		escalationHistory: {
+			type: [
+				{
+					escalationId: {
+						type: Schema.Types.ObjectId,
+						required: true,
+					},
+					notificationId: {
+						type: Schema.Types.ObjectId,
+						ref: "Notification",
+						required: true,
+					},
+					sentAt: {
+						type: Date,
+						required: true,
+					},
+					delayMinutes: {
+						type: Number,
+						required: true,
+					},
+				},
+			],
+			default: [],
+		},
 	},
-	{ timestamps: true }
 );
 
 IncidentSchema.index({ monitorId: 1, status: 1 });

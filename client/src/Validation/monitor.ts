@@ -23,6 +23,14 @@ const baseSchema = z.object({
 		.max(100, "Incident percentage must be at most 100"),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
+	notificationEscalations: z
+		.array(
+			z.object({
+				delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+				channelId: z.string().min(1, "Notification channel is required"),
+			})
+		)
+		.optional(),
 	geoCheckInterval: z
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")

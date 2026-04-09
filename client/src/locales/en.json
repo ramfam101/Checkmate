@@ -543,6 +543,23 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"notificationEscalations": {
+					"description": "Add escalation steps to send follow-up notifications after a delay.",
+					"title": "Notification escalations",
+					"option": {
+						"channel": {
+							"label": "Notification channel",
+							"placeholder": "Choose a channel"
+						},
+						"delay": {
+							"label": "Delay before escalation (minutes)"
+						},
+						"removeRule": {
+							"ariaLabel": "Remove escalation step"
+						}
+					},
+					"addButton": "Add escalation step"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

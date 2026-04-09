@@ -284,6 +284,12 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		notificationEscalations: [
+			{
+				delayMinutes: { type: Number, required: true },
+				channelId: { type: Schema.Types.ObjectId, ref: "Notification", required: true },
+			},
+		],
 		secret: {
 			type: String,
 		},

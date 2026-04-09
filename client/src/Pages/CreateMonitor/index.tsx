@@ -765,7 +765,101 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
-			{(watchedType === "http" ||
+			<ConfigBox
+			title={t("pages.createMonitor.form.notificationEscalations.title")}
+			subtitle={t("pages.createMonitor.form.notificationEscalations.description")}
+			rightContent={
+			<Controller
+				name="notificationEscalations"
+				control={control}
+				render={({ field, fieldState }) => {
+					const escalationOptions = (notifications ?? []).map((n) => ({
+						id: n.id,
+						name: n.notificationName,
+					}));
+					const rules = field.value ?? [];
+
+					return (
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							{rules.map((rule, index) => (
+								<Stack
+									direction={{ xs: "column", md: "row" }}
+									alignItems="flex-start"
+									spacing={theme.spacing(LAYOUT.MD)}
+									key={index}
+								>
+									<Select
+										value={rule.channelId ?? ""}
+										fieldLabel={t("pages.createMonitor.form.notificationEscalations.option.channel.label")}
+										onChange={(event) => {
+										const nextRules = [...rules];
+										nextRules[index] = {
+											...nextRules[index],
+											channelId: event.target.value,
+										};
+										field.onChange(nextRules);
+									}}
+									>
+										<MenuItem value="">{t("pages.createMonitor.form.notificationEscalations.option.channel.placeholder")}</MenuItem>
+										{escalationOptions.map((option) => (
+											<MenuItem key={option.id} value={option.id}>
+												{option.name}
+											</MenuItem>
+										))}
+									</Select>
+									<TextField
+										value={rule.delayMinutes ?? ""}
+										type="number"
+										fieldLabel={t("pages.createMonitor.form.notificationEscalations.option.delay.label")}
+										onChange={(e) => {
+										const nextRules = [...rules];
+										nextRules[index] = {
+											...nextRules[index],
+											delayMinutes: Number(e.target.value || 0),
+										};
+										field.onChange(nextRules);
+									}}
+										fullWidth
+										inputProps={{ min: 1 }}
+									/>
+									<IconButton
+										size="small"
+										onClick={() => {
+										field.onChange(rules.filter((_, itemIndex) => itemIndex !== index));
+									}}
+										aria-label={t("pages.createMonitor.form.notificationEscalations.option.removeRule.ariaLabel")}
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+							))}
+							<Button
+								variant="outlined"
+								onClick={() => {
+									field.onChange([
+										...rules,
+										{
+											delayMinutes: 5,
+											channelId: escalationOptions[0]?.id ?? "",
+										},
+									]);
+								}}
+							>
+								{t("pages.createMonitor.form.notificationEscalations.addButton")}
+							</Button>
+							{fieldState.error && (
+								<Typography color="error">
+									{String(fieldState.error.message)}
+								</Typography>
+							)}
+						</Stack>
+					);
+				}}
+			/>
+		}
+		/>
+
+		{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
 				<ConfigBox
