@@ -233,19 +233,19 @@ export const initializeServices = async ({
 
 	// Construct NotificationsService with correct argument order
 	const notificationsService = new NotificationsService(
-	notificationsRepository,
-	monitorsRepository,
-	webhookProvider,
-	emailProvider,
-	slackProvider,
-	discordProvider,
-	pagerDutyProvider,
-	matrixProvider,
-	teamsProvider,
-	settingsService,
-	logger,
-	notificationMessageBuilder
-);
+		notificationsRepository,
+		monitorsRepository,
+		webhookProvider,
+		emailProvider,
+		slackProvider,
+		discordProvider,
+		pagerDutyProvider,
+		matrixProvider,
+		teamsProvider,
+		settingsService,
+		logger,
+		notificationMessageBuilder
+	);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,

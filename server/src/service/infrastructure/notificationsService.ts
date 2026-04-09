@@ -107,7 +107,7 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-		private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = decision.notificationReason === "escalation" ? (monitor.escalationNotifications ?? []) : (monitor.notifications ?? []);
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 		// Build notification message once for all notifications

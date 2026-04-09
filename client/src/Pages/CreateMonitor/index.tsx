@@ -291,9 +291,10 @@ const CreateMonitorPage = () => {
 		console.log("submit payload (sent)", payload);
 
 		try {
-			const result = isEditMode && monitorId
-				? await patch(`/monitors/${monitorId}`, payload)
-				: await post("/monitors", payload);
+			const result =
+				isEditMode && monitorId
+					? await patch(`/monitors/${monitorId}`, payload)
+					: await post("/monitors", payload);
 
 			// eslint-disable-next-line no-console
 			console.log("server response", result);
@@ -527,7 +528,7 @@ const CreateMonitorPage = () => {
 
 						<Controller
 							name="name"
-						control={control}
+							control={control}
 							render={({ field, fieldState }) => (
 								<TextField
 									{...field}
@@ -661,7 +662,7 @@ const CreateMonitorPage = () => {
 							/>
 							<Controller
 								name="diskAlertThreshold"
-							 control={control}
+								control={control}
 								render={({ field }) => (
 									<SliderWithLabel
 										{...field}
@@ -821,7 +822,9 @@ const CreateMonitorPage = () => {
 									type="number"
 									value={field.value ?? 0}
 									onChange={(e) => field.onChange(Number(e.target.value))}
-									fieldLabel={t("pages.createMonitor.form.escalation.option.minutes.label")}
+									fieldLabel={t(
+										"pages.createMonitor.form.escalation.option.minutes.label"
+									)}
 									fullWidth
 									error={!!fieldState.error}
 									helperText={fieldState.error?.message ?? ""}
@@ -843,7 +846,9 @@ const CreateMonitorPage = () => {
 									<Stack spacing={theme.spacing(LAYOUT.MD)}>
 										<Autocomplete
 											multiple
-											fieldLabel={t("pages.createMonitor.form.escalation.option.channels.label")}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channels.label"
+											)}
 											options={notificationOptions}
 											value={selectedNotifications}
 											getOptionLabel={(option) => option.name}
@@ -999,7 +1004,7 @@ const CreateMonitorPage = () => {
 									/>
 									<Controller
 										name="jsonPath"
-									 control={control}
+										control={control}
 										render={({ field, fieldState }) => (
 											<TextField
 												{...field}

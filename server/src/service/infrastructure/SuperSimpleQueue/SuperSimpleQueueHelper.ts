@@ -180,59 +180,64 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 8. Handle escalations (best effort, don't wait)
 				if (
-					monitor.escalationMinutes !== undefined && monitor.escalationMinutes > 0 &&
-					monitor.escalationNotifications && monitor.escalationNotifications.length > 0
+					monitor.escalationMinutes !== undefined &&
+					monitor.escalationMinutes > 0 &&
+					monitor.escalationNotifications &&
+					monitor.escalationNotifications.length > 0
 				) {
 					// We need to check if there's an ongoing incident that has exceeded the timeout and hasn't been escalated
-					this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId).then((activeIncident) => {
-						if (activeIncident && !activeIncident.isEscalated && statusChangeResult.monitor.status === "down") {
-							const startTimeMs = new Date(activeIncident.startTime).getTime();
-							const durationMs = Date.now() - startTimeMs;
-							const durationMinutes = durationMs / (1000 * 60);
+					this.incidentsRepository
+						.findActiveByMonitorId(monitor.id, monitor.teamId)
+						.then((activeIncident) => {
+							if (activeIncident && !activeIncident.isEscalated && statusChangeResult.monitor.status === "down") {
+								const startTimeMs = new Date(activeIncident.startTime).getTime();
+								const durationMs = Date.now() - startTimeMs;
+								const durationMinutes = durationMs / (1000 * 60);
 
-							if (durationMinutes >= monitor.escalationMinutes!) {
-								this.logger.info({
-									message: `Incident for monitor ${monitor.id} escalated after ${durationMinutes.toFixed(2)} minutes`,
-									service: SERVICE_NAME,
-									method: "getMonitorJob",
-								});
-
-								const escalationDecision: MonitorActionDecision = {
-									shouldCreateIncident: false,
-									shouldResolveIncident: false,
-									shouldSendNotification: true,
-									incidentReason: null,
-									notificationReason: "escalation",
-								};
-
-								this.notificationsService.handleNotifications(statusChangeResult.monitor, status, escalationDecision).catch((error: unknown) => {
-									this.logger.error({
-										message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								if (durationMinutes >= monitor.escalationMinutes!) {
+									this.logger.info({
+										message: `Incident for monitor ${monitor.id} escalated after ${durationMinutes.toFixed(2)} minutes`,
 										service: SERVICE_NAME,
 										method: "getMonitorJob",
-										stack: error instanceof Error ? error.stack : undefined,
 									});
-								});
 
-								activeIncident.isEscalated = true;
-								this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, activeIncident).catch((error: unknown) => {
-									this.logger.warn({
-										message: `Error updating incident escalation status for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-										service: SERVICE_NAME,
-										method: "getMonitorJob",
-										stack: error instanceof Error ? error.stack : undefined,
+									const escalationDecision: MonitorActionDecision = {
+										shouldCreateIncident: false,
+										shouldResolveIncident: false,
+										shouldSendNotification: true,
+										incidentReason: null,
+										notificationReason: "escalation",
+									};
+
+									this.notificationsService.handleNotifications(statusChangeResult.monitor, status, escalationDecision).catch((error: unknown) => {
+										this.logger.error({
+											message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+											service: SERVICE_NAME,
+											method: "getMonitorJob",
+											stack: error instanceof Error ? error.stack : undefined,
+										});
 									});
-								});
+
+									activeIncident.isEscalated = true;
+									this.incidentsRepository.updateById(activeIncident.id, monitor.teamId, activeIncident).catch((error: unknown) => {
+										this.logger.warn({
+											message: `Error updating incident escalation status for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+											service: SERVICE_NAME,
+											method: "getMonitorJob",
+											stack: error instanceof Error ? error.stack : undefined,
+										});
+									});
+								}
 							}
-						}
-					}).catch((error: unknown) => {
-						this.logger.warn({
-							message: `Error checking active incident for escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+						})
+						.catch((error: unknown) => {
+							this.logger.warn({
+								message: `Error checking active incident for escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
 						});
-					});
 				}
 			} catch (error: unknown) {
 				this.logger.warn({
