@@ -33,6 +33,7 @@ export class NotificationsService implements INotificationsService {
 	private pagerDutyProvider: INotificationProvider;
 	private matrixProvider: INotificationProvider;
 	private teamsProvider: INotificationProvider;
+	private telegramProvider: INotificationProvider;
 	private logger: ILogger;
 	private settingsService: ISettingsService;
 	private notificationMessageBuilder: INotificationMessageBuilder;
@@ -47,6 +48,7 @@ export class NotificationsService implements INotificationsService {
 		pagerDutyProvider: INotificationProvider,
 		matrixProvider: INotificationProvider,
 		teamsProvider: INotificationProvider,
+		telegramProvider: INotificationProvider,
 		settingsService: ISettingsService,
 		logger: ILogger,
 		notificationMessageBuilder: INotificationMessageBuilder
@@ -60,6 +62,7 @@ export class NotificationsService implements INotificationsService {
 		this.pagerDutyProvider = pagerDutyProvider;
 		this.matrixProvider = matrixProvider;
 		this.teamsProvider = teamsProvider;
+		this.telegramProvider = telegramProvider;
 		this.settingsService = settingsService;
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
@@ -97,6 +100,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.emailProvider.sendMessage!(notification, notificationMessage);
 			case "teams":
 				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
+			case "telegram":
+				return await this.telegramProvider.sendMessage!(notification, notificationMessage);
 			default:
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
@@ -107,14 +112,24 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision, overrideNotificationIds?: string[]) => {
+		//bring this back delete line below: const notificationIds = monitor.notifications ?? [];
+		const notificationIds = overrideNotificationIds ?? monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		if (overrideNotificationIds?.length && notificationMessage?.type === "monitor_down") {
+			notificationMessage.content.title = `Escalation: Monitor ${monitor.name} still down`;
+			notificationMessage.content.summary = `Monitor "${monitor.name}" has remained down and is still unreachable.`;
+		}
+
+		if (overrideNotificationIds?.length) {
+			notificationMessage.metadata.isEscalated = true;
+		}
 
 		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
 
@@ -132,14 +147,86 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
-	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		if (!decision.shouldSendNotification) {
-			return false;
-		}
+private scheduleEscalatedNotifications = (
+	monitor: Monitor,
+	monitorStatusResponse: MonitorStatusResponse,
+	decision: MonitorActionDecision
+) => {
+	const steps = monitor.escalatedNotifications ?? [];
+
+	if (monitor.status !== "down" || steps.length === 0) {
+		return;
+	}
+
+	steps.forEach((step) => {
+		const delayMs = step.delayMinutes * 60 * 1000;
+
+		setTimeout(async () => {
+			try {
+				const freshMonitor = await this.monitorsRepository.findById(
+					monitor.id,
+					monitor.teamId
+				);
+
+				if (!freshMonitor || freshMonitor.status !== "down") {
+					return;
+				}
+
+				await this.sendNotifications(
+					freshMonitor,
+					monitorStatusResponse,
+					decision,
+					step.notificationIds ?? []
+				);
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Error sending escalated notifications for monitor ${monitor.id}: ${
+						error instanceof Error ? error.message : "Unknown error"
+					}`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalatedNotifications",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		}, delayMs);
+	});
+};
+
+//old one to bring back if new one doesnt work
+	//handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		//if (!decision.shouldSendNotification) {
+			//return false;
+		//}
 
 		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
-	};
+		//return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	//};
+
+	handleNotifications = async (
+	monitor: Monitor,
+	monitorStatusResponse: MonitorStatusResponse,
+	decision: MonitorActionDecision
+) => {
+	if (!decision.shouldSendNotification) {
+		return false;
+	}
+
+	const success = await this.sendNotifications(
+		monitor,
+		monitorStatusResponse,
+		decision
+	);
+
+	if (monitor.status === "down") {
+		this.scheduleEscalatedNotifications(
+			monitor,
+			monitorStatusResponse,
+			decision
+		);
+	}
+
+	return success;
+};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {
@@ -157,6 +244,8 @@ export class NotificationsService implements INotificationsService {
 				return await this.webhookProvider.sendTestAlert(notification);
 			case "teams":
 				return await this.teamsProvider.sendTestAlert(notification);
+			case "telegram":
+				return await this.telegramProvider.sendTestAlert(notification);
 			default:
 				return false;
 		}
