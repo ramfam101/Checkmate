@@ -53,7 +53,12 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
+		// Escalation has highest priority
+		if (decision.notificationReason === "escalation") {
+			return "escalation";
+		}
+
+		// Down status (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
 		}
@@ -83,6 +88,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return "critical";
 			case "threshold_breach":
 				return "warning";
+			case "escalation":
+				return "warning";
 			case "monitor_up":
 			case "threshold_resolved":
 				return "success";
@@ -101,6 +108,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
+			case "escalation":
+				return this.buildEscalationContent(monitor, monitorStatusResponse);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
 			default:
@@ -135,6 +144,19 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Escalation Alert: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" incident has escalated due to prolonged downtime.`;
+		const details = [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`];
 
 		return {
 			title,
