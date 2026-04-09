@@ -474,7 +474,10 @@ export class MonitorService implements IMonitorService {
 			const notifications = body.notifications ?? existingMonitor.notifications;
 			patch = {
 				...body,
-				escalatedNotifications: this.normalizeEscalatedNotifications(notifications, body.escalatedNotifications ?? existingMonitor.escalatedNotifications),
+				escalatedNotifications: this.normalizeEscalatedNotifications(
+					notifications,
+					body.escalatedNotifications ?? existingMonitor.escalatedNotifications
+				),
 			};
 		}
 

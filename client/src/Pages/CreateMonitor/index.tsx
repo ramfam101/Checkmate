@@ -790,7 +790,10 @@ const CreateMonitorPage = () => {
 								}
 
 								const escalationByNotificationId = new Map(
-									(field.value ?? []).map((item) => [item.notificationId, item.delayInMinutes])
+									(field.value ?? []).map((item) => [
+										item.notificationId,
+										item.delayInMinutes,
+									])
 								);
 
 								const selectedChannels = (notifications ?? []).filter((n) =>
@@ -799,34 +802,53 @@ const CreateMonitorPage = () => {
 
 								return (
 									<Stack spacing={theme.spacing(SPACING.SM)}>
-										<Typography variant="body2" color="text.secondary">
+										<Typography
+											variant="body2"
+											color="text.secondary"
+										>
 											{t("pages.createMonitor.form.notifications.escalation.description")}
 										</Typography>
 										{selectedChannels.map((channel) => (
 											<TextField
 												key={channel.id}
 												type="number"
-												fieldLabel={t("pages.createMonitor.form.notifications.escalation.delayLabel", {
-													channel: channel.notificationName,
-												})}
-												placeholder={t("pages.createMonitor.form.notifications.escalation.delayPlaceholder")}
+												fieldLabel={t(
+													"pages.createMonitor.form.notifications.escalation.delayLabel",
+													{
+														channel: channel.notificationName,
+													}
+												)}
+												placeholder={t(
+													"pages.createMonitor.form.notifications.escalation.delayPlaceholder"
+												)}
 												value={escalationByNotificationId.get(channel.id) ?? ""}
 												onChange={(event) => {
 													const raw = event.target.value;
 													const delayInMinutes = Number(raw);
-													const current = (field.value ?? []).filter((item) => item.notificationId !== channel.id);
+													const current = (field.value ?? []).filter(
+														(item) => item.notificationId !== channel.id
+													);
 
-													if (!raw || Number.isNaN(delayInMinutes) || delayInMinutes < 1) {
+													if (
+														!raw ||
+														Number.isNaN(delayInMinutes) ||
+														delayInMinutes < 1
+													) {
 														field.onChange(current);
 														return;
 													}
 
 													field.onChange([
 														...current,
-														{ notificationId: channel.id, delayInMinutes: Math.floor(delayInMinutes) },
+														{
+															notificationId: channel.id,
+															delayInMinutes: Math.floor(delayInMinutes),
+														},
 													]);
 												}}
-												helperText={t("pages.createMonitor.form.notifications.escalation.delayHint")}
+												helperText={t(
+													"pages.createMonitor.form.notifications.escalation.delayHint"
+												)}
 												fullWidth
 											/>
 										))}
