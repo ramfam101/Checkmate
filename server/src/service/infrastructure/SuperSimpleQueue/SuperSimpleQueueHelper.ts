@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult, type MonitorStatusResponse } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -107,6 +107,79 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
 	}
 
+	private queueEscalationNotification = (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		incidentPromise: Promise<{ id: string } | null>
+	) => {
+		if (!decision.shouldCreateIncident || !monitor.escalation?.channelId) {
+			return;
+		}
+
+		const delayMinutes = Math.max(0, Math.trunc(Number(monitor.escalation.delayMinutes) || 0));
+		const delayMs = delayMinutes * 60 * 1000;
+
+		setTimeout(() => {
+			void (async () => {
+				try {
+					const createdIncident = await incidentPromise;
+					if (!createdIncident?.id) {
+						return;
+					}
+
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+					if (!activeIncident || activeIncident.id !== createdIncident.id) {
+						return;
+					}
+
+					const latestMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+					const escalationChannelId = latestMonitor.escalation?.channelId;
+					if (!escalationChannelId) {
+						return;
+					}
+
+					if (latestMonitor.status !== "down" && latestMonitor.status !== "breached") {
+						return;
+					}
+
+					const escalationDecision: MonitorActionDecision = {
+						shouldCreateIncident: false,
+						shouldResolveIncident: false,
+						shouldSendNotification: true,
+						incidentReason: null,
+						notificationReason: latestMonitor.status === "breached" ? "threshold_breach" : "status_change",
+					};
+
+					const escalationStatus: MonitorStatusResponse = {
+						monitorId: latestMonitor.id,
+						teamId: latestMonitor.teamId,
+						type: latestMonitor.type,
+						status: false,
+						code: activeIncident.statusCode ?? monitorStatusResponse.code,
+						message:
+							delayMinutes > 0
+								? `Escalation triggered after ${delayMinutes} minute(s) of active incident`
+								: "Escalation triggered for active incident",
+					};
+
+					await this.notificationsService.handleNotifications(
+						{ ...latestMonitor, notifications: [escalationChannelId] },
+						escalationStatus,
+						escalationDecision
+					);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "queueEscalationNotification",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			})();
+		}, delayMs);
+	};
+
 	getHeartbeatJob = () => {
 		return async (monitor: Monitor) => {
 			try {
@@ -169,14 +242,20 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				const incidentPromise = this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						return null;
 					});
-				});
+
+				// Step 8. Queue escalation notification if configured
+				this.queueEscalationNotification(statusChangeResult.monitor, status, decision, incidentPromise);
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
