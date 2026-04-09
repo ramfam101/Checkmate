@@ -28,6 +28,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationCheckJob(): () => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -543,4 +544,66 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			throw error;
 		}
 	}
+
+	getEscalationCheckJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Checking for pending escalations",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+
+				// Find all monitors with pending escalations
+				const monitors = await this.monitorsRepository.findAll();
+				const monitorsWithPendingEscalations = monitors.filter(
+					(monitor) =>
+						monitor.escalationEnabled &&
+						monitor.escalationScheduledAt &&
+						!monitor.escalationSentAt &&
+						(monitor.status === "down" || monitor.status === "breached")
+				);
+
+				for (const monitor of monitorsWithPendingEscalations) {
+					const escalationTime = new Date(monitor.escalationScheduledAt!.getTime() + (monitor.escalationDelayMinutes || 30) * 60 * 1000);
+
+					if (new Date() >= escalationTime) {
+						// Time to send escalation
+						try {
+							await this.notificationsService.sendEscalationNotification(monitor);
+							await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+								escalationSentAt: new Date(),
+							});
+							this.logger.info({
+								message: `Sent escalation notification for monitor ${monitor.id}`,
+								service: SERVICE_NAME,
+								method: "getEscalationCheckJob",
+							});
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Failed to send escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getEscalationCheckJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}
+				}
+
+				this.logger.debug({
+					message: `Checked ${monitorsWithPendingEscalations.length} monitors for escalations`,
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error in escalation check job: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				throw error;
+			}
+		};
+	};
 }
