@@ -15,6 +15,7 @@ import {
 	StatusPageService,
 	UserService,
 	CheckService,
+	EscalationService,
 	GeoChecksService,
 	DiagnosticService,
 	InviteService,
@@ -246,6 +247,13 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(
+		logger,
+		incidentsRepository,
+		monitorsRepository,
+		notificationsService
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -255,6 +263,7 @@ export const initializeServices = async ({
 		settingsService,
 		bufferService,
 		incidentService,
+		escalationService,
 		maintenanceWindowsRepository,
 		monitorsRepository,
 		teamsRepository,

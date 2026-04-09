@@ -47,7 +47,8 @@
 			"exportToJSON": "Export to JSON",
 			"importFromJSON": "Import from JSON",
 			"clearFilters": "Clear filters",
-			"removeUser": "Remove user"
+			"removeUser": "Remove user",
+			"saving": "Saving..."
 		},
 		"charts": {
 			"labels": {
@@ -601,6 +602,27 @@
 							}
 						}
 					}
+				},
+				"escalation": {
+					"title": "Escalation Settings",
+					"description": "Configure automatic escalation for persistent issues that remain unresolved beyond a specified time threshold.",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation"
+						},
+						"delay": {
+							"label": "Escalation delay (minutes)"
+						},
+						"notifications": {
+							"label": "Escalation notifications"
+						},
+						"message": {
+							"label": "Escalation message",
+							"placeholder": "Custom escalation message...",
+							"helper": "Use {{minutes}} to include the delay duration in the message"
+						}
+					},
+					"saveButton": "Save escalation settings"
 				},
 				"url": {
 					"title": "Monitor IP/URL on Status Page",

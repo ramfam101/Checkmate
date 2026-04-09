@@ -39,6 +39,7 @@ class MonitorRoutes {
 
 		// General monitor CRUD routes
 		this.router.patch("/notifications", isAllowed(["admin", "superadmin"]), this.monitorController.updateNotifications);
+		this.router.patch("/:monitorId/escalation", isAllowed(["admin", "superadmin"]), this.monitorController.updateEscalation);
 		this.router.post("/", isAllowed(["admin", "superadmin"]), this.monitorController.createMonitor);
 		this.router.delete("/", isAllowed(["superadmin"]), this.monitorController.deleteAllMonitors);
 

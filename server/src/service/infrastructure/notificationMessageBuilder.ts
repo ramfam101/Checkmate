@@ -80,6 +80,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -103,6 +104,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildEscalationContent(monitor);
 			default:
 				return this.buildDefaultContent(monitor);
 		}
@@ -177,6 +180,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		return {
 			title: `Monitor: ${monitor.name}`,
 			summary: `Status update for monitor "${monitor.name}".`,
+			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
+			timestamp: new Date(),
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor): NotificationContent {
+		return {
+			title: `Escalation Alert: ${monitor.name}`,
+			summary: `This incident has exceeded the configured escalation delay.`,
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
 			timestamp: new Date(),
 		};

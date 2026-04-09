@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Incident, Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, incident: Incident, escalationMessage: string) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -105,6 +106,92 @@ export class NotificationsService implements INotificationsService {
 				});
 				return false;
 		}
+	};
+
+	sendEscalationNotifications = async (monitor: Monitor, incident: Incident, escalationMessage: string): Promise<boolean> => {
+		const notificationIds = monitor.escalationNotifications ?? [];
+		if (notificationIds.length === 0) {
+			this.logger.warn({
+				message: "No escalation notifications configured",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+				details: { monitorId: monitor.id },
+			});
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (!notifications || notifications.length === 0) {
+			this.logger.warn({
+				message: "Escalation notifications not found",
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+				details: { monitorId: monitor.id, notificationIds },
+			});
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const incidentStartTime = new Date(incident.startTime);
+		const minutesActive = Math.floor((Date.now() - incidentStartTime.getTime()) / (1000 * 60));
+
+		const incidentUrl = `${clientHost}/incidents/${incident.id}`;
+		const notificationMessage: NotificationMessage = {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation Alert: ${monitor.name}`,
+				summary: escalationMessage,
+				details: [
+					`Incident ID: ${incident.id}`,
+					`Escalation Delay: ${monitor.escalationDelayMinutes} minutes`,
+					`Active for: ${minutesActive} minutes`,
+				],
+				incident: {
+					id: incident.id,
+					url: incidentUrl,
+					createdAt: new Date(incident.startTime),
+				},
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+
+		const fallbackDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+
+		const tasks = notifications.map((notification) =>
+			this.send(notification, monitor, {} as MonitorStatusResponse, fallbackDecision, notificationMessage)
+		);
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+		return succeeded === notifications.length;
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {

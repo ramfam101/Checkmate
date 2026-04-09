@@ -17,6 +17,10 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
 	geoCheckLocations: data?.geoCheckLocations || [],
 	geoCheckInterval: data?.geoCheckInterval || 300000,
+	escalationEnabled: data?.escalationEnabled ?? false,
+	escalationDelayMinutes: data?.escalationDelayMinutes ?? 30,
+	escalationNotifications: data?.escalationNotifications || [],
+	escalationMessage: data?.escalationMessage ?? "ESCALATION: Issue has persisted for {{minutes}} minutes without resolution.",
 });
 
 export const useMonitorForm = ({

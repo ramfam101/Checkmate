@@ -27,6 +27,10 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationDelayMinutes: z.number().min(1).max(1440).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationMessage: z.string().max(500).optional(),
 });
 
 // HTTP monitor schema
@@ -133,7 +137,16 @@ export const monitorSchema = z.discriminatedUnion("type", [
 	pagespeedSchema,
 	hardwareSchema,
 	websocketSchema,
-]);
+]).refine((data) => {
+	// If escalation is enabled, notifications are required
+	if (data.escalationEnabled && (!data.escalationNotifications || data.escalationNotifications.length === 0)) {
+		return false;
+	}
+	return true;
+}, {
+	message: "Escalation notifications are required when escalation is enabled",
+	path: ["escalationNotifications"],
+});
 
 export type MonitorFormData = z.infer<typeof monitorSchema>;
 
@@ -149,3 +162,22 @@ export {
 	hardwareSchema,
 	websocketSchema,
 };
+
+// Escalation settings validation schema
+export const escalationSettingsSchema = z.object({
+	escalationEnabled: z.boolean(),
+	escalationDelayMinutes: z.number().min(1).max(1440),
+	escalationNotifications: z.array(z.string()),
+	escalationMessage: z.string().max(500),
+}).refine((data) => {
+	// If escalation is enabled, notifications are required
+	if (data.escalationEnabled && (!data.escalationNotifications || data.escalationNotifications.length === 0)) {
+		return false;
+	}
+	return true;
+}, {
+	message: "Escalation notifications are required when escalation is enabled",
+	path: ["escalationNotifications"],
+});
+
+export type EscalationFormData = z.infer<typeof escalationSettingsSchema>;
