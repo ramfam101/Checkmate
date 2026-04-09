@@ -156,35 +156,90 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
-				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
-						});
-					});
-				}
+				// Step 6. Handle incidents first so recovery notifications only send
+                // when there is an actual active incident being resolved.
+                let incident = null;
+                try {
+                    incident = await this.incidentService.handleIncident(
+                        statusChangeResult.monitor,
+                        statusChangeResult.code,
+                        decision,
+                        status
+                    );
+                } catch (error: unknown) {
+                    this.logger.warn({
+                        message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+                        service: SERVICE_NAME,
+                        method: "getMonitorJob",
+                        stack: error instanceof Error ? error.stack : undefined,
+                    });
+                }
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
+                // Step 7. Handle notifications.
+                // For recoveries, only notify if an active incident was actually resolved.
+                const shouldSendNotification =
+                    decision.shouldSendNotification &&
+                    !(
+                        statusChangeResult.monitor.status === "up" &&
+                        decision.shouldResolveIncident &&
+                        incident === null
+                    );
+
+                if (shouldSendNotification) {
+                    this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+                        this.logger.error({
+                            message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+                            service: SERVICE_NAME,
+                            method: "getMonitorJob",
+                            stack: error instanceof Error ? error.stack : undefined,
+                        });
+                    });
+                }
+
+                // Schedule escalation if a new incident was created, and escalation is configured
+                try {
+                    const escMinutes = statusChangeResult.monitor.escalationAfterMinutes ?? 0;
+                    const escNotifIds = statusChangeResult.monitor.escalationNotifications ?? [];
+
+                    if (incident && escMinutes > 0 && escNotifIds.length > 0) {
+                        const delayMs = escMinutes * 60_000;
+                        setTimeout(async () => {
+                            try {
+                                const currentIncident = await this.incidentsRepository.findById(incident.id, statusChangeResult.monitor.teamId);
+                                if (currentIncident && currentIncident.status === true) {
+                                    await this.notificationsService.sendNotificationsByIds(
+                                        statusChangeResult.monitor,
+                                        status,
+                                        decision,
+                                        escNotifIds,
+                                        true
+                                    );
+                                }
+                            } catch (err: unknown) {
+                                this.logger.warn({
+                                    message: `Error running escalation for incident ${incident?.id}: ${err instanceof Error ? err.message : "Unknown error"}`,
+                                    service: SERVICE_NAME,
+                                    method: "escalationTimeout",
+                                    stack: err instanceof Error ? err.stack : undefined,
+                                });
+                            }
+                        }, delayMs);
+                    }
+                } catch (err: unknown) {
+                    this.logger.warn({
+                        message: `Failed scheduling escalation: ${err instanceof Error ? err.message : "Unknown error"}`,
+                        service: SERVICE_NAME,
+                        method: "getMonitorJob",
+                        stack: err instanceof Error ? err.stack : undefined,
+                    });
+                }
 			} catch (error: unknown) {
-				this.logger.warn({
+				this.logger.error({
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
 					method: "getMonitorJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
-				throw error;
 			}
 		};
 	};

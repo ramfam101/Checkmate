@@ -236,9 +236,11 @@ export class StatusService implements IStatusService {
 			let newStatus: MonitorStatus = status === true ? "up" : "down";
 			let statusChanged = false;
 
-			// Return early if not enough data points
+			// Return early if not enough data points.
+			// Keep the monitor in initializing so we do not create fake
+			// up/down transitions before the status window is ready.
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				monitor.status = "initializing";
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -250,19 +252,19 @@ export class StatusService implements IStatusService {
 			}
 
 			// Check if threshold has been met
-			const failures = monitor.statusWindow.filter((s) => s === false).length;
-			const failureRate = (failures / monitor.statusWindow.length) * 100;
+			            // Check if threshold has been met
+            const failures = monitor.statusWindow.filter((s) => s === false).length;
+            const failureRate = (failures / monitor.statusWindow.length) * 100;
 
-			// If threshold has been met and the monitor is not already down, mark down:
-			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
-				newStatus = "down";
-				statusChanged = true;
-			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
-				newStatus = "up";
-				statusChanged = true;
-			}
+            // Only transition to down on a failing current check.
+            // Only transition back up on a successful current check.
+            if (status === false && failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+                newStatus = "down";
+                statusChanged = true;
+            } else if (status === true && failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+                newStatus = "up";
+                statusChanged = true;
+            }
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)
 			let thresholdBreaches: { cpu: boolean; memory: boolean; disk: boolean; temp: boolean } | undefined;
