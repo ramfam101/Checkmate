@@ -781,26 +781,58 @@ const CreateMonitorPage = () => {
 									(n) => field.value?.includes(n.id)
 								) ?? [];
 								return (
-									<Autocomplete
-										multiple
-										options={notificationOptions}
-										value={selectedEscalationNotifications}
-										getOptionLabel={(option) => option.name}
-										onChange={(_: unknown, newValue) => {
-											field.onChange(newValue.map((v: { id: string }) => v.id));
-										}}
-										isOptionEqualToValue={(option, value) => option.id === value.id}
-										renderInput={(params) => (
-											<TextField
-												{...params}
-												fieldLabel={t("pages.createMonitor.form.notifications.escalation.option.notification.label")}
-												placeholder={t("pages.createMonitor.form.notifications.escalation.option.notification.placeholder")}
-												fullWidth
-												error={!!fieldState.error}
-												helperText={fieldState.error?.message ?? ""}
-											/>
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedEscalationNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue) => {
+												field.onChange(newValue.map((v: { id: string }) => v.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											renderInput={(params) => (
+												<TextField
+													{...params}
+													fieldLabel={t("pages.createMonitor.form.notifications.escalation.option.notification.label")}
+													placeholder={t("pages.createMonitor.form.notifications.escalation.option.notification.placeholder")}
+													fullWidth
+													error={!!fieldState.error}
+													helperText={fieldState.error?.message ?? ""}
+												/>
+											)}
+										/>
+										{selectedEscalationNotifications.length > 0 && (
+											<Stack flex={1} width="100%">
+												{selectedEscalationNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedEscalationNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
 										)}
-									/>
+									</Stack>
 								);
 							}}
 						/>
