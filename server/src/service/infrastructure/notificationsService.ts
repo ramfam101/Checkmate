@@ -1,3 +1,4 @@
+
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
@@ -17,6 +18,8 @@ export interface INotificationsService {
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+
+	sendEscalationNotification: (monitor: Monitor, incident: any, channelId: string) => Promise<boolean>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -192,9 +195,81 @@ export class NotificationsService implements INotificationsService {
 		return await this.notificationsRepository.updateById(id, teamId, updateData);
 	};
 
-	deleteById = async (id: string, teamId: string): Promise<Notification> => {
-		const deleted = await this.notificationsRepository.deleteById(id, teamId);
-		await this.monitorsRepository.removeNotificationFromMonitors(id);
-		return deleted;
-	};
-}
+
+		deleteById = async (id: string, teamId: string): Promise<Notification> => {
+			const deleted = await this.notificationsRepository.deleteById(id, teamId);
+			await this.monitorsRepository.removeNotificationFromMonitors(id);
+			return deleted;
+		};
+
+		// Send escalation notification to a specific channelId
+		public async sendEscalationNotification(monitor: Monitor, incident: any, channelId: string): Promise<boolean> {
+			this.logger.info({
+				message: `Attempting escalation notification for monitor ${monitor.id} to channel ${channelId}`,
+				monitorId: monitor.id,
+				channelId,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			// Find the notification config for the escalation channel
+			const notification = await this.notificationsRepository.findById(channelId, monitor.teamId);
+			if (!notification) {
+				this.logger.warn({
+					message: `Escalation notification channel ${channelId} not found for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+				return false;
+			}
+			this.logger.info({
+				message: `Escalation notification channel type: ${notification.type}, address: ${notification.address}`,
+				monitorId: monitor.id,
+				channelId,
+				notificationType: notification.type,
+				notificationAddress: notification.address,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			// Compose escalation message (reuse notificationMessageBuilder if available)
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(
+				monitor,
+				{}, // Provide empty object to avoid undefined property access
+				{ shouldSendNotification: true, shouldCreateIncident: false, shouldResolveIncident: false, incidentReason: "status_down", notificationReason: "status_change" },
+				clientHost
+			);
+			// Add escalation marker to message (update content fields)
+			if (notificationMessage.content) {
+				notificationMessage.content.title = `[ESCALATION] ${notificationMessage.content.title}`;
+				notificationMessage.content.summary = `Escalation: Monitor "${monitor.name}" is still DOWN and unacknowledged after the escalation delay.`;
+			}
+			this.logger.info({
+				message: `Sending escalation notification via provider: ${notification.type}`,
+				monitorId: monitor.id,
+				channelId,
+				notificationType: notification.type,
+				notificationAddress: notification.address,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			// Send notification
+			const result = await this.send(
+				notification,
+				monitor,
+				undefined as any,
+				{ shouldSendNotification: true, shouldCreateIncident: false, shouldResolveIncident: false, incidentReason: "status_down", notificationReason: "status_change" },
+				notificationMessage
+			);
+			this.logger.info({
+				message: `Escalation notification send result: ${result}`,
+				monitorId: monitor.id,
+				channelId,
+				notificationType: notification.type,
+				notificationAddress: notification.address,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return result;
+		}
+	}

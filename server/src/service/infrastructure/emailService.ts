@@ -160,21 +160,42 @@ export class EmailService implements IEmailService {
 			return false;
 		}
 
-		try {
-			const info = await this.transporter.sendMail({
-				to: to,
-				from: systemEmailAddress,
-				subject: subject,
-				html: html,
-			});
-			return info?.messageId;
-		} catch (error: unknown) {
-			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
-				service: SERVICE_NAME,
-				method: "sendEmail",
-				stack: error instanceof Error ? error.stack : undefined,
-			});
-		}
+		   try {
+			   this.logger.debug({
+				   message: `Attempting to send email`,
+				   to,
+				   subject,
+				   service: SERVICE_NAME,
+				   method: "sendEmail",
+			   });
+			   const info = await this.transporter.sendMail({
+				   to: to,
+				   from: systemEmailAddress,
+				   subject: subject,
+				   html: html,
+			   });
+			   this.logger.debug({
+				   message: `Email sent`,
+				   to,
+				   subject,
+				   messageId: info?.messageId,
+				   envelope: info?.envelope,
+				   accepted: info?.accepted,
+				   rejected: info?.rejected,
+				   response: info?.response,
+				   service: SERVICE_NAME,
+				   method: "sendEmail",
+			   });
+			   return info?.messageId;
+		   } catch (error: unknown) {
+			   this.logger.error({
+				   message: error instanceof Error ? error.message : "Unknown error",
+				   to,
+				   subject,
+				   service: SERVICE_NAME,
+				   method: "sendEmail",
+				   stack: error instanceof Error ? error.stack : undefined,
+			   });
+		   }
 	};
 }

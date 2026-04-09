@@ -78,18 +78,26 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
-		switch (message.type) {
-			case "monitor_down":
-				return `Monitor ${message.monitor.name} is down`;
-			case "monitor_up":
-				return `Monitor ${message.monitor.name} is back up`;
-			case "threshold_breach":
-				return `Monitor ${message.monitor.name} threshold exceeded`;
-			case "threshold_resolved":
-				return `Monitor ${message.monitor.name} thresholds resolved`;
-			default:
-				return `Alert: ${message.monitor.name}`;
-		}
+		   // If this is an escalation (title starts with [ESCALATION]), prepend to subject
+		   const isEscalation = message.content?.title?.startsWith("[ESCALATION]");
+		   let baseSubject;
+		   switch (message.type) {
+			   case "monitor_down":
+				   baseSubject = `Monitor ${message.monitor.name} is down`;
+				   break;
+			   case "monitor_up":
+				   baseSubject = `Monitor ${message.monitor.name} is back up`;
+				   break;
+			   case "threshold_breach":
+				   baseSubject = `Monitor ${message.monitor.name} threshold exceeded`;
+				   break;
+			   case "threshold_resolved":
+				   baseSubject = `Monitor ${message.monitor.name} thresholds resolved`;
+				   break;
+			   default:
+				   baseSubject = `Alert: ${message.monitor.name}`;
+		   }
+		   return isEscalation ? `[ESCALATION] ${baseSubject}` : baseSubject;
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
