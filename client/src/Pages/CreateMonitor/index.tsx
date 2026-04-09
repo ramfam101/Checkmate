@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields: escalationFields, append: appendEscalation, remove: removeEscalation } = useFieldArray({
+		control,
+		name: "escalations",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +766,99 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Add follow-up actions that should trigger after a monitor remains unacknowledged."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.length === 0 && (
+							<Typography color="text.secondary">
+								No escalation rules configured yet.
+							</Typography>
+						)}
+						{escalationFields.map((field, index) => (
+							<Stack
+								key={field.id}
+								direction={{ xs: "column", md: "row" }}
+								spacing={theme.spacing(LAYOUT.MD)}
+								alignItems={{ xs: "stretch", md: "flex-start" }}
+							>
+								<Controller
+									name={`escalations.${index}.delayMinutes`}
+									control={control}
+									render={({ field: escalationField, fieldState }) => (
+										<TextField
+											type="number"
+											fieldLabel="Delay in Minutes"
+											value={escalationField.value ?? 1}
+											onChange={(event) =>
+												escalationField.onChange(
+													Number.parseInt(event.target.value || "0", 10)
+												)
+											}
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+								<Controller
+									name={`escalations.${index}.channelId`}
+									control={control}
+									render={({ field: escalationField, fieldState }) => (
+										<Stack spacing={theme.spacing(1)}>
+											<Select
+												{...escalationField}
+												value={escalationField.value ?? ""}
+												fieldLabel="Notification Channel"
+												error={!!fieldState.error}
+												fullWidth
+											>
+												<MenuItem value="">
+													Select a notification channel
+												</MenuItem>
+												{(notifications ?? []).map((notification) => (
+													<MenuItem
+														key={notification.id}
+														value={notification.id}
+													>
+														{notification.notificationName}
+													</MenuItem>
+												))}
+											</Select>
+											{fieldState.error?.message && (
+												<Typography
+													variant="caption"
+													color="error"
+												>
+													{fieldState.error.message}
+												</Typography>
+											)}
+										</Stack>
+									)}
+								/>
+								<IconButton
+									size="small"
+									onClick={() => removeEscalation(index)}
+									aria-label="Remove escalation rule"
+									sx={{ mt: { md: 4 } }}
+								>
+									<Trash2 size={16} />
+								</IconButton>
+							</Stack>
+						))}
+						<Stack direction="row">
+							<Button
+								type="button"
+								variant="outlined"
+								onClick={() => appendEscalation({ delayMinutes: 15, channelId: "" })}
+							>
+								Add Escalation Rule
+							</Button>
+						</Stack>
+					</Stack>
 				}
 			/>
 

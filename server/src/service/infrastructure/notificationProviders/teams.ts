@@ -4,7 +4,6 @@ import { INotificationProvider } from "@/service/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import type { ILogger } from "@/utils/logger.js";
-import got, { HTTPError } from "got";
 
 // Types for Adaptive Card elements
 type TextBlock = {
@@ -85,20 +84,14 @@ export class TeamsProvider implements INotificationProvider {
 				],
 			});
 
-			await got.post(notification.address, {
-				json: payload,
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
+			await this.postToWebhook(notification.address, payload);
 			return true;
 		} catch (error) {
-			const err = error as HTTPError;
 			this.logger.warn({
 				message: "Teams test alert failed",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
-				stack: err?.stack,
+				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
 		}
@@ -112,12 +105,7 @@ export class TeamsProvider implements INotificationProvider {
 		const payload = this.wrapAdaptiveCard(this.buildAdaptiveCard(message));
 
 		try {
-			await got.post(notification.address, {
-				json: payload,
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
+			await this.postToWebhook(notification.address, payload);
 			this.logger.info({
 				message: "Teams notification sent via sendMessage",
 				service: SERVICE_NAME,
@@ -125,15 +113,24 @@ export class TeamsProvider implements INotificationProvider {
 			});
 			return true;
 		} catch (error) {
-			const err = error as HTTPError;
 			this.logger.warn({
 				message: "Teams alert failed via sendMessage",
 				service: SERVICE_NAME,
 				method: "sendMessage",
-				stack: err?.stack,
+				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
 		}
+	}
+
+	private async postToWebhook(address: string, payload: TeamsMessage): Promise<void> {
+		const { default: got } = await import("got");
+		await got.post(address, {
+			json: payload,
+			headers: {
+				"Content-Type": "application/json",
+			},
+		});
 	}
 
 	/**

@@ -169,7 +169,7 @@ describe("TeamsProvider", () => {
 			expect(card.actions).toHaveLength(1);
 			expect(card.actions[0].type).toBe("Action.OpenUrl");
 			expect(card.actions[0].title).toBe("View Incident");
-			expect(card.actions[0].url).toContain("/infrastructure/mon-1");
+			expect(card.actions[0].url).toBe("https://app.example.com/incidents/inc-1");
 		});
 
 		it("omits actions when no incident is present", async () => {
@@ -222,7 +222,9 @@ describe("TeamsProvider", () => {
 			const thresholdHeader = card.body.find((b: any) => b.type === "TextBlock" && b.text === "**Threshold Breaches**");
 			expect(thresholdHeader).toBeDefined();
 
-			const cpuBlock = card.body.find((b: any) => b.type === "TextBlock" && b.text?.includes("CPU"));
+			const cpuBlock = card.body.find(
+				(b: any) => b.type === "TextBlock" && b.text?.includes("**CPU**") && b.text?.includes("threshold:")
+			);
 			expect(cpuBlock).toBeDefined();
 			expect(cpuBlock.text).toContain("95%");
 			expect(cpuBlock.text).toContain("threshold: 80%");

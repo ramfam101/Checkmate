@@ -23,6 +23,7 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import type { NotificationType } from "@/types/notificationMessage.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
@@ -39,6 +40,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationType: NotificationType | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -46,6 +48,36 @@ export interface MonitorActionDecision {
 		temp?: boolean;
 	};
 }
+
+type SuperSimpleQueueHelperDeps = {
+	logger: ILogger;
+	networkService: INetworkService;
+	statusService: IStatusService;
+	notificationsService: INotificationsService;
+	checkService: ICheckService;
+	settingsService?: ISettingsService;
+	buffer: IBufferService;
+	incidentService: IncidentService;
+	maintenanceWindowsRepository: IMaintenanceWindowsRepository;
+	monitorsRepository?: IMonitorsRepository;
+	teamsRepository?: ITeamsRepository;
+	monitorStatsRepository?: IMonitorStatsRepository;
+	checksRepository?: IChecksRepository;
+	incidentsRepository?: IIncidentsRepository;
+	geoChecksService?: IGeoChecksService;
+	geoChecksRepository?: IGeoChecksRepository;
+};
+
+const isSuperSimpleQueueHelperDeps = (value: ILogger | SuperSimpleQueueHelperDeps): value is SuperSimpleQueueHelperDeps => {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"networkService" in value &&
+		"statusService" in value &&
+		"notificationsService" in value &&
+		"maintenanceWindowsRepository" in value
+	);
+};
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -67,6 +99,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
 
+	constructor(deps: SuperSimpleQueueHelperDeps);
 	constructor(
 		logger: ILogger,
 		networkService: INetworkService,
@@ -84,28 +117,69 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
 		geoChecksRepository: IGeoChecksRepository
+	);
+	constructor(
+		loggerOrDeps: ILogger | SuperSimpleQueueHelperDeps,
+		networkService?: INetworkService,
+		statusService?: IStatusService,
+		notificationsService?: INotificationsService,
+		checkService?: ICheckService,
+		settingsService?: ISettingsService,
+		buffer?: IBufferService,
+		incidentService?: IncidentService,
+		maintenanceWindowsRepository?: IMaintenanceWindowsRepository,
+		monitorsRepository?: IMonitorsRepository,
+		teamsRepository?: ITeamsRepository,
+		monitorStatsRepository?: IMonitorStatsRepository,
+		checksRepository?: IChecksRepository,
+		incidentsRepository?: IIncidentsRepository,
+		geoChecksService?: IGeoChecksService,
+		geoChecksRepository?: IGeoChecksRepository
 	) {
-		this.logger = logger;
-		this.networkService = networkService;
-		this.statusService = statusService;
-		this.checkService = checkService;
-		this.settingsService = settingsService;
-		this.buffer = buffer;
-		this.notificationsService = notificationsService;
-		this.incidentService = incidentService;
-		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
-		this.monitorsRepository = monitorsRepository;
-		this.teamsRepository = teamsRepository;
-		this.monitorStatsRepository = monitorStatsRepository;
-		this.checksRepository = checksRepository;
-		this.incidentsRepository = incidentsRepository;
-		this.geoChecksService = geoChecksService;
-		this.geoChecksRepository = geoChecksRepository;
+		const deps = isSuperSimpleQueueHelperDeps(loggerOrDeps)
+			? loggerOrDeps
+			: {
+					logger: loggerOrDeps,
+					networkService: networkService!,
+					statusService: statusService!,
+					notificationsService: notificationsService!,
+					checkService: checkService!,
+					settingsService,
+					buffer: buffer!,
+					incidentService: incidentService!,
+					maintenanceWindowsRepository: maintenanceWindowsRepository!,
+					monitorsRepository,
+					teamsRepository,
+					monitorStatsRepository,
+					checksRepository,
+					incidentsRepository,
+					geoChecksService,
+					geoChecksRepository,
+				};
+
+		this.logger = deps.logger;
+		this.networkService = deps.networkService;
+		this.statusService = deps.statusService;
+		this.checkService = deps.checkService;
+		this.settingsService = deps.settingsService as ISettingsService;
+		this.buffer = deps.buffer;
+		this.notificationsService = deps.notificationsService;
+		this.incidentService = deps.incidentService;
+		this.maintenanceWindowsRepository = deps.maintenanceWindowsRepository;
+		this.monitorsRepository = deps.monitorsRepository as IMonitorsRepository;
+		this.teamsRepository = deps.teamsRepository as ITeamsRepository;
+		this.monitorStatsRepository = deps.monitorStatsRepository as IMonitorStatsRepository;
+		this.checksRepository = deps.checksRepository as IChecksRepository;
+		this.incidentsRepository = deps.incidentsRepository as IIncidentsRepository;
+		this.geoChecksService = deps.geoChecksService as IGeoChecksService;
+		this.geoChecksRepository = deps.geoChecksRepository as IGeoChecksRepository;
 	}
 
 	get serviceName() {
 		return SuperSimpleQueueHelper.SERVICE_NAME;
 	}
+
+	getMonitorJob = () => this.getHeartbeatJob();
 
 	getHeartbeatJob = () => {
 		return async (monitor: Monitor) => {
@@ -125,7 +199,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 					});
-					if (monitor.status !== "maintenance") {
+					if (monitor.status !== "maintenance" && this.monitorsRepository) {
 						await this.monitorsRepository.updateById(monitorId, teamId, { status: "maintenance" });
 					}
 					return;
@@ -168,15 +242,22 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				// Step 7. Handle incidents and schedule escalations when a new incident is created
+				this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.then((incident) => {
+						if (incident && decision.shouldCreateIncident) {
+							return this.handleEscalations(statusChangeResult.monitor, incident.id);
+						}
+					})
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -428,6 +509,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			notificationType: null,
 		};
 
 		if (!statusChanged) {
@@ -440,19 +522,51 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+			decision.notificationType = "monitor_down";
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
+			decision.notificationType = "threshold_breach";
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+			decision.notificationType = prevStatus === "breached" ? "threshold_resolved" : "monitor_up";
 		}
 
 		return decision;
 	}
+
+	async handleEscalations(monitor: Monitor, incidentId: string) {
+		const escalations = monitor.escalations;
+		if (!escalations || escalations.length === 0) return;
+
+		for (const escalation of escalations) {
+			setTimeout(async () => {
+				try {
+					const teamId = monitor.teamId;
+					const incident = await this.incidentsRepository.findActiveByIncidentId(incidentId, teamId);
+					if (!incident || incident.acknowledged) {
+						return;
+					}
+
+					const notification = await this.notificationsService.findById(escalation.channelId, teamId);
+					await this.notificationsService.sendEscalationNotification(notification, monitor, incident);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Error sending escalation for incident ${incidentId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}, escalation.delayMinutes * 60 * 1000);
+		}
+	}
 }
+
+export default SuperSimpleQueueHelper;

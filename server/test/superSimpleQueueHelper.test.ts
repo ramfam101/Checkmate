@@ -15,11 +15,16 @@ const createHelper = (overrides?: Partial<ConstructorParameters<typeof SuperSimp
 		logger: createLogger(),
 		networkService: { requestStatus: jest.fn() },
 		statusService: statusServiceMock,
-		notificationsService: { handleNotifications: jest.fn().mockResolvedValue(undefined) },
+		notificationsService: {
+			handleNotifications: jest.fn().mockResolvedValue(undefined),
+			findById: jest.fn(),
+			sendEscalationNotification: jest.fn().mockResolvedValue(true),
+		},
 		checkService: { buildCheck: jest.fn().mockResolvedValue({}) },
 		buffer: { addToBuffer: jest.fn() },
 		incidentService: { handleIncident: jest.fn().mockResolvedValue(undefined) },
 		maintenanceWindowsRepository,
+		incidentsRepository: { findActiveByIncidentId: jest.fn() },
 		...overrides,
 	});
 	return { helper, maintenanceWindowsRepository };
@@ -96,6 +101,32 @@ describe("SuperSimpleQueueHelper", () => {
 		it("returns false when no active windows exist", async () => {
 			const { helper } = createHelper();
 			await expect(helper.isInMaintenanceWindow("m1", "team")).resolves.toBe(false);
+		});
+	});
+
+	describe("evaluateMonitorAction", () => {
+		it("classifies down transitions as monitor_down notifications", () => {
+			const { helper } = createHelper();
+			const decision = helper["evaluateMonitorAction"]({
+				monitor: { status: "down" } as Monitor,
+				statusChanged: true,
+				prevStatus: "up",
+				code: 500,
+				timestamp: Date.now(),
+			});
+			expect(decision.notificationType).toBe("monitor_down");
+		});
+
+		it("classifies recoveries from down as monitor_up notifications", () => {
+			const { helper } = createHelper();
+			const decision = helper["evaluateMonitorAction"]({
+				monitor: { status: "up" } as Monitor,
+				statusChanged: true,
+				prevStatus: "down",
+				code: 200,
+				timestamp: Date.now(),
+			});
+			expect(decision.notificationType).toBe("monitor_up");
 		});
 	});
 });
