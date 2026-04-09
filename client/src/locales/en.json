@@ -622,6 +622,31 @@
 						"description": "This will permanently delete all monitoring history, statistics, and check data for your team. This action cannot be undone.",
 						"confirm": "Yes, clear all stats"
 					}
+				},
+				"escalationRules": {
+					"title": "Escalation Rules",
+					"description": "Define escalation alerts that trigger after a set time if the incident persists",
+					"addRule": "Add Escalation Rule",
+					"option": {
+						"waitTime": {
+							"label": "Escalate After",
+							"value": {
+								"oneMinute": "1 minute",
+								"twoMinutes": "2 minutes",
+								"threeMinutes": "3 minutes",
+								"fiveMinutes": "5 minutes",
+								"tenMinutes": "10 minutes",
+								"fifteenMinutes": "15 minutes",
+								"thirtyMinutes": "30 minutes",
+								"oneHour": "1 hour",
+								"twoHours": "2 hours",
+								"fourHours": "4 hours"
+							}
+						},
+						"notifications": {
+							"label": "Notification Channels"
+						}
+					}
 				}
 			}
 		},

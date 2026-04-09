@@ -168,6 +168,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				// Step 6.5. Handle escalation notifications (check on every heartbeat when monitor is down)
+				if (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") {
+					this.handleEscalationCheck(statusChangeResult.monitor).catch((error: unknown) => {
+						this.logger.error({
+							message: `Error handling escalations for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
+
+				// Step 6.6. Clear escalation tracking when monitor recovers
+				if (decision.shouldResolveIncident) {
+					this.notificationsService.clearEscalationTracking(statusChangeResult.monitor.id);
+				}
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
@@ -417,6 +434,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			}
 		};
 	};
+
+	private async handleEscalationCheck(monitor: Monitor): Promise<void> {
+		if (!monitor.escalationRules || monitor.escalationRules.length === 0) {
+			return;
+		}
+
+		// Find the active incident for this monitor
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident) {
+			return;
+		}
+
+		const incidentStartTime = new Date(parseInt(activeIncident.startTime));
+		await this.notificationsService.handleEscalations(monitor, incidentStartTime);
+	}
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;

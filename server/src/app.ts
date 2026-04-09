@@ -26,7 +26,9 @@ export const createApp = ({
 	frontendPath: string;
 	openApiSpec: JsonObject;
 }) => {
-	const allowedOrigin = envSettings.clientHost;
+	const allowedOrigin = envSettings.clientHost.includes(",")
+		? envSettings.clientHost.split(",").map((s) => s.trim())
+		: envSettings.clientHost;
 	const app = express();
 
 	app.use(generalApiLimiter);

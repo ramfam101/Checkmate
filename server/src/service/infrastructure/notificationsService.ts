@@ -14,6 +14,8 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalations: (monitor: Monitor, incidentStartTime: Date) => Promise<boolean>;
+	clearEscalationTracking: (monitorId: string) => void;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -23,6 +25,9 @@ const SERVICE_NAME = "NotificationsService";
 
 export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
+
+	// Tracks which escalation rules have already been sent, keyed by "monitorId:incidentStartTime:waitTime"
+	private escalationsSent: Set<string> = new Set();
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
@@ -139,6 +144,85 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalations = async (monitor: Monitor, incidentStartTime: Date): Promise<boolean> => {
+		const escalationRules = monitor.escalationRules;
+		if (!escalationRules || escalationRules.length === 0) {
+			return false;
+		}
+
+		const now = Date.now();
+		const incidentDuration = now - incidentStartTime.getTime();
+		const incidentKey = `${monitor.id}:${incidentStartTime.getTime()}`;
+		let anySent = false;
+
+		for (const rule of escalationRules) {
+			const ruleKey = `${incidentKey}:${rule.waitTime}`;
+
+			// Skip if already escalated for this rule in this incident
+			if (this.escalationsSent.has(ruleKey)) {
+				continue;
+			}
+
+			// Check if enough time has elapsed
+			if (incidentDuration >= rule.waitTime) {
+				this.escalationsSent.add(ruleKey);
+
+				const notifications = await this.notificationsRepository.findNotificationsByIds(rule.notificationIds);
+				if (notifications.length === 0) {
+					continue;
+				}
+
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+				const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(
+					monitor,
+					incidentStartTime,
+					rule.waitTime,
+					clientHost
+				);
+
+				const dummyDecision: MonitorActionDecision = {
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					shouldSendNotification: true,
+					incidentReason: null,
+					notificationReason: "status_change",
+				};
+
+				const tasks = notifications.map((notification) =>
+					this.send(notification, monitor, {} as MonitorStatusResponse, dummyDecision, escalationMessage)
+				);
+
+				const outcomes = await Promise.all(tasks);
+				const succeeded = outcomes.filter(Boolean).length;
+				if (succeeded > 0) {
+					anySent = true;
+				}
+
+				this.logger.info({
+					message: `Escalation sent for monitor ${monitor.id} after ${Math.floor(rule.waitTime / 60000)} minute(s): ${succeeded}/${notifications.length} notifications sent`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+				});
+			}
+		}
+
+		return anySent;
+	};
+
+	// Clean up escalation tracking when an incident resolves
+	clearEscalationTracking = (monitorId: string) => {
+		const keysToRemove: string[] = [];
+		for (const key of this.escalationsSent) {
+			if (key.startsWith(`${monitorId}:`)) {
+				keysToRemove.push(key);
+			}
+		}
+		for (const key of keysToRemove) {
+			this.escalationsSent.delete(key);
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
