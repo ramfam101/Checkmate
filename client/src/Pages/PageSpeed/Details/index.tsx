@@ -8,6 +8,7 @@ import {
 	PiePageSpeedLegend,
 	MonitorStatBoxes,
 	HeaderMonitorControls,
+	EscalationBox,
 } from "@/Components/monitors";
 
 import { useIsAdmin } from "@/Hooks/useIsAdmin";
@@ -61,6 +62,7 @@ const PageSpeedDetails = () => {
 				monitor={monitor}
 				monitorStats={monitorStats}
 			/>
+			<EscalationBox monitor={monitor} />
 			<HeaderTimeRange
 				isLoading={isLoading}
 				hasDateRange={true}

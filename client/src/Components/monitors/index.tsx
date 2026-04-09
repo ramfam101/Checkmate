@@ -1,5 +1,6 @@
 export * from "./ControlsFilter";
 export * from "./MonitorStatBoxes";
+export * from "./EscalationBox";
 export * from "./HeaderMonitorControls";
 export * from "./HeaderGeoTabs";
 export * from "./GeoChecksMap";

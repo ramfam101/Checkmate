@@ -66,6 +66,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTimers: Map<string, ReturnType<typeof setTimeout>>;
 
 	constructor(
 		logger: ILogger,
@@ -101,6 +102,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.escalationTimers = new Map();
 	}
 
 	get serviceName() {
@@ -166,6 +168,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// Step 6b. Handle escalation scheduling
+				if (statusChangeResult.statusChanged) {
+					if (statusChangeResult.monitor.status === "down") {
+						// Monitor just went down — schedule escalation if configured
+						this.scheduleEscalation(statusChangeResult.monitor);
+					} else if (statusChangeResult.monitor.status === "up" && (statusChangeResult.prevStatus === "down" || statusChangeResult.prevStatus === "breached")) {
+						// Monitor recovered — cancel any pending escalation
+						this.clearEscalation(statusChangeResult.monitor.id);
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -454,5 +467,74 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private scheduleEscalation(monitor: Monitor): void {
+		const delayMinutes = monitor.escalatedNotificationDelay ?? 0;
+		const escalationChannels = monitor.escalationNotificationChannels ?? [];
+
+		// Only schedule if escalation is configured
+		if (delayMinutes <= 0 || escalationChannels.length === 0) {
+			return;
+		}
+
+		// Clear any existing timer for this monitor
+		this.clearEscalation(monitor.id);
+
+		const delayMs = delayMinutes * 60 * 1000;
+
+		this.logger.info({
+			message: `Scheduling escalation for monitor ${monitor.id} ("${monitor.name}") in ${delayMinutes} minute(s)`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalation",
+		});
+
+		const timer = setTimeout(async () => {
+			try {
+				// Re-fetch the monitor to check if it's still down
+				const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+				if (currentMonitor.status !== "down") {
+					this.logger.info({
+						message: `Escalation cancelled for monitor ${monitor.id} — monitor is no longer down (status: ${currentMonitor.status})`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalation",
+					});
+					return;
+				}
+
+				this.logger.info({
+					message: `Escalation triggered for monitor ${monitor.id} ("${monitor.name}") — still down after ${delayMinutes} minute(s)`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+				});
+
+				await this.notificationsService.sendEscalationNotifications(currentMonitor);
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error sending escalation notifications for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			} finally {
+				this.escalationTimers.delete(monitor.id);
+			}
+		}, delayMs);
+
+		this.escalationTimers.set(monitor.id, timer);
+	}
+
+	private clearEscalation(monitorId: string): void {
+		const existing = this.escalationTimers.get(monitorId);
+		if (existing) {
+			clearTimeout(existing);
+			this.escalationTimers.delete(monitorId);
+			this.logger.info({
+				message: `Cleared pending escalation timer for monitor ${monitorId}`,
+				service: SERVICE_NAME,
+				method: "clearEscalation",
+			});
+		}
 	}
 }
