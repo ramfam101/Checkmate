@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Incident, Monitor, MonitorStatusResponse } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -29,7 +30,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage {
-		const type = this.determineNotificationType(decision, monitor);
+		const type = this.determineNotificationType(decision);
 		const severity = this.determineSeverity(type);
 		const content = this.buildContent(type, monitor, monitorStatusResponse);
 
@@ -52,29 +53,43 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
-		if (monitor.status === "down") {
-			return "monitor_down";
-		}
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage {
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation Triggered: ${monitor.name}`,
+				summary: `Monitor "${monitor.name}" is still down and requires attention.`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Type: ${monitor.type}`,
+					`Current Status: ${monitor.status}`,
+					incident.statusCode ? `Incident Status Code: ${incident.statusCode}` : "",
+				].filter(Boolean),
+				incident: {
+					id: incident.id,
+					url: `${clientHost}/incidents?monitorId=${monitor.id}`,
+					createdAt: new Date(incident.createdAt),
+				},
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
 
-		// Threshold breach (only if not down)
-		if (decision.notificationReason === "threshold_breach") {
-			return "threshold_breach";
-		}
-
-		// Recovery from threshold breach (only for hardware monitors)
-		if (decision.notificationReason === "status_change" && monitor.status === "up" && monitor.type === "hardware") {
-			return "threshold_resolved";
-		}
-
-		// Standard recovery (up)
-		if (monitor.status === "up") {
-			return "monitor_up";
-		}
-
-		// Default to monitor_up for any other case
-		return "monitor_up";
+	private determineNotificationType(decision: MonitorActionDecision): NotificationType {
+		return decision.notificationType ?? "monitor_up";
 	}
 
 	private determineSeverity(type: NotificationType): NotificationSeverity {
@@ -86,6 +101,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			case "monitor_up":
 			case "threshold_resolved":
 				return "success";
+			case "escalation":
+				return "critical";
 			case "test":
 				return "info";
 			default:
@@ -103,6 +120,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 				return this.buildThresholdBreachContent(monitor, monitorStatusResponse as MonitorStatusResponse<HardwareStatusPayload>);
 			case "threshold_resolved":
 				return this.buildThresholdResolvedContent(monitor);
+			case "escalation":
+				return this.buildDefaultContent(monitor);
 			default:
 				return this.buildDefaultContent(monitor);
 		}

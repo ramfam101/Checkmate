@@ -23,6 +23,7 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import type { NotificationType } from "@/types/notificationMessage.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
@@ -39,6 +40,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationType: NotificationType | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -507,6 +509,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			notificationType: null,
 		};
 
 		if (!statusChanged) {
@@ -519,17 +522,20 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+			decision.notificationType = "monitor_down";
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
+			decision.notificationType = "threshold_breach";
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+			decision.notificationType = prevStatus === "breached" ? "threshold_resolved" : "monitor_up";
 		}
 
 		return decision;
@@ -541,11 +547,22 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		for (const escalation of escalations) {
 			setTimeout(async () => {
-				const teamId = monitor.teamId; // Ensure teamId is passed
-				const incident = await this.incidentsRepository.findById(incidentId, teamId);
-				if (incident && !incident.acknowledged) {
+				try {
+					const teamId = monitor.teamId;
+					const incident = await this.incidentsRepository.findActiveByIncidentId(incidentId, teamId);
+					if (!incident || incident.acknowledged) {
+						return;
+					}
+
 					const notification = await this.notificationsService.findById(escalation.channelId, teamId);
-					await this.notificationsService.sendTestNotification(notification);
+					await this.notificationsService.sendEscalationNotification(notification, monitor, incident);
+				} catch (error: unknown) {
+					this.logger.warn({
+						message: `Error sending escalation for incident ${incidentId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
 				}
 			}, escalation.delayMinutes * 60 * 1000);
 		}

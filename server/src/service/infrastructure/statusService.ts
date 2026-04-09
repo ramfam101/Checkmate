@@ -252,14 +252,16 @@ export class StatusService implements IStatusService {
 			// Check if threshold has been met
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
+			const currentCheckFailed = status === false;
+			const currentCheckPassed = status === true;
 
-			// If threshold has been met and the monitor is not already down, mark down:
-			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+			// Only declare a monitor down on a failing check that pushes the rolling window past the threshold.
+			if (currentCheckFailed && failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
 				newStatus = "down";
 				statusChanged = true;
 			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
+			// Only recover on a passing check once the rolling failure rate falls back below the threshold.
+			else if (currentCheckPassed && failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
 			}
