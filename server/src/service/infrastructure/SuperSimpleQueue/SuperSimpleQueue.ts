@@ -95,8 +95,19 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
 			const monitors = await this.monitorsRepository.findAll();
 			if (!monitors) {
+				this.logger.info({
+					message: "No monitors found in database",
+					service: SERVICE_NAME,
+					method: "init"
+				});
 				return true;
 			}
+			this.logger.info({
+				message: `Found ${monitors.length} monitors in database`,
+				service: SERVICE_NAME,
+				method: "init",
+				details: { monitorCount: monitors.length }
+			});
 			for (const monitor of monitors) {
 				const randomOffset = Math.floor(Math.random() * 100);
 				setTimeout(() => {
@@ -119,6 +130,12 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 	};
 
 	addJob = async (monitorId: string, monitor: Monitor) => {
+		this.logger.info({
+			message: `Adding job for monitor ${monitorId}, active: ${monitor.isActive}`,
+			service: SERVICE_NAME,
+			method: "addJob",
+			details: { monitorId, isActive: monitor.isActive, interval: monitor.interval }
+		});
 		this.scheduler.addJob({
 			id: monitorId,
 			template: "monitor-job",

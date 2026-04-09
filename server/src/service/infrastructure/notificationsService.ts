@@ -81,6 +81,10 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
+		return await this.sendToProvider(notification, notificationMessage);
+	};
+
+	private sendToProvider = async (notification: Notification, notificationMessage: NotificationMessage): Promise<boolean> => {
 		// Route to provider based on notification type
 		switch (notification.type) {
 			case "webhook":
@@ -94,6 +98,12 @@ export class NotificationsService implements INotificationsService {
 			case "discord":
 				return await this.discordProvider.sendMessage!(notification, notificationMessage);
 			case "email":
+				this.logger.info({
+					message: `Selected email provider for notification ${notification.id}`,
+					service: SERVICE_NAME,
+					method: "sendToProvider",
+					details: { notificationId: notification.id, address: notification.address }
+				});
 				return await this.emailProvider.sendMessage!(notification, notificationMessage);
 			case "teams":
 				return await this.teamsProvider.sendMessage!(notification, notificationMessage);
@@ -101,7 +111,7 @@ export class NotificationsService implements INotificationsService {
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
 					service: SERVICE_NAME,
-					method: "send",
+					method: "sendToProvider",
 				});
 				return false;
 		}
@@ -111,31 +121,87 @@ export class NotificationsService implements INotificationsService {
 		const notificationIds = monitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
+		this.logger.info({
+			message: `Loaded ${notifications.length} notifications for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "sendNotifications",
+			details: { monitorId: monitor.id, notificationIds, loadedNotifications: notifications.map(n => ({ id: n.id, type: n.type, address: n.address })) }
+		});
+
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
-
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			this.logger.warn({
-				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
-				service: SERVICE_NAME,
-				method: "sendNotifications",
-			});
+		for (const notification of notifications) {
+			if (notification.escalationRules && notification.escalationRules.length > 0) {
+				this.logger.info({
+					message: `Detected escalationRules for notification ${notification.id}: ${notification.escalationRules.length} rules`,
+					service: SERVICE_NAME,
+					method: "sendNotifications",
+					details: { notificationId: notification.id, escalationRules: notification.escalationRules }
+				});
+				for (const rule of notification.escalationRules) {
+					const delayMs = rule.delay * 60 * 1000;
+					this.logger.info({
+						message: `Scheduling escalation email for notification ${notification.id} with delay ${rule.delay} minutes (${delayMs}ms)`,
+						service: SERVICE_NAME,
+						method: "sendNotifications",
+						details: { notificationId: notification.id, delayMinutes: rule.delay, delayMs }
+					});
+					setTimeout(async () => {
+						this.logger.info({
+							message: `Sending scheduled escalation email for notification ${notification.id}`,
+							service: SERVICE_NAME,
+							method: "sendNotifications",
+							details: { notificationId: notification.id, delayMinutes: rule.delay }
+						});
+						try {
+							await this.sendToProvider(notification, notificationMessage);
+						} catch (error) {
+							this.logger.error({
+								message: `Error sending escalated notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "sendNotifications",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}, delayMs);
+				}
+			} else {
+				// Send immediately for notifications without escalation rules
+				this.logger.info({
+					message: `Sending immediate notification for ${notification.id} (no escalationRules)`,
+					service: SERVICE_NAME,
+					method: "sendNotifications",
+					details: { notificationId: notification.id, type: notification.type }
+				});
+				this.sendToProvider(notification, notificationMessage).catch((error) => {
+					this.logger.error({
+						message: `Error sending notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "sendNotifications",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+			}
 		}
-		// Return true if all notifications succeeded
-		return succeeded === notifications.length;
+
+		// Since notifications are now asynchronous, return true immediately
+		return true;
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
+
+		this.logger.info({
+			message: `handleNotifications called for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "handleNotifications",
+			details: { monitorId: monitor.id, notificationIds: monitor.notifications, decision }
+		});
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);

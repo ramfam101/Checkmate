@@ -20,6 +20,11 @@ export interface Notification {
 	homeserverUrl?: string;
 	roomId?: string;
 	accessToken?: string;
+	escalationRules?: EscalationRule[];
 	createdAt: string;
 	updatedAt: string;
+}
+
+export interface EscalationRule {
+	delay: number; // in minutes
 }

@@ -1,10 +1,15 @@
 import { z } from "zod";
 
+const escalationRuleSchema = z.object({
+	delay: z.number().min(0, "Delay must be at least 0 minutes"),
+});
+
 const baseSchema = z.object({
 	notificationName: z
 		.string()
 		.min(1, "Notification name is required")
 		.max(100, "Notification name must be at most 100 characters"),
+	escalationRules: z.array(escalationRuleSchema).optional(),
 });
 
 const emailSchema = baseSchema.extend({

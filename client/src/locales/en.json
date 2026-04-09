@@ -951,6 +951,13 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"escalationRules": {
+					"title": "Escalation rules",
+					"description": "Configure escalation rules for delayed notifications. Each rule defines a delay in minutes before sending the notification.",
+					"delayLabel": "Delay for step {{step}} (minutes)",
+					"delayPlaceholder": "e.g. 5",
+					"addRule": "Add escalation step"
 				}
 			},
 			"table": {

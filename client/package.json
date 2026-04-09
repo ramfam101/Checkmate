@@ -20,6 +20,7 @@
 		"@emotion/styled": "^11.13.0",
 		"@hello-pangea/dnd": "^18.0.0",
 		"@hookform/resolvers": "5.2.2",
+		"@mui/icons-material": "^7.3.7",
 		"@mui/lab": "7.0.0",
 		"@mui/material": "7.3.7",
 		"@mui/x-charts": "7.29.1",

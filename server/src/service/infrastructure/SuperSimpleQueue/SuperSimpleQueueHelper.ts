@@ -153,11 +153,27 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 4.  Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
+				// DEBUG: Log monitor status change
+				if (statusChangeResult.statusChanged) {
+					this.logger.info({
+						message: `Monitor ${monitorId} status changed from ${statusChangeResult.previousStatus} to ${statusChangeResult.monitor.status}`,
+						service: SERVICE_NAME,
+						method: "getHeartbeatJob",
+						details: { monitorId, newStatus: statusChangeResult.monitor.status, previousStatus: statusChangeResult.previousStatus }
+					});
+				}
+
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
+					this.logger.info({
+						message: `Triggering notifications for monitor ${monitorId}`,
+						service: SERVICE_NAME,
+						method: "getHeartbeatJob",
+						details: { monitorId, decision: { shouldSendNotification: decision.shouldSendNotification, incidentReason: decision.incidentReason, notificationReason: decision.notificationReason } }
+					});
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
 							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -430,6 +446,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			notificationReason: null,
 		};
 
+		this.logger.info({
+			message: `Evaluating monitor action for ${monitor.id}: statusChanged=${statusChanged}, currentStatus=${monitor.status}, prevStatus=${prevStatus}`,
+			service: SERVICE_NAME,
+			method: "evaluateMonitorAction",
+			details: { monitorId: monitor.id, statusChanged, currentStatus: monitor.status, prevStatus }
+		});
+
 		if (!statusChanged) {
 			return decision;
 		}
@@ -440,6 +463,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+			this.logger.info({
+				message: `Monitor ${monitor.id} went down - will send notifications`,
+				service: SERVICE_NAME,
+				method: "evaluateMonitorAction",
+				details: { monitorId: monitor.id, decision }
+			});
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;

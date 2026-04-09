@@ -4,8 +4,11 @@ import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import { useTheme } from "@mui/material/styles";
+import IconButton from "@mui/material/IconButton";
+import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
@@ -39,11 +42,18 @@ const NotificationsCreatePage = () => {
 		defaultValues: defaults,
 	});
 
-	const { control, watch, reset, handleSubmit, clearErrors, trigger, getValues } = form;
+	const { control, watch, reset, handleSubmit, clearErrors, trigger, getValues, setValue } = form;
+
+	const [escalationRules, setEscalationRules] = useState([{ delay: 0 }]);
 
 	useEffect(() => {
 		reset(defaults);
+		setEscalationRules(defaults.escalationRules || [{ delay: 0 }]);
 	}, [defaults, reset]);
+
+	useEffect(() => {
+		setValue("escalationRules", escalationRules);
+	}, [escalationRules, setValue]);
 
 	const watchedType = watch("type");
 
@@ -77,9 +87,10 @@ const NotificationsCreatePage = () => {
 	}, [watchedType, t]);
 
 	const onSubmit = async (data: NotificationFormData) => {
+		const payload = { ...data, escalationRules };
 		const result = isEditMode
-			? await patch(`/notifications/${notificationId}`, data)
-			: await post("/notifications", data);
+			? await patch(`/notifications/${notificationId}`, payload)
+			: await post("/notifications", payload);
 		if (result) {
 			navigate("/notifications");
 		}
@@ -89,7 +100,8 @@ const NotificationsCreatePage = () => {
 		const isValid = await trigger();
 		if (!isValid) return;
 		const data = getValues();
-		await testPost("/notifications/test", data);
+		const payload = { ...data, escalationRules };
+		await testPost("/notifications/test", payload);
 	};
 
 	return (
@@ -171,6 +183,46 @@ const NotificationsCreatePage = () => {
 					}
 				/>
 			)}
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Configure delayed escalation steps for this notification channel."
+				rightContent={
+					<Stack spacing={theme.spacing(2)}>
+						{escalationRules.map((rule, index) => (
+							<Stack key={index} direction="row" spacing={theme.spacing(2)} alignItems="center">
+								<TextField
+									type="number"
+									fieldLabel={`Delay for step ${index + 1} (minutes)`}
+									placeholder="e.g. 5"
+									fullWidth
+									value={rule.delay}
+									onChange={(e) => {
+										const newRules = [...escalationRules];
+										newRules[index].delay = parseInt(e.target.value) || 0;
+										setEscalationRules(newRules);
+									}}
+									inputProps={{ min: 0 }}
+								/>
+								<IconButton
+									onClick={() => setEscalationRules(escalationRules.filter((_, i) => i !== index))}
+									color="error"
+									size="small"
+								>
+									<DeleteIcon />
+								</IconButton>
+							</Stack>
+						))}
+						<Button
+							variant="outlined"
+							startIcon={<AddIcon />}
+							onClick={() => setEscalationRules([...escalationRules, { delay: 0 }])}
+							fullWidth
+						>
+							Add Step
+						</Button>
+					</Stack>
+				}
+			/>
 			{watchedType === "matrix" && (
 				<ConfigBox
 					title={t("pages.notifications.form.matrix.title")}
