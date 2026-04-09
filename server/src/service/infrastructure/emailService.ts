@@ -85,6 +85,7 @@ export class EmailService implements IEmailService {
 			passwordResetTemplate: this.loadTemplate("passwordReset"),
 			testEmailTemplate: this.loadTemplate("testEmailTemplate"),
 			unifiedNotificationTemplate: this.loadTemplate("unifiedNotification"),
+			unifiedNotificationEscalationTemplate: this.loadTemplate("unifiedNotificationEscalation"),
 		};
 	};
 

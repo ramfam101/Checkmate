@@ -7,6 +7,17 @@ import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 
+export type TestNotificationFailure = {
+	notificationId: string;
+	notificationName: string;
+	detail: string;
+};
+
+export type TestAllNotificationsResult = {
+	allSucceeded: boolean;
+	failures: TestNotificationFailure[];
+};
+
 export interface INotificationsService {
 	createNotification: (notificationData: Partial<Notification>, userId: string, teamId: string) => Promise<Notification>;
 	findById: (id: string, teamId: string) => Promise<Notification>;
@@ -15,8 +26,10 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendNotificationById: (notificationId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
-	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
+	testAllNotifications: (notificationIds: string[]) => Promise<TestAllNotificationsResult>;
 }
 
 const SERVICE_NAME = "NotificationsService";
@@ -162,16 +175,51 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	testAllNotifications = async (notificationIds: string[]) => {
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			return false;
+	testAllNotifications = async (notificationIds: string[]): Promise<TestAllNotificationsResult> => {
+		const failures: TestNotificationFailure[] = [];
+		const found = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const byId = new Map(found.map((n) => [n.id, n]));
+
+		for (const id of notificationIds) {
+			const notification = byId.get(id);
+			if (!notification) {
+				failures.push({
+					notificationId: id,
+					notificationName: id,
+					detail: "Notification not found (invalid ID or not in database).",
+				});
+				continue;
+			}
+
+			try {
+				const ok = await this.sendTestNotification(notification);
+				if (!ok) {
+					const typeHint =
+						notification.type === "email"
+							? "Check the email address, SMTP settings in Settings, and that the mail server accepts connections (see server logs)."
+							: notification.type === "discord" || notification.type === "slack" || notification.type === "webhook"
+								? "Check the webhook URL and that the endpoint accepts POST requests."
+								: notification.type === "matrix" || notification.type === "pager_duty" || notification.type === "teams"
+									? "Verify channel-specific fields (URL, tokens, routing keys) in Notifications settings."
+									: "Unknown or unsupported notification type for test.";
+
+					failures.push({
+						notificationId: notification.id,
+						notificationName: notification.notificationName,
+						detail: `Test send failed. ${typeHint}`,
+					});
+				}
+			} catch (err: unknown) {
+				const detail = err instanceof Error ? err.message : String(err);
+				failures.push({
+					notificationId: notification.id,
+					notificationName: notification.notificationName,
+					detail,
+				});
+			}
 		}
-		return true;
+
+		return { allSucceeded: failures.length === 0, failures };
 	};
 
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {
@@ -196,5 +244,24 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	// Send a single notification by its id (used for escalations)
+	sendNotificationById = async (notificationId: string, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		try {
+			const notification = await this.notificationsRepository.findById(notificationId, monitor.teamId);
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+			return await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: error instanceof Error ? error.message : "Unknown error",
+				service: SERVICE_NAME,
+				method: "sendNotificationById",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 }

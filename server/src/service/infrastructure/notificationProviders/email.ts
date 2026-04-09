@@ -78,6 +78,9 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		if (message.metadata.notificationReason === "escalation" && message.type === "monitor_down") {
+			return `Escalation: Monitor ${message.monitor.name} still down`;
+		}
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;
@@ -93,6 +96,9 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
+		const isEscalation = message.metadata.notificationReason === "escalation" && message.type === "monitor_down";
+		const escalationDelayMinutes = message.metadata.escalationDelayMinutes ?? "?";
+
 		const context = {
 			title: message.content.title,
 			summary: message.content.summary,
@@ -104,16 +110,18 @@ export class EmailProvider implements INotificationProvider {
 			thresholds: message.content.thresholds,
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
+			...(isEscalation ? { escalationDelayMinutes } : {}),
 		};
 
 		this.logger.info({
 			message: "[DEBUG] Building email from message",
 			service: SERVICE_NAME,
 			method: "buildEmailFromMessage",
-			details: { context },
+			details: { context, isEscalation },
 		});
 
-		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
+		const templateName = isEscalation ? "unifiedNotificationEscalationTemplate" : "unifiedNotificationTemplate";
+		const html = await this.emailService.buildEmail(templateName, context);
 
 		return html;
 	}

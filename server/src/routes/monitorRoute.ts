@@ -53,6 +53,24 @@ class MonitorRoutes {
 		this.router.get("/:monitorId", this.monitorController.getMonitorById);
 		this.router.patch("/:monitorId", isAllowed(["admin", "superadmin"]), this.monitorController.editMonitor);
 		this.router.delete("/:monitorId", isAllowed(["admin", "superadmin"]), this.monitorController.deleteMonitor);
+
+		// Notification settings per-monitor
+		this.router.get("/:monitorId/notification-settings", this.monitorController.getNotificationSettings);
+		this.router.post(
+			"/:monitorId/notification-settings",
+			isAllowed(["admin", "superadmin"]),
+			this.monitorController.addNotificationSetting
+		);
+		this.router.put(
+			"/:monitorId/notification-settings/:notificationId",
+			isAllowed(["admin", "superadmin"]),
+			this.monitorController.updateNotificationSetting
+		);
+		this.router.delete(
+			"/:monitorId/notification-settings/:notificationId",
+			isAllowed(["admin", "superadmin"]),
+			this.monitorController.deleteNotificationSetting
+		);
 	}
 
 	getRouter() {

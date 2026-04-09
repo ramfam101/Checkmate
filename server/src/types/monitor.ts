@@ -37,6 +37,12 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	notificationSettings?: { notificationId: string }[];
+	/** If the monitor stays down, notify these additional channels after delayMinutes. */
+	escalation?: {
+		delayMinutes?: number;
+		channelIds?: string[];
+	};
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

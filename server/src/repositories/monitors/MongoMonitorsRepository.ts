@@ -8,7 +8,14 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const payload: Record<string, unknown> = { ...monitor, teamId, userId };
+		if (monitor.escalation?.channelIds?.length) {
+			payload.escalation = {
+				delayMinutes: monitor.escalation.delayMinutes,
+				channelIds: monitor.escalation.channelIds.map((id) => new mongoose.Types.ObjectId(id)),
+			};
+		}
+		const monitorModel = new MonitorModel(payload);
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -167,15 +174,27 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
-		const updatedMonitor = await MonitorModel.findOneAndUpdate(
-			{ _id: monitorId, teamId },
-			{
-				$set: {
-					...patch,
-				},
-			},
-			{ new: true, runValidators: true }
-		);
+		const { escalation, ...restPatch } = patch;
+		const setPayload: Record<string, unknown> = { ...restPatch };
+		const updateQuery: mongoose.UpdateQuery<MonitorDocument> = { $set: setPayload };
+
+		if (escalation !== undefined) {
+			const hasDelay = escalation.delayMinutes != null && escalation.delayMinutes >= 1;
+			const hasChannels = (escalation.channelIds?.length ?? 0) > 0;
+			if (!hasDelay || !hasChannels) {
+				updateQuery.$unset = { escalation: 1 };
+			} else {
+				setPayload.escalation = {
+					delayMinutes: escalation.delayMinutes,
+					channelIds: (escalation.channelIds ?? []).map((id) => new mongoose.Types.ObjectId(id)),
+				};
+			}
+		}
+
+		const updatedMonitor = await MonitorModel.findOneAndUpdate({ _id: monitorId, teamId }, updateQuery, {
+			new: true,
+			runValidators: true,
+		});
 		if (!updatedMonitor) {
 			throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
 		}
@@ -352,6 +371,19 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
 
+		const notificationSettings = (doc.notificationSettings ?? []).map((s: any) => ({
+			notificationId: toStringId(s.notificationId),
+		}));
+
+		const escalationDoc = doc.escalation as { delayMinutes?: number; channelIds?: unknown[] } | undefined;
+		const escalation =
+			escalationDoc && (escalationDoc.delayMinutes != null || (escalationDoc.channelIds?.length ?? 0) > 0)
+				? {
+					delayMinutes: escalationDoc.delayMinutes ?? undefined,
+					channelIds: (escalationDoc.channelIds ?? []).map((cid) => toStringId(cid)),
+				}
+				: undefined;
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -374,6 +406,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			notificationSettings: notificationSettings,
+			escalation,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -411,6 +445,20 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
 
+		const notificationSettings = (doc.notificationSettings ?? []).map((s: any) => ({
+			notificationId: toStringId(s.notificationId),
+		}));
+
+		const escalationDocWithChecks = doc.escalation as { delayMinutes?: number; channelIds?: unknown[] } | undefined;
+		const escalationWithChecks =
+			escalationDocWithChecks &&
+			(escalationDocWithChecks.delayMinutes != null || (escalationDocWithChecks.channelIds?.length ?? 0) > 0)
+				? {
+					delayMinutes: escalationDocWithChecks.delayMinutes ?? undefined,
+					channelIds: (escalationDocWithChecks.channelIds ?? []).map((cid) => toStringId(cid)),
+				}
+				: undefined;
+
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -433,6 +481,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			notificationSettings: notificationSettings,
+			escalation: escalationWithChecks,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

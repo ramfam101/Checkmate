@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -66,6 +66,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+
+	/** In-memory escalation timers per monitor (cleared on resolve or reschedule). */
+	private escalationTimersByMonitorId = new Map<string, NodeJS.Timeout[]>();
 
 	constructor(
 		logger: ILogger,
@@ -156,6 +159,10 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				// Step 5.  Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
+				if (decision.shouldResolveIncident) {
+					this.clearEscalationTimers(monitorId);
+				}
+
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
@@ -169,14 +176,29 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
+				this.incidentService
+					.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status)
+					.then((incident) => {
+						if (incident) {
+							// Schedule any configured escalations for this monitor
+							this.scheduleEscalations(statusChangeResult.monitor, status).catch((err: unknown) => {
+								this.logger.warn({
+									message: `Error scheduling escalations for monitor ${statusChangeResult.monitor.id}: ${err instanceof Error ? err.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: err instanceof Error ? err.stack : undefined,
+								});
+							});
+						}
+					})
+					.catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
 					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -454,5 +476,67 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private clearEscalationTimers(monitorId: string) {
+		const timers = this.escalationTimersByMonitorId.get(monitorId);
+		if (timers?.length) {
+			for (const t of timers) {
+				clearTimeout(t);
+			}
+		}
+		this.escalationTimersByMonitorId.delete(monitorId);
+	}
+
+	private async scheduleEscalations(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) {
+		try {
+			this.clearEscalationTimers(monitor.id);
+			const esc = monitor.escalation;
+			if (!esc?.delayMinutes || !(esc.channelIds?.length ?? 0)) {
+				return;
+			}
+			const delayMs = Number(esc.delayMinutes) * 60 * 1000;
+			const channelIds = esc.channelIds ?? [];
+			const timeoutId = setTimeout(async () => {
+				try {
+					const active = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+					if (!active) {
+						return;
+					}
+					const escalationDecision: MonitorActionDecision = {
+						shouldCreateIncident: false,
+						shouldResolveIncident: false,
+						shouldSendNotification: true,
+						incidentReason: null,
+						notificationReason: "escalation",
+					};
+					for (const channelId of channelIds) {
+						this.logger.info({
+							message: `Escalation triggered for monitor ${monitor.id} to channel ${channelId}`,
+							service: SERVICE_NAME,
+							method: "scheduleEscalations",
+						});
+						await this.notificationsService.sendNotificationById(channelId, monitor, monitorStatusResponse, escalationDecision);
+					}
+				} catch (err: unknown) {
+					this.logger.error({
+						message: err instanceof Error ? err.message : "Unknown error",
+						service: SERVICE_NAME,
+						method: "scheduleEscalations",
+						stack: err instanceof Error ? err.stack : undefined,
+					});
+				} finally {
+					this.escalationTimersByMonitorId.delete(monitor.id);
+				}
+			}, delayMs);
+			this.escalationTimersByMonitorId.set(monitor.id, [timeoutId]);
+		} catch (error: unknown) {
+			this.logger.warn({
+				message: error instanceof Error ? error.message : "Unknown error",
+				service: SERVICE_NAME,
+				method: "scheduleEscalations",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
 	}
 }

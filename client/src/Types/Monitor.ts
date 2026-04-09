@@ -60,6 +60,12 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	notificationSettings?: { notificationId: string }[];
+	/** Escalate to additional channels if an incident stays active for delayMinutes. */
+	escalation?: {
+		delayMinutes?: number;
+		channelIds?: string[];
+	};
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

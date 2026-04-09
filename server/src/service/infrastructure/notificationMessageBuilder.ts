@@ -31,7 +31,22 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		let content = this.buildContent(type, monitor, monitorStatusResponse);
+
+		if (decision.notificationReason === "escalation" && type === "monitor_down") {
+			const delayMinutes = monitor.escalation?.delayMinutes;
+			const escalationDetail =
+				delayMinutes != null ? `Escalation triggered after ${delayMinutes} minute(s).` : "Escalation triggered.";
+			content = {
+				...content,
+				details: [escalationDetail, ...(content.details ?? [])],
+			};
+		}
+
+		const escalationDelayMinutes =
+			decision.notificationReason === "escalation" && monitor.escalation?.delayMinutes != null
+				? monitor.escalation.delayMinutes
+				: undefined;
 
 		return {
 			type,
@@ -48,6 +63,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+				...(escalationDelayMinutes !== undefined ? { escalationDelayMinutes } : {}),
 			},
 		};
 	}

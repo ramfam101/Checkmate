@@ -72,7 +72,8 @@ export class IncidentService implements IIncidentService {
 
 		if (decision.shouldCreateIncident) {
 			if (activeIncident) {
-				return activeIncident;
+				// Ongoing incident — do not schedule duplicate escalation timers
+				return null;
 			} else {
 				let statusCode = code;
 				let message: string | undefined;

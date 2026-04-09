@@ -49,5 +49,7 @@ export interface NotificationMessage {
 	metadata: {
 		teamId: string;
 		notificationReason: string;
+		/** Present when notificationReason is "escalation" (delay from monitor escalation config). */
+		escalationDelayMinutes?: number;
 	};
 }

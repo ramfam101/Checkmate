@@ -43,6 +43,10 @@ export interface IMonitorController {
 	getAllGames: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getGroupsByTeamId: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	updateNotifications: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	getNotificationSettings: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	addNotificationSetting: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	updateNotificationSetting: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	deleteNotificationSetting: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class MonitorController implements IMonitorController {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -449,6 +453,72 @@ class MonitorController implements IMonitorController {
 				msg: `Notifications updated successfully on ${modifiedCount} monitor(s)`,
 				data: { modifiedCount },
 			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	getNotificationSettings = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+			const teamId = requireTeamId(req.user?.teamId);
+			const monitor = await this.monitorService.getMonitorById({ teamId, monitorId: validatedParams.monitorId });
+			return res.status(200).json({ success: true, msg: "Notification settings fetched", data: monitor.notificationSettings ?? [] });
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	addNotificationSetting = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+			const validatedBody = (await import("@/validation/monitorValidation.js")).notificationSettingBodyValidation.parse(req.body);
+			const teamId = requireTeamId(req.user?.teamId);
+			// verify notification belongs to team
+			const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+			if (!teamNotifications.find((n) => n.id === validatedBody.notificationId)) {
+				throw new AppError({ message: "Notification does not belong to your team", status: 403 });
+			}
+			const monitor = await this.monitorService.getMonitorById({ teamId, monitorId: validatedParams.monitorId });
+			const existing = monitor.notificationSettings ?? [];
+			const newSettings = [...existing, { notificationId: validatedBody.notificationId }];
+			const edited = await this.monitorService.editMonitor({ teamId, monitorId: validatedParams.monitorId, body: { notificationSettings: newSettings } as any });
+			return res.status(200).json({ success: true, msg: "Notification setting added", data: edited.notificationSettings });
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	updateNotificationSetting = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+			const notificationId = req.params.notificationId;
+			const validatedBody = (await import("@/validation/monitorValidation.js")).notificationSettingBodyValidation.parse(req.body);
+			const teamId = requireTeamId(req.user?.teamId);
+			const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+			if (!teamNotifications.find((n) => n.id === notificationId)) {
+				throw new AppError({ message: "Notification does not belong to your team", status: 403 });
+			}
+			const monitor = await this.monitorService.getMonitorById({ teamId, monitorId: validatedParams.monitorId });
+			const settings = monitor.notificationSettings ?? [];
+			const updated = settings.map((s) => (s.notificationId === notificationId ? { notificationId: s.notificationId } : s));
+			const edited = await this.monitorService.editMonitor({ teamId, monitorId: validatedParams.monitorId, body: { notificationSettings: updated } as any });
+			return res.status(200).json({ success: true, msg: "Notification setting updated", data: edited.notificationSettings });
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	deleteNotificationSetting = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const validatedParams = getMonitorByIdParamValidation.parse(req.params);
+			const notificationId = req.params.notificationId;
+			const teamId = requireTeamId(req.user?.teamId);
+			const monitor = await this.monitorService.getMonitorById({ teamId, monitorId: validatedParams.monitorId });
+			const settings = monitor.notificationSettings ?? [];
+			const updated = settings.filter((s) => s.notificationId !== notificationId);
+			const edited = await this.monitorService.editMonitor({ teamId, monitorId: validatedParams.monitorId, body: { notificationSettings: updated } as any });
+			return res.status(200).json({ success: true, msg: "Notification setting removed", data: edited.notificationSettings });
 		} catch (error) {
 			next(error);
 		}
