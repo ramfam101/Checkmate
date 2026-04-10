@@ -16,6 +16,35 @@ const envSchema = z.object({
 	// Client Configuration
 	CLIENT_HOST: z.string().url("CLIENT_HOST must be a valid URL"),
 
+	// Optional SMTP fallback for notifications
+	SYSTEM_EMAIL_HOST: z.string().optional(),
+	SYSTEM_EMAIL_PORT: z.coerce.number().optional(),
+	SYSTEM_EMAIL_ADDRESS: z.string().optional(),
+	SYSTEM_EMAIL_PASSWORD: z.string().optional(),
+	SYSTEM_EMAIL_USER: z.string().optional(),
+	SYSTEM_EMAIL_CONNECTION_HOST: z.string().optional(),
+	SYSTEM_EMAIL_TLS_SERVERNAME: z.string().optional(),
+	SYSTEM_EMAIL_SECURE: z
+		.enum(["true", "false"])
+		.transform((value) => value === "true")
+		.optional(),
+	SYSTEM_EMAIL_POOL: z
+		.enum(["true", "false"])
+		.transform((value) => value === "true")
+		.optional(),
+	SYSTEM_EMAIL_IGNORE_TLS: z
+		.enum(["true", "false"])
+		.transform((value) => value === "true")
+		.optional(),
+	SYSTEM_EMAIL_REQUIRE_TLS: z
+		.enum(["true", "false"])
+		.transform((value) => value === "true")
+		.optional(),
+	SYSTEM_EMAIL_REJECT_UNAUTHORIZED: z
+		.enum(["true", "false"])
+		.transform((value) => value === "true")
+		.optional(),
+
 	// Optional
 	ORIGIN: z.string().optional(),
 });

@@ -3,6 +3,7 @@ import { Settings, SettingsUpdate } from "@/types/index.js";
 import { AppError } from "@/utils/AppError.js";
 import { ValidatedEnv } from "@/validation/envValidation.js";
 import type { StringValue } from "ms";
+import type { EmailTransportConfig } from "@/types/email.js";
 const SERVICE_NAME = "SettingsService";
 
 export type EnvConfig = {
@@ -12,7 +13,7 @@ export type EnvConfig = {
 	logLevel: string;
 	clientHost: string;
 	dbConnectionString: string;
-};
+} & Partial<EmailTransportConfig>;
 
 export interface ISettingsService {
 	readonly serviceName: string;
@@ -36,6 +37,18 @@ export class SettingsService implements ISettingsService {
 			logLevel: env.LOG_LEVEL,
 			clientHost: env.CLIENT_HOST,
 			dbConnectionString: env.DB_CONNECTION_STRING,
+			systemEmailHost: env.SYSTEM_EMAIL_HOST,
+			systemEmailPort: env.SYSTEM_EMAIL_PORT,
+			systemEmailAddress: env.SYSTEM_EMAIL_ADDRESS,
+			systemEmailPassword: env.SYSTEM_EMAIL_PASSWORD,
+			systemEmailUser: env.SYSTEM_EMAIL_USER,
+			systemEmailConnectionHost: env.SYSTEM_EMAIL_CONNECTION_HOST,
+			systemEmailTLSServername: env.SYSTEM_EMAIL_TLS_SERVERNAME,
+			systemEmailSecure: env.SYSTEM_EMAIL_SECURE,
+			systemEmailPool: env.SYSTEM_EMAIL_POOL,
+			systemEmailIgnoreTLS: env.SYSTEM_EMAIL_IGNORE_TLS,
+			systemEmailRequireTLS: env.SYSTEM_EMAIL_REQUIRE_TLS,
+			systemEmailRejectUnauthorized: env.SYSTEM_EMAIL_REJECT_UNAUTHORIZED,
 		};
 	}
 

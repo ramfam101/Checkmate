@@ -543,6 +543,21 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalatedNotifications": {
+					"description": "Select the notification channels to use if the incident stays down past the escalation delay.",
+					"title": "Escalated notifications",
+					"option": {
+						"delay": {
+							"label": "Escalation delay",
+							"value": {
+								"fiveMinutes": "5 minutes",
+								"fifteenMinutes": "15 minutes",
+								"thirtyMinutes": "30 minutes",
+								"sixtyMinutes": "60 minutes"
+							}
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

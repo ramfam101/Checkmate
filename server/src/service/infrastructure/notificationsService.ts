@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -109,6 +110,15 @@ export class NotificationsService implements INotificationsService {
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
+		return await this.sendNotificationsByIds(notificationIds, monitor, monitorStatusResponse, decision);
+	};
+
+	private sendNotificationsByIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -139,6 +149,21 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse) => {
+		const notificationIds = monitor.escalatedNotifications ?? [];
+		if (notificationIds.length === 0) {
+			return false;
+		}
+
+		return await this.sendNotificationsByIds(notificationIds, monitor, monitorStatusResponse, {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: "status_down",
+			notificationReason: "status_change",
+		});
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

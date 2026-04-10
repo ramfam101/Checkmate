@@ -177,6 +177,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle one-time escalated notifications for ongoing downtime
+				this.handleEscalatedNotifications(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalated notifications for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +197,44 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private handleEscalatedNotifications = async (monitor: Monitor, status: import("@/types/network.js").MonitorStatusResponse): Promise<void> => {
+		if (monitor.status !== "down") {
+			return;
+		}
+
+		if (!monitor.escalatedNotifications || monitor.escalatedNotifications.length === 0) {
+			return;
+		}
+
+		if (!monitor.escalationMinutes || monitor.escalationMinutes < 1) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalationNotifiedAt) {
+			return;
+		}
+
+		const incidentStartedAt = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(incidentStartedAt)) {
+			return;
+		}
+
+		const escalationDelayMs = monitor.escalationMinutes * 60 * 1000;
+		if (Date.now() - incidentStartedAt < escalationDelayMs) {
+			return;
+		}
+
+		const sent = await this.notificationsService.handleEscalationNotifications(monitor, status);
+		if (!sent) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalationNotifiedAt: new Date().toISOString(),
+		});
 	};
 
 	getCleanupOrphanedJob = () => {
