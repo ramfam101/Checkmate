@@ -7,11 +7,12 @@ const handleErrors = (error: unknown, req: Request, res: Response, _next: NextFu
 	const message = error instanceof AppError ? error.message : "Server error";
 	const service = error instanceof AppError ? error.service : "unknownService";
 	const method = error instanceof AppError ? error.method : "unknownMethod";
+	const unexpectedError = error instanceof Error ? error : undefined;
 	logger.error({
-		message: message,
+		message: unexpectedError?.message || message,
 		service: service,
 		method: method,
-		stack: error instanceof AppError ? error.stack : undefined,
+		stack: error instanceof AppError ? error.stack : unexpectedError?.stack,
 		details: error instanceof AppError ? error.details : undefined,
 	});
 	res.status(status).json({

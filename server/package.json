@@ -5,8 +5,9 @@
 	"main": "index.js",
 	"type": "module",
 	"scripts": {
+		"predev": "node ./scripts/cleanup-dev-processes.mjs",
 		"test": "NODE_OPTIONS=--experimental-vm-modules c8 jest --runInBand",
-		"dev": "nodemon --exec tsx src/index.js",
+		"dev": "tsx watch --clear-screen=false src/index.ts",
 		"start": "node --watch ./dist/index.js",
 		"build": "tsc && tsc-alias && cp -r src/templates dist/templates",
 		"lint": "eslint .",

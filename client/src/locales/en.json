@@ -602,6 +602,17 @@
 						}
 					}
 				},
+				"escalationRules": {
+					"title": "Escalation Rules",
+					"description": "Configure email escalation steps to send additional notifications if the monitor remains down. Escalations are based on continuous downtime from incident start.",
+					"option": {
+						"delayMinutes": {
+							"placeholder": "Minutes"
+						},
+						"minutes": "minutes",
+						"addRule": "Add escalation step"
+					}
+				},
 				"url": {
 					"title": "Monitor IP/URL on Status Page",
 					"description": "Display the IP address or URL of monitor on the public Status page. If it's disabled, only the monitor name will be shown to protect sensitive information.",

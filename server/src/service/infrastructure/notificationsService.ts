@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IMonitorsRepository, INotificationsRepository, IIncidentsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalations: (monitor: Monitor, incidentStartTime: string) => Promise<void>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -25,6 +26,7 @@ export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
 
 	private notificationsRepository: INotificationsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
@@ -39,6 +41,7 @@ export class NotificationsService implements INotificationsService {
 
 	constructor(
 		notificationsRepository: INotificationsRepository,
+		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
@@ -52,6 +55,7 @@ export class NotificationsService implements INotificationsService {
 		notificationMessageBuilder: INotificationMessageBuilder
 	) {
 		this.notificationsRepository = notificationsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
@@ -64,6 +68,46 @@ export class NotificationsService implements INotificationsService {
 		this.logger = logger;
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
+
+	private resolveNotificationsByIds = async (notificationIds: string[], method: string): Promise<Notification[]> => {
+		if (notificationIds.length === 0) {
+			this.logger.warn({
+				message: "No notification IDs were provided",
+				service: SERVICE_NAME,
+				method,
+			});
+			return [];
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: "Notification lookup returned no channels",
+				service: SERVICE_NAME,
+				method,
+				details: { notificationIds },
+			});
+			return [];
+		}
+
+		const resolvedIds = new Set(notifications.map((notification) => notification.id));
+		const missingNotificationIds = notificationIds.filter((id) => !resolvedIds.has(id));
+
+		if (missingNotificationIds.length > 0) {
+			this.logger.warn({
+				message: "Some notification IDs could not be resolved",
+				service: SERVICE_NAME,
+				method,
+				details: {
+					requestedCount: notificationIds.length,
+					resolvedCount: notifications.length,
+					missingNotificationIds,
+				},
+			});
+		}
+
+		return notifications;
+	};
 
 	private send = async (
 		notification: Notification,
@@ -109,7 +153,10 @@ export class NotificationsService implements INotificationsService {
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const notifications = await this.resolveNotificationsByIds(notificationIds, "sendNotifications");
+		if (notifications.length === 0) {
+			return false;
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -126,6 +173,10 @@ export class NotificationsService implements INotificationsService {
 				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
 				service: SERVICE_NAME,
 				method: "sendNotifications",
+				details: {
+					monitorId: monitor.id,
+					notificationIds,
+				},
 			});
 		}
 		// Return true if all notifications succeeded
@@ -139,6 +190,154 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	handleEscalations = async (monitor: Monitor, incidentStartTime: string) => {
+		try {
+			// Only send escalations if rules exist
+			if (!monitor.escalationRules || monitor.escalationRules.length === 0) {
+				return;
+			}
+
+			// Get the active incident
+			const incident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!incident) {
+				return;
+			}
+
+			// Calculate downtime in minutes
+			const startTime = new Date(incidentStartTime).getTime();
+			const now = Date.now();
+			const downtimeMinutes = Math.floor((now - startTime) / (1000 * 60));
+
+			// Check which escalation thresholds should trigger
+			const escalationsSent = [...(incident.escalationsSent ?? [])];
+			const escalationsToSend = monitor.escalationRules.filter(
+				(rule) => rule.delayMinutes <= downtimeMinutes && !escalationsSent.includes(rule.delayMinutes)
+			);
+
+			if (escalationsToSend.length === 0) {
+				return;
+			}
+
+			// Get email notifications for this monitor
+			const notificationIds = monitor.notifications ?? [];
+			const notifications = await this.resolveNotificationsByIds(notificationIds, "handleEscalations");
+			if (notifications.length === 0) {
+				return;
+			}
+			const emailNotifications = notifications.filter((n) => n.type === "email");
+
+			if (emailNotifications.length === 0) {
+				this.logger.warn({
+					message: `Monitor ${monitor.name} has escalation rules but no email notification channels`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+					details: {
+						monitorId: monitor.id,
+						notificationIds,
+					},
+				});
+				return;
+			}
+
+			let escalationsUpdated = false;
+
+			// Send escalation emails for each triggered threshold
+			for (const rule of escalationsToSend) {
+				// Build proper NotificationMessage structure for escalation
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+
+				const escalationMessage: NotificationMessage = {
+					type: "monitor_down",
+					severity: "critical",
+					monitor: {
+						id: monitor.id,
+						name: monitor.name,
+						url: monitor.url,
+						type: monitor.type,
+						status: monitor.status,
+					},
+					content: {
+						title: `ESCALATION: ${monitor.name}`,
+						summary: `Monitor "${monitor.name}" has been down for ${downtimeMinutes} minutes`,
+						details: [
+							`Continuous downtime: ${downtimeMinutes} minutes`,
+							`Escalation threshold: ${rule.delayMinutes} minutes`,
+							`Status: Down`,
+						],
+						timestamp: new Date(),
+						incident: {
+							id: "escalation-" + monitor.id,
+							url: monitor.url,
+							createdAt: new Date(incidentStartTime),
+							duration: `${downtimeMinutes} minutes`,
+						},
+					},
+					clientHost,
+					metadata: {
+						teamId: monitor.teamId,
+						notificationReason: "escalation",
+					},
+				};
+
+				let sentForRule = 0;
+
+				for (const notification of emailNotifications) {
+					if (!notification.address) {
+						this.logger.warn({
+							message: `Email notification ${notification.id} is missing an address`,
+							service: SERVICE_NAME,
+							method: "handleEscalations",
+						});
+						continue;
+					}
+
+					try {
+						const sent = await this.emailProvider.sendMessage(notification, escalationMessage);
+						if (sent) {
+							sentForRule += 1;
+						}
+					} catch (error) {
+						this.logger.warn({
+							message: `Failed to send escalation email for ${monitor.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "handleEscalations",
+							details: {
+								monitorId: monitor.id,
+								notificationId: notification.id,
+								delayMinutes: rule.delayMinutes,
+							},
+						});
+					}
+				}
+
+				if (sentForRule > 0) {
+					escalationsSent.push(rule.delayMinutes);
+					escalationsUpdated = true;
+				} else {
+					this.logger.warn({
+						message: `Escalation threshold ${rule.delayMinutes} minutes was not marked as sent because no emails were delivered`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+						details: {
+							monitorId: monitor.id,
+						},
+					});
+				}
+			}
+
+			if (escalationsUpdated) {
+				await this.incidentsRepository.updateEscalationsSent(incident.id, escalationsSent);
+			}
+		} catch (error) {
+			this.logger.warn({
+				message: `Error in handleEscalations: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+			});
+		}
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {
@@ -163,12 +362,15 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	testAllNotifications = async (notificationIds: string[]) => {
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const notifications = await this.resolveNotificationsByIds(notificationIds, "testAllNotifications");
+		if (notifications.length === 0) {
+			return false;
+		}
 		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
 		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
+		if (failed > 0 || notifications.length !== notificationIds.length) {
 			return false;
 		}
 		return true;
