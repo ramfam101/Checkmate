@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -430,27 +430,45 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			notificationReason: null,
 		};
 
-		if (!statusChanged) {
-			return decision;
-		}
-
 		if (monitor.status === "down") {
 			// Monitor went down (unreachable)
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "status_down";
-			decision.notificationReason = "status_change";
+			if (statusChanged) {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "status_down";
+				decision.notificationReason = "status_change";
+			}
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
-			decision.shouldCreateIncident = true;
-			decision.shouldSendNotification = true;
-			decision.incidentReason = "threshold_breach";
-			decision.notificationReason = "threshold_breach";
+			if (statusChanged) {
+				decision.shouldCreateIncident = true;
+				decision.shouldSendNotification = true;
+				decision.incidentReason = "threshold_breach";
+				decision.notificationReason = "threshold_breach";
+			}
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+		}
+
+		if (!decision.shouldSendNotification && (monitor.status === "down" || monitor.status === "breached")) {
+			const escalationDelayMs = (monitor.escalateAfterMinutes ?? 0) * 60 * 1000;
+			const escalationNotifications = monitor.escalationNotifications ?? [];
+			const escalationSentAt = monitor.escalationSentAt ? Date.parse(monitor.escalationSentAt) : null;
+			const lastStatusChangeAt = monitor.lastStatusChangeAt ? Date.parse(monitor.lastStatusChangeAt) : null;
+
+			const shouldEscalate =
+				escalationNotifications.length > 0 &&
+				lastStatusChangeAt !== null &&
+				Date.now() - lastStatusChangeAt >= escalationDelayMs &&
+				(!escalationSentAt || escalationSentAt < lastStatusChangeAt);
+
+			if (shouldEscalate) {
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+			}
 		}
 
 		return decision;

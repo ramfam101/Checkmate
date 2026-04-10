@@ -58,8 +58,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			return "monitor_down";
 		}
 
-		// Threshold breach (only if not down)
-		if (decision.notificationReason === "threshold_breach") {
+		// Threshold breach state should be reported as a threshold breach
+		if (monitor.status === "breached" || decision.notificationReason === "threshold_breach") {
 			return "threshold_breach";
 		}
 
