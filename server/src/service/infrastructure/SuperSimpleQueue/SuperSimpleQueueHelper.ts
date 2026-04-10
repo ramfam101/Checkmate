@@ -1,6 +1,10 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
+//** ADDED IMPORTS FOR INCIDENTS AND MAINTENANCE WINDOWS **//
+import type { Incident } from "@/types/incident.js";
+import type { NotificationMessage } from "@/types/notificationMessage.js";
+/////////////////////////////////////////////////////////////
 import { AppError } from "@/utils/AppError.js";
 import {
 	ICheckService,
@@ -19,6 +23,7 @@ import {
 	IMonitorStatsRepository,
 	IChecksRepository,
 	IIncidentsRepository,
+	INotificationsRepository, //** ADDED REPOSITORY IMPORT FOR GEO CHECKS **//
 	IGeoChecksRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
@@ -30,6 +35,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationCheckJob(): () => Promise<void>; //** ADDED METHOD TO CHECK FOR MAINTENANCE WINDOW **//
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -64,6 +70,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private checksRepository: IChecksRepository;
 	private incidentsRepository: IIncidentsRepository;
+	private notificationsRepository: INotificationsRepository; //** ADDED INCIDENTS REPOSITORY **//
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
 
@@ -82,6 +89,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		monitorStatsRepository: IMonitorStatsRepository,
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
+		notificationsRepository: INotificationsRepository,//** ADDED INCIDENTS REPOSITORY **//
 		geoChecksService: IGeoChecksService,
 		geoChecksRepository: IGeoChecksRepository
 	) {
@@ -99,6 +107,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.monitorStatsRepository = monitorStatsRepository;
 		this.checksRepository = checksRepository;
 		this.incidentsRepository = incidentsRepository;
+		this.notificationsRepository = notificationsRepository; //** ADDED INCIDENTS REPOSITORY **//
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
 	}
@@ -455,4 +464,186 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+	//** ADDED METHOD TO CHECK FOR INCIDENT ESCALATION **//
+
+	getEscalationCheckJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Starting escalation check",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+
+				// Get all active incidents
+				const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+
+				this.logger.info({
+					message: `Found ${activeIncidents.length} active incidents for escalation check`,
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+
+				for (const incident of activeIncidents) {
+					await this.checkIncidentEscalation(incident);
+				}
+
+				this.logger.debug({
+					message: "Escalation check completed",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				throw error;
+			}
+		};
+	};
+
+	private checkIncidentEscalation = async (incident: Incident) => {
+		try {
+			// Get the monitor for this incident
+			const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+			if (!monitor || !monitor.escalationSteps || monitor.escalationSteps.length === 0) {
+				this.logger.debug({
+					message: `Monitor ${incident.monitorId} has no escalation steps configured`,
+					service: SERVICE_NAME,
+					method: "checkIncidentEscalation",
+				});
+				return;
+			}
+
+			const now = Date.now();
+			const incidentStart = new Date(incident.startTime).getTime();
+			const incidentDurationMinutes = (now - incidentStart) / (1000 * 60);
+
+			this.logger.debug({
+				message: `Checking escalation for incident ${incident.id}, monitor ${monitor.id}, duration: ${incidentDurationMinutes.toFixed(2)} minutes`,
+				service: SERVICE_NAME,
+				method: "checkIncidentEscalation",
+			});
+
+			// Check each escalation step
+			for (const step of monitor.escalationSteps) {
+				if (incidentDurationMinutes >= step.delayMinutes) {
+					this.logger.info({
+						message: `Sending escalation for incident ${incident.id}, monitor ${monitor.id}, step delay: ${step.delayMinutes} minutes, channels: ${step.channelIds.length}`,
+						service: SERVICE_NAME,
+						method: "checkIncidentEscalation",
+					});
+					await this.sendEscalationNotification(monitor, incident, step);
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.warn({
+				message: `Error checking escalation for incident ${incident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "checkIncidentEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
+	private sendEscalationNotification = async (monitor: Monitor, incident: Incident, step: { delayMinutes: number; channelIds: string[] }) => {
+		try {
+			const channelIds = step.channelIds ?? [];
+			if (channelIds.length === 0) {
+				return;
+			}
+
+			// Build escalation message once for all channels
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const escalationMessage = this.buildEscalationMessage(monitor, incident, step, clientHost);
+
+			// Send to each notification channel
+			for (const channelId of channelIds) {
+				try {
+					// Get the notification channel
+					const notification = await this.notificationsRepository.findById(channelId, monitor.teamId);
+					if (!notification) {
+						this.logger.warn({
+							message: `Escalation channel ${channelId} not found for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "sendEscalationNotification",
+						});
+						continue;
+					}
+
+					// Send the notification using the public method
+					const success = await this.notificationsService.sendNotification(notification, escalationMessage);
+
+					if (success) {
+						this.logger.info({
+							message: `Escalation notification sent to ${channelId} for monitor ${monitor.id}, incident ${incident.id}, delay ${step.delayMinutes} minutes`,
+							service: SERVICE_NAME,
+							method: "sendEscalationNotification",
+						});
+					} else {
+						this.logger.warn({
+							message: `Failed to send escalation notification to ${channelId} for monitor ${monitor.id}, incident ${incident.id}`,
+							service: SERVICE_NAME,
+							method: "sendEscalationNotification",
+						});
+					}
+				} catch (channelError: unknown) {
+					this.logger.warn({
+						message: `Error sending escalation to channel ${channelId}: ${channelError instanceof Error ? channelError.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "sendEscalationNotification",
+						stack: channelError instanceof Error ? channelError.stack : undefined,
+					});
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.warn({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
+	private buildEscalationMessage = (monitor: Monitor, incident: Incident, step: { delayMinutes: number; channelIds: string[] }, clientHost: string): any => {
+		// Build a proper NotificationMessage for escalation
+		const message = {
+			type: "monitor_down" as const,
+			severity: "critical" as const,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `🚨 ESCALATION: ${monitor.name} is still down`,
+				summary: `Monitor "${monitor.name}" has been down for ${step.delayMinutes} minutes. Incident started at ${incident.startTime}. Please check immediately.`,
+				details: [
+					`Incident ID: ${incident.id}`,
+					`Monitor URL: ${monitor.url}`,
+					`Escalation delay: ${step.delayMinutes} minutes`,
+				],
+				incident: {
+					id: incident.id,
+					url: `${clientHost}/incidents/${incident.id}`,
+					createdAt: new Date(incident.startTime),
+				},
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+		return message;
+	};
+	////////////////////////////////////////////////////////////////////
 }

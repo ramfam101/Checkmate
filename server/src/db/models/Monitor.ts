@@ -23,6 +23,9 @@ type MonitorDocumentBase = Omit<
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
+	//** ADDED ESCALATION STEPS FIELD ON MONITOR-NOTIFICATION CONFIG **//
+	escalationSteps?: Array<{ delayMinutes: number; channelIds: Types.ObjectId[] }>;
+	///////////////////////////////////////////////////////////
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -284,6 +287,19 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		//** ADDED ESCALATION STEPS FIELD ON MONITOR-NOTIFICATION CONFIG **//
+		escalationSteps: [
+			{
+				delayMinutes: { type: Number, required: true },
+				channelIds: [
+					{
+						type: Schema.Types.ObjectId,
+						ref: "Notification",
+					},
+				],
+			},
+		],
+		///////////////////////////////////////////////////////////
 		secret: {
 			type: String,
 		},

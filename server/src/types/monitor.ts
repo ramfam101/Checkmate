@@ -14,7 +14,12 @@ export type MonitorStatus = (typeof MonitorStatuses)[number];
 
 export const MonitorMatchMethods = ["equal", "include", "regex"] as const;
 export type MonitorMatchMethod = (typeof MonitorMatchMethods)[number] | "";
-
+//*** ADDED ESCALATION FIELD ON MONITOR-NOTIFICATION CONFIG ***//
+export interface EscalationStep {
+	delayMinutes: number;
+	channelIds: string[];
+}
+/////////////////////////////////////////////////////////////////
 export interface Monitor {
 	id: string;
 	userId: string;
@@ -37,6 +42,9 @@ export interface Monitor {
 	interval: number;
 	uptimePercentage?: number;
 	notifications: string[];
+	//** ADDED ESCALATION STEPS FIELD ON MONITOR INTERFACE **/
+	escalationSteps?: EscalationStep[];
+	///////////////////////////////////////////////////////////
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

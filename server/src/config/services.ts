@@ -261,6 +261,7 @@ export const initializeServices = async ({
 		monitorStatsRepository,
 		checksRepository,
 		incidentsRepository,
+		notificationsRepository, //** ADDED INCIDENTS AND NOTIFICATIONS REPOSITORIES TO HELPER FOR ESCALATION CHECKS **//
 		geoChecksService,
 		geoChecksRepository
 	);

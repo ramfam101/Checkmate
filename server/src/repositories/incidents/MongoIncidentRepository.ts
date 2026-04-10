@@ -114,7 +114,12 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		}
 		return this.toEntity(incident);
 	};
-
+//** ADDED METHOD TO FIND ALL ACTIVE INCIDENTS ACROSS ALL TEAMS - USED FOR ESCALATION CHECKS **//
+	findActiveIncidents = async (): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({ status: true });
+		return this.mapDocuments(incidents);
+	};
+//////////////////////////////////////////////////////////////////////
 	findByTeamId = async (
 		teamId: string,
 		startDate: Date | undefined,
