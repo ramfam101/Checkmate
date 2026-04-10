@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchEscalationEnabled = watch("escalationEnabled") as boolean;
 
 	useEffect(() => {
 		clearErrors();
@@ -784,47 +785,84 @@ const CreateMonitorPage = () => {
 						)}
 					/>
 
-					<Controller
-						name="escalationMinutes"
-						control={control}
-						render={({ field }) => (
-							<TextField
-								{...field}
-								type="number"
-								fieldLabel="Wait time (minutes)"
-								fullWidth
+					{watchEscalationEnabled && (
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							<Controller
+								name="escalationMinutes"
+								control={control}
+								render={({ field, fieldState }) => (
+									<TextField
+										{...field}
+										type="number"
+										fieldLabel="Wait time (minutes)"
+										fullWidth
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+									/>
+								)}
 							/>
-						)}
-					/>
 
-					<Controller
-						name="escalationNotifications"
-						control={control}
-						render={({ field }) => {
-							const opts =
-								notifications?.map((n) => ({
-									id: n.id,
-									label: n.notificationName,
-								})) || [];
+							<Controller
+								name="escalationNotifications"
+								control={control}
+								render={({ field }) => {
+									const notificationOptions = (notifications ?? []).map((n) => ({
+										...n,
+										name: n.notificationName,
+									}));
+									const selectedOptions = notificationOptions.filter((option) =>
+										(field.value ?? []).includes(option.id)
+									);
 
-							const selected = opts.filter((o) =>
-								(field.value || []).includes(o.id)
-							);
-
-							return (
-								<Autocomplete
-  									options={notifications ?? []}
-  									getOptionLabel={(option) => option.notificationName || ""}
-  									onChange={(_, value) => {
-   								 setValue("escalationNotification", value?.id);
-  											}}
- 									 renderInput={(params) => (
-   									 <TextField {...params} placeholder="Select notification" />
-							  )}
-						/>
-							);
-						}}
-					/>
+									return (
+										<Stack spacing={theme.spacing(LAYOUT.MD)}>
+											<Autocomplete
+												multiple
+												options={notificationOptions}
+												value={selectedOptions}
+												getOptionLabel={(option) => option.name}
+												onChange={(_, newValue) => {
+													field.onChange(newValue.map((item) => item.id));
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												fieldLabel="Escalation notifications"
+											/>
+											{selectedOptions.length > 0 && (
+												<Stack flex={1} width="100%">
+													{selectedOptions.map((notification, index) => (
+														<Stack
+															direction="row"
+															alignItems="center"
+															key={notification.id}
+															width="100%"
+														>
+															<Typography flexGrow={1}>
+																{notification.name}
+															</Typography>
+															<IconButton
+																size="small"
+																onClick={() => {
+																	field.onChange(
+																		(field.value ?? []).filter(
+																			(id: string) => id !== notification.id
+																		)
+																	);
+																}}
+																aria-label="Remove escalation notification"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+															{index < selectedOptions.length - 1 && <Divider />}
+														</Stack>
+													))}
+												</Stack>
+											)}
+										</Stack>
+									);
+								}}
+							/>
+						</Stack>
+					)}
 				</Stack>
 			}
 		/>
