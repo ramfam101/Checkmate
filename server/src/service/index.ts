@@ -1,6 +1,7 @@
 // Business services
 export * from "@/service/business/checkService.js";
 export * from "@/service/business/diagnosticService.js";
+export * from "@/service/business/escalationService.js";
 export * from "@/service/business/geoChecksService.js";
 export * from "@/service/business/incidentService.js";
 export * from "@/service/business/inviteService.js";
@@ -29,6 +30,7 @@ export * from "@/service/infrastructure/notificationProviders/pagerduty.js";
 export * from "@/service/infrastructure/notificationProviders/slack.js";
 export * from "@/service/infrastructure/notificationProviders/teams.js";
 export * from "@/service/infrastructure/notificationProviders/webhook.js";
+export * from "@/service/infrastructure/notificationProviders/telegram.js";
 
 // System services
 export * from "@/service/system/settingsService.js";

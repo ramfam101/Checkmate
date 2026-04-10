@@ -348,6 +348,17 @@ export class StatusService implements IStatusService {
 			// Apply the final status
 			monitor.status = newStatus;
 
+			// Track last failure time for escalation
+			if (newStatus === "down" && prevStatus !== "down") {
+				// Monitor just went down - record the time and reset escalation flag
+				monitor.lastFailureTime = new Date().toISOString();
+				monitor.hasEscalated = false;
+			} else if (newStatus !== "down" && prevStatus === "down") {
+				// Monitor recovered - clear failure time but leave hasEscalated for
+				// escalationService.resetEscalationOnRecovery to check before resetting
+				monitor.lastFailureTime = undefined;
+			}
+
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 
 			return {

@@ -45,6 +45,7 @@ export interface MonitorActionDecision {
 		disk?: boolean;
 		temp?: boolean;
 	};
+	monitorIsDown?: boolean;
 }
 
 export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
@@ -58,6 +59,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private settingsService: ISettingsService;
 	private buffer: IBufferService;
 	private incidentService: IncidentService;
+	private escalationService?: any;
 	private maintenanceWindowsRepository: IMaintenanceWindowsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private teamsRepository: ITeamsRepository;
@@ -83,7 +85,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		escalationService?: any
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -93,6 +96,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.buffer = buffer;
 		this.notificationsService = notificationsService;
 		this.incidentService = incidentService;
+		this.escalationService = escalationService;
 		this.maintenanceWindowsRepository = maintenanceWindowsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.teamsRepository = teamsRepository;
@@ -177,6 +181,27 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalations (best effort, don't wait, skip if not initialized)
+				// Note: Escalation service requires proper initialization in the container
+				// For now, we track escalation data but don't trigger until service is properly set up
+				if (this.escalationService && this.escalationService.checkAndHandleEscalation) {
+					try {
+						if (decision.monitorIsDown) {
+							// Check if escalation should trigger while monitor is down
+							await this.escalationService.checkAndHandleEscalation(statusChangeResult.monitor, decision, status).catch(() => {
+								// Silently fail - escalation shouldn't crash monitoring
+							});
+						} else if (!decision.monitorIsDown && statusChangeResult.statusChanged && statusChangeResult.prevStatus === "down") {
+							// Monitor just recovered from down status
+							await this.escalationService.resetEscalationOnRecovery(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId).catch(() => {
+								// Silently fail - escalation shouldn't crash monitoring
+							});
+						}
+					} catch (escalationError: unknown) {
+						// Silently fail - don't let escalation errors crash the job
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -428,6 +453,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			monitorIsDown: monitor.status === "down",
 		};
 
 		if (!statusChanged) {
@@ -440,6 +466,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+			decision.monitorIsDown = true;
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
@@ -451,6 +478,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+			decision.monitorIsDown = false;
 		}
 
 		return decision;
