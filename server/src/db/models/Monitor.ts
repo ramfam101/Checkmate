@@ -198,6 +198,14 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationPolicySchema = new Schema(
+	{
+		escalateAfterMinutes: { type: Number, default: 0 },
+		escalationNotifications: [{ type: String }],
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -284,6 +292,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		escalationPolicy: {
+			type: escalationPolicySchema,
+			default: { escalateAfterMinutes: 0, escalationNotifications: [] },
+		},
 		secret: {
 			type: String,
 		},
