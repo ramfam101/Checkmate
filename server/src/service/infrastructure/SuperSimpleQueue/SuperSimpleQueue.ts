@@ -43,6 +43,7 @@ export interface ISuperSimpleQueue {
 	readonly serviceName: string;
 	init(): Promise<boolean>;
 	addJob(monitorId: string, monitor: Monitor): Promise<void>;
+	addEscalationJob(incidentId: string, monitorId: string, teamId: string, delayMinutes: number): Promise<void>;
 	deleteJob(monitor: Monitor): Promise<void>;
 	pauseJob(monitor: Monitor): Promise<void>;
 	resumeJob(monitor: Monitor): Promise<void>;
@@ -73,16 +74,14 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 		return SuperSimpleQueue.SERVICE_NAME;
 	}
 
-	static async create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository) {
+	static create(logger: ILogger, helper: ISuperSimpleQueueHelper, monitorsRepository: IMonitorsRepository) {
 		const scheduler = new Scheduler({
 			// storeType: "mongo",
 			// storeType: "redis",
 			logLevel: "debug",
 			// dbUri: envSettings.dbConnectionString,
 		});
-		const instance = new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler);
-		await instance.init();
-		return instance;
+		return new SuperSimpleQueue(logger, helper, monitorsRepository, scheduler);
 	}
 
 	init = async () => {
@@ -91,6 +90,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addTemplate("monitor-job", this.helper.getHeartbeatJob());
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
+			this.scheduler.addTemplate("escalation-notification", this.helper.getEscalationNotificationJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
 			const monitors = await this.monitorsRepository.findAll();
@@ -142,6 +142,36 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 				data: monitor,
 			});
 		}
+	};
+
+	addEscalationJob = async (incidentId: string, monitorId: string, teamId: string, delayMinutes: number) => {
+		const normalizedDelayMinutes = Number(delayMinutes);
+		if (!Number.isFinite(normalizedDelayMinutes) || normalizedDelayMinutes <= 0) {
+			this.logger.warn({
+				message: `Invalid escalation delay for incident ${incidentId}: ${delayMinutes}`,
+				service: SERVICE_NAME,
+				method: "addEscalationJob",
+				details: { incidentId, monitorId, teamId, delayMinutes },
+			});
+			return;
+		}
+
+		const delayMs = normalizedDelayMinutes * 60 * 1000;
+		const startAt = Date.now() + delayMs;
+
+		this.scheduler.addJob({
+			id: `escalation-${incidentId}`,
+			template: "escalation-notification",
+			startAt,
+			active: true,
+			data: { incidentId, monitorId, teamId },
+		});
+
+		this.logger.info({
+			message: `Scheduled escalation notification for incident ${incidentId} in ${delayMinutes} minutes`,
+			service: SERVICE_NAME,
+			method: "addEscalationJob",
+		});
 	};
 
 	deleteJob = async (monitor: Monitor) => {

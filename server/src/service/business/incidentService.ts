@@ -3,10 +3,11 @@ import type { Monitor } from "@/types/monitor.js";
 import type { MonitorStatusResponse } from "@/types/network.js";
 import { AppError } from "@/utils/AppError.js";
 import { getDateForRange } from "@/utils/dataUtils.js";
-import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from "@/repositories/index.js";
+import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository, INotificationsRepository } from "@/repositories/index.js";
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { ISuperSimpleQueue } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -38,20 +39,26 @@ export class IncidentService implements IIncidentService {
 	private incidentsRepository: IIncidentsRepository;
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
+	private notificationsRepository: INotificationsRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private queueService: ISuperSimpleQueue;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationsRepository: INotificationsRepository,
+		notificationMessageBuilder: INotificationMessageBuilder,
+		queueService: ISuperSimpleQueue
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
+		this.notificationsRepository = notificationsRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.queueService = queueService;
 	}
 
 	get serviceName() {
@@ -64,6 +71,13 @@ export class IncidentService implements IIncidentService {
 		decision: MonitorActionDecision,
 		monitorStatusResponse?: MonitorStatusResponse
 	): Promise<Incident | null> => {
+		this.logger.debug({
+			message: `handleIncident called for monitor ${monitor.id} (${monitor.name}), shouldCreate: ${decision.shouldCreateIncident}, shouldResolve: ${decision.shouldResolveIncident}`,
+			service: SERVICE_NAME,
+			method: "handleIncident",
+			details: { monitorId: monitor.id, decision },
+		});
+
 		if (!decision.shouldCreateIncident && !decision.shouldResolveIncident) {
 			return null;
 		}
@@ -72,6 +86,12 @@ export class IncidentService implements IIncidentService {
 
 		if (decision.shouldCreateIncident) {
 			if (activeIncident) {
+				this.logger.debug({
+					message: `Active incident already exists for monitor ${monitor.id}, returning existing incident`,
+					service: SERVICE_NAME,
+					method: "handleIncident",
+					details: { incidentId: activeIncident.id },
+				});
 				return activeIncident;
 			} else {
 				let statusCode = code;
@@ -86,23 +106,72 @@ export class IncidentService implements IIncidentService {
 				const incident = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
-					startTime: Date.now().toString(),
+					startTime: new Date().toISOString(),
 					status: true,
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+
+				this.logger.info({
+					message: `Creating incident for monitor ${monitor.id} with status code ${statusCode}`,
+					service: SERVICE_NAME,
+					method: "handleIncident",
+					details: { monitorId: monitor.id, statusCode },
+				});
+
+				const createdIncident = await this.incidentsRepository.create(incident);
+
+				this.logger.info({
+					message: `Incident created successfully: ${createdIncident.id}`,
+					service: SERVICE_NAME,
+					method: "handleIncident",
+					details: { incidentId: createdIncident.id, monitorId: monitor.id },
+				});
+
+				// Schedule escalation notifications asynchronously without blocking
+				this.scheduleEscalationNotifications(monitor, createdIncident).catch((error: unknown) => {
+					this.logger.error({
+						message: `Failed to schedule escalation notifications for incident ${createdIncident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleIncident",
+						details: { incidentId: createdIncident.id, monitorId: monitor.id },
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				return createdIncident;
 			}
 		}
 
 		if (decision.shouldResolveIncident) {
 			if (!activeIncident) {
+				this.logger.debug({
+					message: `No active incident to resolve for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleIncident",
+				});
 				return null;
 			}
+
+			this.logger.info({
+				message: `Resolving incident ${activeIncident.id} for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "handleIncident",
+				details: { incidentId: activeIncident.id },
+			});
+
 			activeIncident.status = false;
-			activeIncident.endTime = Date.now().toString();
+			activeIncident.endTime = new Date().toISOString();
 			activeIncident.resolutionType = "automatic";
-			return await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+			const resolved = await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, activeIncident);
+
+			this.logger.info({
+				message: `Incident resolved: ${activeIncident.id}`,
+				service: SERVICE_NAME,
+				method: "handleIncident",
+			});
+
+			return resolved;
 		}
 
 		return null;
@@ -121,6 +190,53 @@ export class IncidentService implements IIncidentService {
 
 		return breaches.map((b) => `${b.metric.toUpperCase()}: ${b.formattedValue} (threshold: ${b.threshold}${b.unit})`).join(", ");
 	}
+
+	private scheduleEscalationNotifications = async (monitor: Monitor, incident: Incident) => {
+		try {
+			// Check if monitor has escalation notifications configured
+			const escalationNotificationIds = monitor.escalationNotifications ?? [];
+
+			this.logger.debug({
+				message: `Checking escalation config for monitor ${monitor.id}: escalationNotifications=${escalationNotificationIds.length}, escalationDelay=${monitor.escalationDelay}`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalationNotifications",
+				details: { monitorId: monitor.id, escalationNotificationCount: escalationNotificationIds.length, escalationDelay: monitor.escalationDelay },
+			});
+
+			const delayMinutes = Number(monitor.escalationDelay);
+			if (escalationNotificationIds.length === 0 || !Number.isFinite(delayMinutes) || delayMinutes <= 0) {
+				this.logger.debug({
+					message: `Escalation not configured for monitor ${monitor.id} (no notifications or invalid delay)`,
+					service: SERVICE_NAME,
+					method: "scheduleEscalationNotifications",
+					details: { monitorId: monitor.id, escalationNotificationCount: escalationNotificationIds.length, delayMinutes },
+				});
+				return;
+			}
+
+			// Schedule escalation job for the monitor
+			await this.queueService.addEscalationJob(incident.id, monitor.id, monitor.teamId, delayMinutes);
+
+			this.logger.info({
+				message: `Scheduled escalation notification for incident ${incident.id} with ${escalationNotificationIds.length} notification(s) after ${monitor.escalationDelay} minutes`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalationNotifications",
+				details: {
+					incidentId: incident.id,
+					monitorId: monitor.id,
+					notificationCount: escalationNotificationIds.length,
+					delayMinutes: monitor.escalationDelay,
+				},
+			});
+		} catch (error: unknown) {
+			this.logger.error({
+				message: error instanceof Error ? error.message : "Unknown error",
+				service: SERVICE_NAME,
+				method: "scheduleEscalationNotifications",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
 
 	resolveIncident = async (incidentId: string, userId: string, teamId: string, comment?: string, userEmail?: string) => {
 		try {
@@ -151,7 +267,7 @@ export class IncidentService implements IIncidentService {
 			incident.resolvedBy = userId;
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;
-			incident.endTime = Date.now().toString();
+			incident.endTime = new Date().toISOString();
 
 			const resolvedIncident = await this.incidentsRepository.updateById(incident.id, teamId, incident);
 

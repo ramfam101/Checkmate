@@ -34,7 +34,8 @@ const startApp = async () => {
 	// Create logger
 	logger = new Logger({ envSettings });
 
-	// Initialize services
+	// Initialize services.
+	// SuperSimpleQueue is created before IncidentService, but its scheduler is started only after IncidentService is injected.
 	const services = await initializeServices({ logger, envSettings, settingsService, settingsRepository });
 
 	await runMigrations(logger);

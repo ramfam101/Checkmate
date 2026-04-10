@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Monitor, MonitorStatusResponse, Incident } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +271,68 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Escalation is for ongoing issues
+		const severity: NotificationSeverity = "critical";
+		const content = this.buildEscalationContent(monitor, incident);
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+				incidentId: incident.id,
+			},
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, incident: Incident): NotificationContent {
+		const title = `🚨 ESCALATION ALERT: Server Still Down - ${monitor.name}`;
+		const incidentStart = new Date(incident.startTime);
+		const startTime = isNaN(incidentStart.getTime()) ? "Unknown start time" : incidentStart.toISOString();
+		const durationMs = isNaN(incidentStart.getTime()) ? 0 : Date.now() - incidentStart.getTime();
+		const durationMinutes = Math.floor(durationMs / (1000 * 60));
+		const durationHours = Math.floor(durationMinutes / 60);
+
+		let durationText;
+		if (durationHours > 0) {
+			durationText = `${durationHours}h ${durationMinutes % 60}m`;
+		} else {
+			durationText = `${durationMinutes}m`;
+		}
+
+		const summary = `URGENT: Server "${monitor.name}" is STILL DOWN after ${durationText} - This is an ESCALATION notification requiring immediate attention.`;
+		const details = [
+			`URL: ${monitor.url}`,
+			`Status: STILL DOWN (Escalation)`,
+			`Type: ${monitor.type}`,
+			`Incident Started: ${startTime}`,
+			`Duration: ${durationText}`,
+			`Incident ID: ${incident.id}`,
+			`Priority: HIGH - Escalation Alert`,
+		];
+
+		if (incident.message) {
+			details.push(`Last Error: ${incident.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
 	}
 }

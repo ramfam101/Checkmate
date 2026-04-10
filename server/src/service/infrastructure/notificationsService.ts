@@ -14,6 +14,20 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	send: (
+		notification: Notification,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage?: NotificationMessage
+	) => Promise<boolean>;
+	sendDirectNotification: (
+		notification: Notification,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage?: NotificationMessage
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -65,7 +79,7 @@ export class NotificationsService implements INotificationsService {
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
-	private send = async (
+	send = async (
 		notification: Notification,
 		monitor: Monitor,
 		monitorStatusResponse: MonitorStatusResponse,
@@ -80,6 +94,17 @@ export class NotificationsService implements INotificationsService {
 			});
 			return false;
 		}
+
+		this.logger.debug({
+			message: `Dispatching notification ${notification.id} via ${notification.type}`,
+			service: SERVICE_NAME,
+			method: "send",
+			details: {
+				notificationId: notification.id,
+				notificationType: notification.type,
+				monitorId: monitor.id,
+			},
+		});
 
 		// Route to provider based on notification type
 		switch (notification.type) {
@@ -139,6 +164,16 @@ export class NotificationsService implements INotificationsService {
 
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendDirectNotification = async (
+		notification: Notification,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage: NotificationMessage | undefined
+	): Promise<boolean> => {
+		return await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

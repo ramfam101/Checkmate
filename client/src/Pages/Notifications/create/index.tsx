@@ -12,6 +12,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useGet, usePost, usePatch } from "@/Hooks/UseApi";
 import { useNotificationForm } from "@/Hooks/useNotificationForm";
+import { notificationSchema } from "@/Validation/notifications";
 import type { NotificationFormData } from "@/Validation/notifications";
 import type { Notification } from "@/Types/Notification";
 import { useTranslation } from "react-i18next";
@@ -32,10 +33,10 @@ const NotificationsCreatePage = () => {
 	const { patch, loading: isPatching } = usePatch<NotificationFormData, Notification>();
 	const { post: testPost, loading: isTesting } = usePost<NotificationFormData, void>();
 
-	const { schema, defaults } = useNotificationForm({ data: existingNotification });
+	const { defaults } = useNotificationForm({ data: existingNotification });
 
 	const form = useForm<NotificationFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(notificationSchema),
 		defaultValues: defaults,
 	});
 

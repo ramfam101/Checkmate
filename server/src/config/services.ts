@@ -205,8 +205,6 @@ export const initializeServices = async ({
 
 	const notificationMessageBuilder = new NotificationMessageBuilder();
 
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
-
 	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
 
 	const globalPingService = new GlobalPingService(logger);
@@ -254,18 +252,33 @@ export const initializeServices = async ({
 		checkService,
 		settingsService,
 		bufferService,
-		incidentService,
+		null as any, // incidentService will be set later
 		maintenanceWindowsRepository,
 		monitorsRepository,
 		teamsRepository,
 		monitorStatsRepository,
 		checksRepository,
 		incidentsRepository,
+		notificationsRepository,
+		notificationMessageBuilder,
 		geoChecksService,
 		geoChecksRepository
 	);
 
-	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+	const superSimpleQueue = SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+
+	const incidentService = new IncidentService(
+		logger,
+		incidentsRepository,
+		monitorsRepository,
+		usersRepository,
+		notificationsRepository,
+		notificationMessageBuilder,
+		superSimpleQueue
+	);
+
+	superSimpleQueueHelper.setIncidentService(incidentService);
+	await superSimpleQueue.init();
 
 	// Business services
 	const userService = new UserService({
