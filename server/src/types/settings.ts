@@ -1,3 +1,6 @@
+export const DbTypes = ["timescaledb", "mongodb"] as const;
+export type DbType = (typeof DbTypes)[number];
+
 export interface SettingsThresholds {
 	cpu?: number;
 	memory?: number;
@@ -7,6 +10,11 @@ export interface SettingsThresholds {
 
 export type SettingsUpdate = {
 	[K in keyof Settings]?: Settings[K] | null;
+};
+
+/** PATCH body for app settings; `systemEmailPasswordClear` is request-only (not stored). */
+export type AppSettingsPatch = SettingsUpdate & {
+	systemEmailPasswordClear?: boolean;
 };
 
 export interface Settings {

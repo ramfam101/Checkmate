@@ -248,12 +248,15 @@ export const SettingsPage = () => {
 
 	const onSubmit = async (data: SettingsFormData) => {
 		// Don't send pagespeedApiKey if it's already set and user hasn't clicked reset
-		const dataToSend = { ...data };
+		const dataToSend: SettingsFormData & { systemEmailPasswordClear?: boolean } = { ...data };
 		if (isApiKeySet && !apiKeyHasBeenReset) {
 			delete (dataToSend as any).pagespeedApiKey;
 		}
 		if (isEmailPasswordSet && !emailPasswordHasBeenReset) {
 			delete (dataToSend as any).systemEmailPassword;
+		}
+		if (emailPasswordHasBeenReset && !data.systemEmailPassword) {
+			dataToSend.systemEmailPasswordClear = true;
 		}
 
 		const result = await patch("/settings", dataToSend as SettingsFormData);
@@ -830,19 +833,22 @@ export const SettingsPage = () => {
 
 							{/* Test Email Button */}
 							<Box>
-								<Button
-									variant="contained"
-									loading={isSendingTestEmail}
-									onClick={handleSendTestEmail}
-									disabled={
-										!form.watch("systemEmailHost") ||
-										!form.watch("systemEmailPort") ||
-										!form.watch("systemEmailAddress") ||
-										!form.watch("systemEmailPassword")
-									}
-								>
-									{t("common.buttons.sendTestEmail")}
-								</Button>
+								<Stack spacing={1.5}>
+									<Button
+										variant="contained"
+										loading={isSendingTestEmail}
+										onClick={handleSendTestEmail}
+										disabled={
+											!form.watch("systemEmailHost") ||
+											!form.watch("systemEmailPort") ||
+											!form.watch("systemEmailAddress") ||
+											!form.watch("systemEmailPassword")
+										}
+									>
+										{t("common.buttons.sendTestEmail")}
+									</Button>
+									<Alert severity="info">{t("pages.settings.form.email.alertsUseSavedSettings")}</Alert>
+								</Stack>
 							</Box>
 						</Stack>
 					}

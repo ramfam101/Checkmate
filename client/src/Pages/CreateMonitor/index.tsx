@@ -16,6 +16,7 @@ import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
+import { EscalatedNotifications } from "@/Components/EscalatedNotifications";
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -761,6 +762,17 @@ const CreateMonitorPage = () => {
 								</Stack>
 							);
 						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalatedNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalatedNotifications.subtitle")}
+				rightContent={
+					<EscalatedNotifications
+						control={control}
+						notifications={notifications ?? []}
 					/>
 				}
 			/>
