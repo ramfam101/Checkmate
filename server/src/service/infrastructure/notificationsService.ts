@@ -164,6 +164,27 @@ export class NotificationsService implements INotificationsService {
 					service: SERVICE_NAME,
 					method: "sendNotifications",
 				});
+				const delayMs = (freshMonitor.escalateAfterMinutes ?? 1) * 60 * 1000;
+				setTimeout(async () => {
+					try {
+						const escalationNotifications = await this.notificationsRepository.findNotificationsByIds(escalationIds);
+						const escalationTasks = escalationNotifications.map((notification) =>
+							this.send(notification, freshMonitor, monitorStatusResponse, decision, notificationMessage)
+						);
+						await Promise.all(escalationTasks);
+						this.logger.info({
+							message: `Escalation notifications sent for monitor ${freshMonitor.id} after ${freshMonitor.escalateAfterMinutes} minutes`,
+							service: SERVICE_NAME,
+							method: "sendNotifications",
+						});
+					} catch (err) {
+						this.logger.warn({
+							message: `Failed to send escalation notifications for monitor ${freshMonitor.id}`,
+							service: SERVICE_NAME,
+							method: "sendNotifications",
+						});
+					}
+				}, delayMs);
 			}
 		}
 
