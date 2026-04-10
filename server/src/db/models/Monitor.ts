@@ -284,6 +284,24 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+		// How many minutes to wait before sending the escalation alert
+		escalateAfter: {
+    		type: Number,
+    		default: 0, // 0 means no escalation
+			min: 0,
+  		},
+ 		// Which notification channels (Email, Discord, etc.) to alert for escalation
+  		escalationChannels: [
+    		{
+      			type: Schema.Types.ObjectId,
+      			ref: "Notification",
+    		},
+  		],
+		lastStatusChange: { type: Date },
+		isEscalated: {
+			type: Boolean,
+			default: false,
+		},
 		secret: {
 			type: String,
 		},

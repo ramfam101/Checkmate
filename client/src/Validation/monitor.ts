@@ -13,6 +13,10 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalateAfter: z.number().min(0, "Must be 0 or greater"),
+    escalationChannels: z.array(z.string()),
+	lastStatusChange: z.union([z.date(), z.string()]).optional(), // Add this!
+    isEscalated: z.boolean().optional(),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

@@ -108,9 +108,27 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		//const notificationIds = monitor.notifications ?? [];
+		//const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		const lastChange = monitor.lastStatusChange ? new Date(monitor.lastStatusChange).getTime() : Date.now();
+		const downtimeMinutes = (Date.now() - lastChange) / (1000 * 60);
+		//Determine which notification list to use
+    	const isEscalationTime = 
+			monitor.status === "down" && 
+			(monitor.escalateAfter ?? 0) > 0 && 
+			downtimeMinutes >= monitor.escalateAfter &&
+        	!monitor.isEscalated;
 
+		const notificationIds = isEscalationTime 
+			? (monitor.escalationChannels ?? []) 
+			: (monitor.notifications ?? []);
+
+		if (isEscalationTime) {
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, { isEscalated: true });
+			this.logger.info({ message: `Monitor ${monitor.id} escalated. Flag set to true.`, service: SERVICE_NAME });
+    	}
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
@@ -133,6 +151,7 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+
 		if (!decision.shouldSendNotification) {
 			return false;
 		}

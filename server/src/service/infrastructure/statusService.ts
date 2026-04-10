@@ -233,12 +233,20 @@ export class StatusService implements IStatusService {
 			}
 
 			const prevStatus = monitor.status;
-			let newStatus: MonitorStatus = status === true ? "up" : "down";
+			let newStatus: MonitorStatus = prevStatus;//status === true ? "up" : "down";
 			let statusChanged = false;
 
 			// Return early if not enough data points
 			if (monitor.statusWindow.length < monitor.statusWindowSize) {
-				monitor.status = newStatus;
+				/*if (monitor.status !== newStatus) {
+					monitor.lastStatusChange = new Date().toISOString();
+				}
+				monitor.status = newStatus;*/
+				if (monitor.status === "initializing") {
+        			monitor.status = status === true ? "up" : "down";
+       				monitor.lastStatusChange = new Date().toISOString();
+				}
+				
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
@@ -262,6 +270,7 @@ export class StatusService implements IStatusService {
 			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
 				statusChanged = true;
+				monitor.isEscalated = false;
 			}
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)
@@ -344,7 +353,12 @@ export class StatusService implements IStatusService {
 					}
 				}
 			}
-
+			if (statusChanged) {
+				monitor.lastStatusChange = new Date().toISOString();
+				if (newStatus === "up") {
+					monitor.isEscalated = false;
+				}
+			}
 			// Apply the final status
 			monitor.status = newStatus;
 
