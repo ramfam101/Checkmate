@@ -242,7 +242,7 @@ export class StatusService implements IStatusService {
 				const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
 				return {
 					monitor: updated,
-					statusChanged: false,
+					statusChanged: prevStatus === "initializing",
 					prevStatus,
 					code,
 					timestamp: Date.now(),
@@ -261,6 +261,11 @@ export class StatusService implements IStatusService {
 			// If the failure rate is below the threshold and the monitor is down, recover:
 			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
 				newStatus = "up";
+				statusChanged = true;
+			}
+			// If transitioning from "initializing" to "up" (first full window, all healthy),
+			// treat it as a status change so downstream handlers can act accordingly.
+			else if (prevStatus === "initializing") {
 				statusChanged = true;
 			}
 
