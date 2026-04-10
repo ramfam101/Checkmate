@@ -29,6 +29,11 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	getApplicableEscalationRules(
+		monitor: Monitor,
+		incidentStartTime: Date
+	): Promise<Array<{ afterMinutes: number; notificationIds: string[] }>>;
+	recordEscalationSent(incidentId: string, teamId: string, afterMinutes: number, notificationIds: string[]): Promise<void>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -261,6 +266,73 @@ export class IncidentService implements IIncidentService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
+		}
+	};
+
+	getApplicableEscalationRules = async (monitor: Monitor, incidentStartTime: Date): Promise<Array<{ afterMinutes: number; notificationIds: string[] }>> => {
+		try {
+			if (!monitor.escalationRules || monitor.escalationRules.length === 0) {
+				return [];
+			}
+
+			const incidentDurationMs = Date.now() - incidentStartTime.getTime();
+			const incidentDurationMinutes = Math.floor(incidentDurationMs / (1000 * 60));
+
+			const applicableRules = monitor.escalationRules
+				.filter((rule) => rule.enabled && rule.afterMinutes <= incidentDurationMinutes && rule.notificationIds.length > 0)
+				.map((rule) => ({
+					afterMinutes: rule.afterMinutes,
+					notificationIds: rule.notificationIds,
+				}));
+
+			return applicableRules;
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "getApplicableEscalationRules",
+				message: error instanceof Error ? error.message : "Unknown error",
+				details: { monitorId: monitor.id },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return [];
+		}
+	};
+
+	recordEscalationSent = async (incidentId: string, teamId: string, afterMinutes: number, notificationIds: string[]): Promise<void> => {
+		try {
+			const incident = await this.incidentsRepository.findById(incidentId, teamId);
+
+			if (!incident.escalationsSent) {
+				incident.escalationsSent = [];
+			}
+
+			// Check if this escalation level has already been sent
+			const alreadySent = incident.escalationsSent.some((esc) => esc.afterMinutes === afterMinutes);
+
+			if (!alreadySent) {
+				incident.escalationsSent.push({
+					afterMinutes,
+					sentAt: new Date().toISOString(),
+					notificationIds,
+				});
+
+				await this.incidentsRepository.updateById(incidentId, teamId, incident);
+
+				this.logger.debug({
+					service: SERVICE_NAME,
+					method: "recordEscalationSent",
+					message: `Escalation recorded for incident`,
+					details: { incidentId, afterMinutes, notificationCount: notificationIds.length },
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "recordEscalationSent",
+				message: error instanceof Error ? error.message : "Unknown error",
+				details: { incidentId },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 		}
 	};
 }

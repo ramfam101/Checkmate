@@ -418,6 +418,31 @@
 					"optionHardware": "Infrastructure",
 					"optionGrpc": "gRPC",
 					"optionWebSocket": "WebSocket"
+				},
+				"escalationRules": {
+					"title": "Escalation Alerts",
+					"description": "Configure additional notifications when a monitor remains down for a specified duration",
+					"noRules": "No escalation rules configured",
+					"addButton": "Add Escalation Rule",
+					"table": {
+						"time": "After (minutes)",
+						"channels": "Notification Channels",
+						"actions": "Actions"
+					},
+					"modal": {
+						"addTitle": "Add Escalation Rule",
+						"editTitle": "Edit Escalation Rule",
+						"timeLabel": "Time (minutes)",
+						"timePlaceholder": "Enter number of minutes",
+						"timeHint": "Time after monitor goes down (1-1440 minutes)",
+						"timeError": "Time must be between 1 and 1440 minutes",
+						"channelsLabel": "Notification Channels",
+						"channelsPlaceholder": "Select notification channels",
+						"channelsError": "Select at least one notification channel",
+						"save": "Save Rule",
+						"cancel": "Cancel",
+						"delete": "Delete"
+					}
 				}
 			}
 		},

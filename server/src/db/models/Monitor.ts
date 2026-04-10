@@ -18,12 +18,17 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt" | "escalationRules"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
 	notifications: Types.ObjectId[];
 	selectedDisks: string[];
+	escalationRules: Array<{
+		afterMinutes: number;
+		notificationIds: Types.ObjectId[];
+		enabled: boolean;
+	}>;
 	matchMethod?: MonitorMatchMethod;
 };
 
@@ -198,6 +203,28 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationRuleSchema = new Schema(
+	{
+		afterMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+			max: 1440,
+		},
+		notificationIds: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		enabled: {
+			type: Boolean,
+			default: true,
+		},
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -353,6 +380,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
+			default: [],
+		},
+		escalationRules: {
+			type: [escalationRuleSchema],
 			default: [],
 		},
 	},

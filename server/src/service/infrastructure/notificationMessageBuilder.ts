@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, afterMinutes: number, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +271,31 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(monitor: Monitor, afterMinutes: number, clientHost: string): NotificationMessage {
+		return {
+			type: "escalation_alert",
+			severity: "high",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `⚠️ Escalation Alert: ${monitor.name}`,
+				summary: `${monitor.name} has been down for ${afterMinutes} minutes`,
+				description: `The monitor "${monitor.name}" (${monitor.url}) remains unreachable. This is an escalation alert sent after ${afterMinutes} minutes of downtime.`,
+				details: `Monitor: ${monitor.name}\nURL: ${monitor.url}\nDuration: ${afterMinutes} minutes`,
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+				escalationMinutes: afterMinutes,
+			},
+		};
 	}
 }

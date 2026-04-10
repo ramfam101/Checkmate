@@ -177,6 +177,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				if (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached") {
+					this.handleEscalations(statusChangeResult.monitor, teamId).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling escalations for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -455,4 +466,74 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	private handleEscalations = async (monitor: Monitor, teamId: string) => {
+		try {
+			// Reload monitor from database to ensure escalationRules are populated
+			const currentMonitor = await this.monitorsRepository.findById(monitor.id, teamId);
+			if (!currentMonitor) {
+				return;
+			}
+
+			// Find active incident for this monitor
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, teamId);
+
+			if (!activeIncident) {
+				return;
+			}
+
+			// Get the incident start time
+			const incidentStartTime = new Date(activeIncident.startTime);
+
+			// Get applicable escalation rules based on incident duration
+			const applicableRules = await this.incidentService.getApplicableEscalationRules(currentMonitor, incidentStartTime);
+
+			if (applicableRules.length === 0) {
+				return;
+			}
+
+			// Filter out escalations that have already been sent
+			const unsentRules = applicableRules.filter(
+				(rule) =>
+					!activeIncident.escalationsSent ||
+					!activeIncident.escalationsSent.some((sent) => sent.afterMinutes === rule.afterMinutes)
+			);
+
+			if (unsentRules.length === 0) {
+				return;
+			}
+
+			// Send escalation notifications for each new rule
+			for (const rule of unsentRules) {
+				try {
+					this.logger.info({
+						message: `Triggering escalation for monitor after ${rule.afterMinutes} minutes`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+						details: { monitorId: monitor.id, afterMinutes: rule.afterMinutes, notificationCount: rule.notificationIds.length },
+					});
+
+					// Send notifications for this escalation level
+					await this.notificationsService.handleEscalationNotifications(currentMonitor, rule.notificationIds, rule.afterMinutes);
+
+					// Record that this escalation was sent
+					await this.incidentService.recordEscalationSent(activeIncident.id, teamId, rule.afterMinutes, rule.notificationIds);
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "handleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error handling escalations for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
 }

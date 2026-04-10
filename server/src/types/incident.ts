@@ -16,6 +16,11 @@ export interface Incident {
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;
+	escalationsSent?: Array<{
+		afterMinutes: number;
+		sentAt: string;
+		notificationIds: string[];
+	}>;
 	createdAt: string;
 	updatedAt: string;
 }

@@ -351,6 +351,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationRules = (doc.escalationRules ?? []).map((rule) => ({
+			afterMinutes: rule.afterMinutes,
+			notificationIds: (rule.notificationIds ?? []).map((id: unknown) => toStringId(id)),
+			enabled: rule.enabled,
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -388,6 +393,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
+			escalationRules,
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
@@ -410,6 +416,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationRules = (doc.escalationRules ?? []).map((rule) => ({
+			afterMinutes: rule.afterMinutes,
+			notificationIds: (rule.notificationIds ?? []).map((id: unknown) => toStringId(id)),
+			enabled: rule.enabled,
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -447,6 +458,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
+			escalationRules,
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
