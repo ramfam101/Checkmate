@@ -111,7 +111,30 @@ export class EmailService implements IEmailService {
 		if (typeof transportConfig !== "undefined") {
 			config = transportConfig;
 		} else {
-			config = await this.settingsService.getDBSettings();
+			const dbConfig = await this.settingsService.getDBSettings();
+			const envConfig = this.settingsService.getSettings();
+			const hasDbTransportConfig = Boolean(
+				dbConfig.systemEmailHost &&
+					dbConfig.systemEmailPort &&
+					dbConfig.systemEmailAddress &&
+					dbConfig.systemEmailPassword
+			);
+			config = hasDbTransportConfig
+				? dbConfig
+				: {
+						systemEmailHost: envConfig.systemEmailHost,
+						systemEmailPort: envConfig.systemEmailPort,
+						systemEmailAddress: envConfig.systemEmailAddress,
+						systemEmailPassword: envConfig.systemEmailPassword,
+						systemEmailUser: envConfig.systemEmailUser,
+						systemEmailConnectionHost: envConfig.systemEmailConnectionHost,
+						systemEmailTLSServername: envConfig.systemEmailTLSServername,
+						systemEmailSecure: envConfig.systemEmailSecure ?? false,
+						systemEmailPool: envConfig.systemEmailPool ?? false,
+						systemEmailIgnoreTLS: envConfig.systemEmailIgnoreTLS ?? false,
+						systemEmailRequireTLS: envConfig.systemEmailRequireTLS ?? false,
+						systemEmailRejectUnauthorized: envConfig.systemEmailRejectUnauthorized ?? true,
+					};
 		}
 		const {
 			systemEmailHost,
@@ -127,6 +150,15 @@ export class EmailService implements IEmailService {
 			systemEmailRequireTLS,
 			systemEmailRejectUnauthorized,
 		} = config;
+
+		if (!systemEmailHost || !systemEmailPort || !systemEmailAddress || !systemEmailPassword) {
+			this.logger.warn({
+				message: "SMTP settings are incomplete. Configure app email settings or SYSTEM_EMAIL_* env vars.",
+				service: SERVICE_NAME,
+				method: "sendEmail",
+			});
+			return false;
+		}
 
 		const emailConfig = {
 			host: systemEmailHost,
