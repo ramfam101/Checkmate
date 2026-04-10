@@ -7,8 +7,17 @@ import { Cell, RadialBarChart, RadialBar, ResponsiveContainer } from "recharts";
 import { useTranslation } from "react-i18next";
 import { getResponseTimeColor } from "@/Utils/MonitorUtils";
 import { useTheme } from "@mui/material/styles";
+import type { MonitorStatus } from "@/Types/Monitor";
 
-export const RadialAvgResponse = ({ avg, max }: { avg: number; max: number }) => {
+export const RadialAvgResponse = ({
+	avg,
+	max,
+	monitorStatus,
+}: {
+	avg: number;
+	max: number;
+	monitorStatus?: MonitorStatus;
+}) => {
 	const { t } = useTranslation();
 	const theme = useTheme();
 	const chartData = [
@@ -16,11 +25,11 @@ export const RadialAvgResponse = ({ avg, max }: { avg: number; max: number }) =>
 		{ name: "avg", value: avg, color: "red" },
 	];
 
-	const palette = getResponseTimeColor(avg);
+	const palette = monitorStatus === "down" ? "error" : getResponseTimeColor(avg);
 	const msg: Record<string, string> = {
 		success: "Excellent",
 		warning: "Average",
-		danger: "Poor",
+		error: "Poor",
 	};
 
 	return (
@@ -78,7 +87,7 @@ export const RadialAvgResponse = ({ avg, max }: { avg: number; max: number }) =>
 						variant="h6"
 						textAlign={"center"}
 					>
-						{msg[palette]}
+						{monitorStatus === "down" ? "Down" : msg[palette]}
 					</Typography>
 					<Typography
 						variant="h6"

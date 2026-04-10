@@ -212,6 +212,7 @@ const UptimeDetailsPage = () => {
 				<RadialAvgResponse
 					avg={monitorStats?.avgResponseTime || 0}
 					max={500}
+					monitorStatus={monitor?.status}
 				/>
 			</Stack>
 			<HistogramDetails

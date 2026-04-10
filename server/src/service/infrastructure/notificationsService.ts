@@ -108,15 +108,25 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		// Re-fetch monitor to ensure we have the latest notification IDs
+		const freshMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId).catch(() => null);
+		if (!freshMonitor) {
+			this.logger.warn({
+				message: `Monitor ${monitor.id} not found when sending notifications`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+			});
+			return false;
+		}
+		const notificationIds = freshMonitor.notifications ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(freshMonitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		const tasks = notifications.map((notification) => this.send(notification, freshMonitor, monitorStatusResponse, decision, notificationMessage));
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
@@ -128,7 +138,57 @@ export class NotificationsService implements INotificationsService {
 				method: "sendNotifications",
 			});
 		}
-		// Return true if all notifications succeeded
+
+		// Handle escalation notifications
+		const escalationIds = freshMonitor.escalationNotifications ?? [];
+		if (escalationIds.length > 0) {
+			if (!freshMonitor.escalateAfterMinutes || freshMonitor.escalateAfterMinutes === 0) {
+				// Send escalation notifications immediately
+				const escalationNotifications = await this.notificationsRepository.findNotificationsByIds(escalationIds);
+				const escalationTasks = escalationNotifications.map((notification) =>
+					this.send(notification, freshMonitor, monitorStatusResponse, decision, notificationMessage)
+				);
+				const escalationOutcomes = await Promise.all(escalationTasks);
+				const escalationSucceeded = escalationOutcomes.filter(Boolean).length;
+				const escalationFailed = escalationOutcomes.length - escalationSucceeded;
+				if (escalationFailed > 0) {
+					this.logger.warn({
+						message: `Escalation notification send completed with ${escalationSucceeded} success, ${escalationFailed} failure(s)`,
+						service: SERVICE_NAME,
+						method: "sendNotifications",
+					});
+				}
+			} else {
+				this.logger.info({
+					message: `Escalation notifications for monitor ${freshMonitor.id} deferred by ${freshMonitor.escalateAfterMinutes} minutes`,
+					service: SERVICE_NAME,
+					method: "sendNotifications",
+				});
+				const delayMs = (freshMonitor.escalateAfterMinutes ?? 1) * 60 * 1000;
+				setTimeout(async () => {
+					try {
+						const escalationNotifications = await this.notificationsRepository.findNotificationsByIds(escalationIds);
+						const escalationTasks = escalationNotifications.map((notification) =>
+							this.send(notification, freshMonitor, monitorStatusResponse, decision, notificationMessage)
+						);
+						await Promise.all(escalationTasks);
+						this.logger.info({
+							message: `Escalation notifications sent for monitor ${freshMonitor.id} after ${freshMonitor.escalateAfterMinutes} minutes`,
+							service: SERVICE_NAME,
+							method: "sendNotifications",
+						});
+					} catch (err) {
+						this.logger.warn({
+							message: `Failed to send escalation notifications for monitor ${freshMonitor.id}`,
+							service: SERVICE_NAME,
+							method: "sendNotifications",
+						});
+					}
+				}, delayMs);
+			}
+		}
+
+		// Return true if all primary notifications succeeded
 		return succeeded === notifications.length;
 	};
 
