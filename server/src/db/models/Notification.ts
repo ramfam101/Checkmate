@@ -7,6 +7,7 @@ interface NotificationDocument extends Omit<Notification, "id" | "userId" | "tea
 	teamId: Types.ObjectId;
 	createdAt: Date;
 	updatedAt: Date;
+	escalationTimes: number[];
 }
 
 const NotificationSchema = new Schema<NotificationDocument>(
@@ -37,6 +38,11 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		homeserverUrl: { type: String },
 		roomId: { type: String },
 		accessToken: { type: String },
+
+		escalationTimes: {
+			type: [Number],
+			default: [],
+		},
 	},
 	{
 		timestamps: true,

@@ -13,6 +13,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
 		roomId: z.union([z.string(), z.literal("")]).optional(),
 		accessToken: z.union([z.string(), z.literal("")]).optional(),
+		escalationTimes: z.array(z.number().min(1)).optional(),
 	}),
 	// Webhook notification
 	z.object({
