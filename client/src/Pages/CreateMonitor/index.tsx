@@ -764,7 +764,82 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+<ConfigBox
+    title="Escalation Policy"
+    subtitle="If the monitor stays down for the specified time, notify additional channels."
+    rightContent={
+        	<Stack spacing={theme.spacing(LAYOUT.MD)}>
+            {/*Escalation Delay Input */}
+				<TextField
+					fieldLabel = "Escalate after (minutes)"
+					type="number"
+					fullWidth
+					{...form.register("escalateAfter", { valueAsNumber: true })}
+                
+        	/>
 
+            {/*Escalation Channels Selector*/}
+            <Controller
+                name="escalationChannels"
+                control={control}
+                render={({ field }) => {
+                    const notificationOptions = (notifications ?? []).map((n) => ({
+                        ...n,
+                        name: n.notificationName,
+                    }));
+                    const selectedEscalations = notificationOptions.filter((n) =>
+                        (field.value ?? []).includes(n.id)
+                    );
+                    return (
+                        <Stack spacing={theme.spacing(LAYOUT.MD)}>
+                            <Autocomplete
+								fieldLabel = "Escalation notification channels"
+                                multiple
+                                options={notificationOptions}
+                                value={selectedEscalations}
+                                getOptionLabel={(option) => option.name}
+                                onChange={(_: unknown, newValue: typeof notificationOptions) => {
+                                    field.onChange(newValue.map((n) => n.id));
+                                }}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                            />
+                            {selectedEscalations.length > 0 && (
+                                <Stack flex={1} width="100%">
+                                    {selectedEscalations.map((notification, index) => (
+                                        <Stack
+                                            direction="row"
+                                            alignItems="center"
+                                            key={notification.id}
+                                            width="100%"
+                                        >
+                                            <Typography flexGrow={1}>
+                                                {notification.notificationName}
+                                            </Typography>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => {
+                                                    field.onChange(
+                                                        (field.value ?? []).filter(
+                                                            (id: string) => id !== notification.id
+                                                        )
+                                                    );
+                                                }}
+                                                aria-label="Remove notification"
+                                            >
+                                                <Trash2 size={16} />
+                                            </IconButton>
+                                            {index < selectedEscalations.length - 1 && <Divider />}
+                                        </Stack>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Stack>
+                    );
+                }}
+            />
+      </Stack>
+    }
+/>
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

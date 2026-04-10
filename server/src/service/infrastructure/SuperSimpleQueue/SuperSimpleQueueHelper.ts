@@ -429,10 +429,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			incidentReason: null,
 			notificationReason: null,
 		};
+		
+		// 1. Calculate Downtime & Escalation State
+		const lastChange = monitor.lastStatusChange ? new Date(monitor.lastStatusChange).getTime() : Date.now();
+		const downtimeMinutes = (Date.now() - lastChange) / (1000 * 60);
 
-		if (!statusChanged) {
+		const isEscalationTime = 
+			monitor.status === "down" && 
+			(monitor.escalateAfter ?? 0) > 0 && 
+			downtimeMinutes >= monitor.escalateAfter &&
+			!monitor.isEscalated;
+
+		// 2. The Updated Guard Clause
+		// If nothing changed AND it's not time to escalate, exit early.
+		if (!statusChanged && !isEscalationTime) {
 			return decision;
 		}
+
 
 		if (monitor.status === "down") {
 			// Monitor went down (unreachable)
