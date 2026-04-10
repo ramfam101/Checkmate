@@ -161,11 +161,23 @@ export class NotificationsService implements INotificationsService {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		const now = Date.now();
-		const startTime = parseInt(activeIncident.startTime);
+		const startTime = Date.parse(activeIncident.startTime);
 		if (isNaN(startTime)) return false;
 
 		const durationMinutes = (now - startTime) / 60000;
 		const prevDurationMinutes = (now - monitor.interval - startTime) / 60000;
+
+		this.logger.debug({
+			message: `[DEBUG] handleEscalatedNotifications`,
+			service: SERVICE_NAME,
+			method: "handleEscalatedNotifications",
+			details: {
+				durationMinutes,
+				prevDurationMinutes,
+				monitorInterval: monitor.interval,
+				notifications: notifications.map((n) => ({ id: n.id, type: n.type, escalationTimes: n.escalationTimes })),
+			},
+		});
 
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";

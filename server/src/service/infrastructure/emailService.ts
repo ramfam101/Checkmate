@@ -128,45 +128,68 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
-		const emailConfig = {
-			host: systemEmailHost,
-			port: Number(systemEmailPort),
-			secure: systemEmailSecure,
-			auth: {
-				user: systemEmailUser || systemEmailAddress,
-				pass: systemEmailPassword,
-			},
-			name: systemEmailConnectionHost || "localhost",
-			connectionTimeout: 5000,
-			pool: systemEmailPool,
-			tls: {
-				rejectUnauthorized: systemEmailRejectUnauthorized,
-				ignoreTLS: systemEmailIgnoreTLS,
-				requireTLS: systemEmailRequireTLS,
-				servername: systemEmailTLSServername,
-			},
-		};
+		// Use streamTransport if no real SMTP host is provided, so the user can see it in terminal!
+		const isDevOrNoHost = !systemEmailHost || systemEmailHost === "localhost" || systemEmailHost === "";
+
+		let emailConfig: any = {};
+		if (isDevOrNoHost) {
+			emailConfig = {
+				streamTransport: true,
+				newline: "windows",
+			};
+		} else {
+			emailConfig = {
+				host: systemEmailHost,
+				port: Number(systemEmailPort),
+				secure: systemEmailSecure,
+				auth: {
+					user: systemEmailUser || systemEmailAddress,
+					pass: systemEmailPassword,
+				},
+				name: systemEmailConnectionHost || "localhost",
+				connectionTimeout: 5000,
+				pool: systemEmailPool,
+				tls: {
+					rejectUnauthorized: systemEmailRejectUnauthorized,
+					ignoreTLS: systemEmailIgnoreTLS,
+					requireTLS: systemEmailRequireTLS,
+					servername: systemEmailTLSServername,
+				},
+			};
+		}
+
 		this.transporter = this.nodemailer.createTransport(emailConfig);
 
-		try {
-			await this.transporter.verify();
-		} catch (error: unknown) {
-			this.logger.warn({
-				message: "Email transporter verification failed",
-				service: SERVICE_NAME,
-				method: "verifyTransporter",
-				stack: error instanceof Error ? error.stack : undefined,
-			});
-			return false;
+		if (!isDevOrNoHost) {
+			try {
+				await this.transporter!.verify();
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: "Email transporter verification failed",
+					service: SERVICE_NAME,
+					method: "verifyTransporter",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				return false;
+			}
 		}
 
 		try {
-			const info = await this.transporter.sendMail({
+			const info = await this.transporter!.sendMail({
 				to: to,
-				from: systemEmailAddress,
+				from: systemEmailAddress || "checkmate-test@localhost",
 				subject: subject,
 				html: html,
 			});
+			if (isDevOrNoHost && (info as any).message) {
+				(info as any).message.pipe(process.stdout);
+				this.logger.info({
+					message: `==========================================\n[DEVELOPMENT] Email generated for ${to}. Subject: ${subject}\nCheck the terminal output above for the raw email stream.\n==========================================`,
+					service: SERVICE_NAME,
+					method: "sendEmail",
+				});
+				return (info as any).messageId || "stream-dev-message-id";
+			}
 			return info?.messageId;
 		} catch (error: unknown) {
 			this.logger.error({
