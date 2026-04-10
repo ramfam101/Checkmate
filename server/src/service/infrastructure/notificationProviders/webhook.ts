@@ -80,7 +80,7 @@ export class WebhookProvider implements INotificationProvider {
 
 		// Incident link
 		if (message.content.incident) {
-			lines.push(`[View Incident](${message.clientHost}/infrastructure/${message.monitor.id})`);
+			lines.push(`[View Incident](${message.content.incident.url})`);
 		}
 
 		// Return webhook payload with both text and structured data

@@ -177,6 +177,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				this.handleEscalationNotifications(statusChangeResult.monitor).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -454,5 +463,42 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private async handleEscalationNotifications(monitor: Monitor): Promise<void> {
+		if (monitor.status === "up" || monitor.status === "maintenance") {
+			return;
+		}
+
+		const escalateAfterMinutes = monitor.escalateAfterMinutes ?? 0;
+		const escalationNotificationIds = monitor.escalationNotifications ?? [];
+
+		if (escalateAfterMinutes <= 0 || escalationNotificationIds.length === 0) {
+			return;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalatedAt) {
+			return;
+		}
+
+		const startedAt = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(startedAt)) {
+			return;
+		}
+
+		const elapsedMinutes = (Date.now() - startedAt) / (1000 * 60);
+		if (elapsedMinutes < escalateAfterMinutes) {
+			return;
+		}
+
+		const sent = await this.notificationsService.handleEscalationNotifications(monitor, activeIncident);
+		if (!sent) {
+			return;
+		}
+
+		await this.incidentsRepository.updateById(activeIncident.id, activeIncident.teamId, {
+			escalatedAt: new Date().toISOString(),
+		});
 	}
 }

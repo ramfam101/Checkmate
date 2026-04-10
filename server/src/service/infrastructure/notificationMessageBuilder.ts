@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Incident, Monitor, MonitorStatusResponse } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -52,6 +52,48 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string): NotificationMessage {
+		const startedAt = new Date(incident.startTime);
+		const elapsedMinutes = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / (1000 * 60)));
+		const elapsedLabel = elapsedMinutes < 60 ? `${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}` : `${(elapsedMinutes / 60).toFixed(1)} hours`;
+		const incidentUrl = `${clientHost}/incidents/${incident.id}`;
+
+		return {
+			type: "incident_escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: ${monitor.name}`,
+				summary: `Incident has remained active for ${elapsedLabel}. Escalation notifications are now being sent.`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: ${monitor.status}`,
+					`Type: ${monitor.type}`,
+					`Started at: ${startedAt.toISOString()}`,
+					`Elapsed: ${elapsedLabel}`,
+					`Escalate after: ${monitor.escalateAfterMinutes ?? 0} minutes`,
+				],
+				incident: {
+					id: incident.id,
+					url: incidentUrl,
+					createdAt: startedAt,
+				},
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "incident_escalation",
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -80,6 +122,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "incident_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";

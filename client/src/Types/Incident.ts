@@ -36,6 +36,7 @@ export interface IncidentSummaryItem {
 	resolutionType: "automatic" | "manual" | null;
 	message: string | null;
 	statusCode: number | null;
+	escalatedAt?: string | null;
 	createdAt: string;
 }
 
