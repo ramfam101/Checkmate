@@ -12,7 +12,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useGet, usePost, usePatch } from "@/Hooks/UseApi";
 import { useNotificationForm } from "@/Hooks/useNotificationForm";
-import type { NotificationFormData } from "@/Validation/notifications";
+import type { NotificationFormData, NotificationFormInput } from "@/Validation/notifications";
 import type { Notification } from "@/Types/Notification";
 import { useTranslation } from "react-i18next";
 import { NotificationChannels } from "@/Types/Notification";
@@ -34,7 +34,7 @@ const NotificationsCreatePage = () => {
 
 	const { schema, defaults } = useNotificationForm({ data: existingNotification });
 
-	const form = useForm<NotificationFormData>({
+	const form = useForm<NotificationFormInput, unknown, NotificationFormData>({
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
@@ -89,7 +89,10 @@ const NotificationsCreatePage = () => {
 		const isValid = await trigger();
 		if (!isValid) return;
 		const data = getValues();
-		await testPost("/notifications/test", data);
+		await testPost("/notifications/test", {
+			...data,
+			escalationRules: data.escalationRules ?? [],
+		} as NotificationFormData);
 	};
 
 	return (

@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendNotificationMessage: (notification: Notification, notificationMessage: NotificationMessage) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -65,18 +66,12 @@ export class NotificationsService implements INotificationsService {
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
-	private send = async (
-		notification: Notification,
-		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
-		notificationMessage: NotificationMessage | undefined
-	): Promise<boolean> => {
+	sendNotificationMessage = async (notification: Notification, notificationMessage: NotificationMessage): Promise<boolean> => {
 		if (!notificationMessage) {
 			this.logger.warn({
 				message: "Notification message not provided",
 				service: SERVICE_NAME,
-				method: "send",
+				method: "sendNotificationMessage",
 			});
 			return false;
 		}
@@ -101,10 +96,29 @@ export class NotificationsService implements INotificationsService {
 				this.logger.warn({
 					message: `Unknown notification type: ${notification.type}`,
 					service: SERVICE_NAME,
-					method: "send",
+						method: "sendNotificationMessage",
 				});
 				return false;
 		}
+	};
+
+	private send = async (
+		notification: Notification,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage: NotificationMessage | undefined
+	): Promise<boolean> => {
+		if (!notificationMessage) {
+			this.logger.warn({
+				message: "Notification message not provided",
+				service: SERVICE_NAME,
+				method: "send",
+			});
+			return false;
+		}
+
+		return await this.sendNotificationMessage(notification, notificationMessage);
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {

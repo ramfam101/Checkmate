@@ -25,6 +25,7 @@ import type { ImportedMonitor } from "@/validation/monitorValidation.js";
 import { ISuperSimpleQueue } from "../infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 import { IEmailService } from "../infrastructure/emailService.js";
 import { ILogger } from "@/utils/logger.js";
+import { processEscalations } from "@/business/escalationService.js";
 
 const SERVICE_NAME = "MonitorService";
 type DateRangeKey = "recent" | "day" | "week" | "month" | "all";
@@ -439,6 +440,9 @@ export class MonitorService implements IMonitorService {
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
 		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
 		await this.jobQueue.updateJob(editedMonitor);
+		if (body.notifications !== undefined) {
+			await processEscalations({ monitorIds: [editedMonitor.id], catchUpBaseNotification: true });
+		}
 		return editedMonitor;
 	};
 
@@ -459,6 +463,9 @@ export class MonitorService implements IMonitorService {
 		if (modifiedCount > 0) {
 			const monitors = await this.monitorsRepository.findByIds(monitorIds);
 			await Promise.all(monitors.map((monitor) => this.jobQueue.updateJob(monitor)));
+			if (action !== "remove") {
+				await processEscalations({ monitorIds, catchUpBaseNotification: true });
+			}
 		}
 
 		return modifiedCount;

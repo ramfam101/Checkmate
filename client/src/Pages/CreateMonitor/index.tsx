@@ -38,8 +38,110 @@ import {
 	type GamesMap,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
-import type { Notification } from "@/Types/Notification";
+import {
+	EscalationRuleChannels,
+	type EscalationRule,
+	type EscalationRuleChannel,
+	type Notification,
+} from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import type { NotificationFormData } from "@/Validation/notifications";
+
+type NotificationOption = Notification & { name: string };
+type EscalationRuleFormValue = EscalationRule;
+type NotificationEscalationMap = Record<string, EscalationRuleFormValue[]>;
+
+const normalizeEscalationRules = (
+	rules: EscalationRule[] | undefined,
+	type: Notification["type"]
+): EscalationRuleFormValue[] => {
+	if (!EscalationRuleChannels.includes(type as EscalationRuleChannel)) {
+		return [];
+	}
+
+	return (rules ?? []).map((rule) => ({
+		type: type as EscalationRuleChannel,
+		delayMinutes: rule.delayMinutes,
+		trigger: "escalation",
+	}));
+};
+
+const areEscalationRulesEqual = (
+	left: EscalationRuleFormValue[],
+	right: EscalationRuleFormValue[]
+): boolean => {
+	if (left.length !== right.length) {
+		return false;
+	}
+
+	return left.every((rule, index) => {
+		const candidate = right[index];
+		return (
+			candidate?.type === rule.type &&
+			candidate?.delayMinutes === rule.delayMinutes &&
+			candidate?.trigger === rule.trigger
+		);
+	});
+};
+
+const buildNotificationPayload = (
+	notification: Notification,
+	escalationRules: EscalationRuleFormValue[]
+): NotificationFormData => {
+	switch (notification.type) {
+		case "email":
+			return {
+				type: "email",
+				notificationName: notification.notificationName,
+				address: notification.address ?? "",
+				escalationRules,
+			};
+		case "slack":
+			return {
+				type: "slack",
+				notificationName: notification.notificationName,
+				address: notification.address ?? "",
+				escalationRules,
+			};
+		case "discord":
+			return {
+				type: "discord",
+				notificationName: notification.notificationName,
+				address: notification.address ?? "",
+				escalationRules,
+			};
+		case "webhook":
+			return {
+				type: "webhook",
+				notificationName: notification.notificationName,
+				address: notification.address ?? "",
+				escalationRules,
+			};
+		case "pager_duty":
+			return {
+				type: "pager_duty",
+				notificationName: notification.notificationName,
+				address: notification.address ?? "",
+				escalationRules: [],
+			};
+		case "matrix":
+			return {
+				type: "matrix",
+				notificationName: notification.notificationName,
+				homeserverUrl: notification.homeserverUrl ?? "",
+				roomId: notification.roomId ?? "",
+				accessToken: notification.accessToken ?? "",
+				escalationRules: [],
+			};
+		case "teams":
+			return {
+				type: "teams",
+				notificationName: notification.notificationName,
+				address: notification.address ?? "",
+				escalationRules: [],
+			};
+	}
+};
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -224,10 +326,34 @@ const CreateMonitorPage = () => {
 
 	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
 	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
-	const isSubmitting = isCreating || isUpdating;
+	const { patch: patchNotification, loading: isUpdatingNotifications } =
+		usePatch<NotificationFormData, Notification>();
+	const isSubmitting = isCreating || isUpdating || isUpdatingNotifications;
+	const [notificationEscalations, setNotificationEscalations] =
+		useState<NotificationEscalationMap>({});
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const { deleteFn, loading: isDeleting } = useDelete();
+
+	useEffect(() => {
+		if (!notifications?.length) {
+			return;
+		}
+
+		setNotificationEscalations((current) => {
+			const next = { ...current };
+			for (const notification of notifications) {
+				if (next[notification.id]) {
+					continue;
+				}
+				next[notification.id] = normalizeEscalationRules(
+					notification.escalationRules,
+					notification.type
+				);
+			}
+			return next;
+		});
+	}, [notifications]);
 
 	const handleDeleteClick = () => {
 		setIsDeleteDialogOpen(true);
@@ -251,6 +377,99 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
+	const syncNotificationEscalations = async (notificationIds: string[]) => {
+		if (!notifications?.length || notificationIds.length === 0) {
+			return true;
+		}
+
+		const notificationsById = new Map(
+			notifications.map((notification) => [notification.id, notification])
+		);
+
+		for (const notificationId of notificationIds) {
+			const notification = notificationsById.get(notificationId);
+			if (!notification) {
+				continue;
+			}
+
+			const nextRules = normalizeEscalationRules(
+				notificationEscalations[notificationId] ?? notification.escalationRules,
+				notification.type
+			);
+			const currentRules = normalizeEscalationRules(
+				notification.escalationRules,
+				notification.type
+			);
+
+			if (areEscalationRulesEqual(currentRules, nextRules)) {
+				continue;
+			}
+
+			const result = await patchNotification(
+				`/notifications/${notification.id}`,
+				buildNotificationPayload(notification, nextRules)
+			);
+			if (!result?.success) {
+				return false;
+			}
+		}
+
+		return true;
+	};
+
+	const updateEscalationRules = (
+		notificationId: string,
+		updater: (rules: EscalationRuleFormValue[]) => EscalationRuleFormValue[]
+	) => {
+		setNotificationEscalations((current) => ({
+			...current,
+			[notificationId]: updater(current[notificationId] ?? []),
+		}));
+	};
+
+	const handleAddEscalationStep = (notification: NotificationOption) => {
+		if (!EscalationRuleChannels.includes(notification.type as EscalationRuleChannel)) {
+			return;
+		}
+
+		updateEscalationRules(notification.id, (rules) => {
+			const previousDelay = rules[rules.length - 1]?.delayMinutes ?? 0;
+			return [
+				...rules,
+				{
+					type: notification.type as EscalationRuleChannel,
+					delayMinutes: previousDelay + 5,
+					trigger: "escalation",
+				},
+			];
+		});
+	};
+
+	const handleRemoveEscalationStep = (notificationId: string, index: number) => {
+		updateEscalationRules(notificationId, (rules) =>
+			rules.filter((_, ruleIndex) => ruleIndex !== index)
+		);
+	};
+
+	const handleEscalationDelayChange = (
+		notification: NotificationOption,
+		index: number,
+		delayMinutes: number
+	) => {
+		updateEscalationRules(notification.id, (rules) =>
+			rules.map((rule, ruleIndex) =>
+				ruleIndex === index
+					? {
+						...rule,
+						type: notification.type as EscalationRuleChannel,
+						delayMinutes,
+						trigger: "escalation",
+					}
+					: rule
+			)
+		);
+	};
+
 	const onSubmit = async (data: MonitorFormData) => {
 		let result;
 		if (isEditMode && monitorId) {
@@ -260,6 +479,13 @@ const CreateMonitorPage = () => {
 		}
 
 		if (result?.success) {
+			const escalationsSaved = await syncNotificationEscalations(
+				data.notifications ?? []
+			);
+			if (!escalationsSaved) {
+				return;
+			}
+
 			if (pageType === "pagespeed") {
 				navigate("/pagespeed");
 			} else if (pageType === "hardware") {
@@ -706,7 +932,7 @@ const CreateMonitorPage = () => {
 						control={control}
 						render={({ field }) => {
 							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
+							const notificationOptions: NotificationOption[] = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
 							}));
@@ -732,27 +958,119 @@ const CreateMonitorPage = () => {
 										>
 											{selectedNotifications.map((notification, index) => (
 												<Stack
-													direction="row"
-													alignItems="center"
+													spacing={theme.spacing(LAYOUT.MD)}
 													key={notification.id}
 													width="100%"
 												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
-													<IconButton
-														size="small"
-														onClick={() => {
-															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
-														}}
-														aria-label="Remove notification"
+													<Stack
+														direction="row"
+														alignItems="center"
+														spacing={theme.spacing(LAYOUT.MD)}
 													>
-														<Trash2 size={16} />
-													</IconButton>
+														<Stack flexGrow={1}>
+															<Typography>{notification.notificationName}</Typography>
+															<Typography variant="body2" color="text.secondary">
+																{notification.type}
+															</Typography>
+														</Stack>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+																aria-label={t("common.buttons.delete")}
+														>
+															<Trash2 size={16} />
+														</IconButton>
+													</Stack>
+													{EscalationRuleChannels.includes(
+														notification.type as EscalationRuleChannel
+													) ? (
+														<Stack spacing={theme.spacing(LAYOUT.SM)}>
+																<Stack spacing={theme.spacing(1)}>
+																	<Typography variant="subtitle2">
+																		{t("pages.notifications.form.escalation.title")}
+																	</Typography>
+																	<Typography variant="body2" color="text.secondary">
+																		{t("pages.notifications.form.escalation.description")}
+																	</Typography>
+																</Stack>
+															{(notificationEscalations[notification.id] ?? []).map(
+																(rule, ruleIndex) => (
+																	<Stack
+																		key={`${notification.id}-${ruleIndex}`}
+																		direction={{ xs: "column", md: "row" }}
+																		spacing={theme.spacing(LAYOUT.SM)}
+																		alignItems={{ xs: "stretch", md: "flex-start" }}
+																	>
+																		<TextField
+																			type="number"
+																			fieldLabel={t("pages.notifications.form.escalation.delayLabel")}
+																			fullWidth
+																			value={rule.delayMinutes}
+																			onChange={(event) =>
+																				handleEscalationDelayChange(
+																					notification,
+																					ruleIndex,
+																					Number(event.target.value)
+																				)
+																			}
+																		/>
+																		<Select
+																			value={rule.type}
+																			fieldLabel={t("pages.notifications.form.escalation.channelLabel")}
+																			disabled
+																		>
+																			<MenuItem value={rule.type}>
+																				<Typography textTransform="capitalize">
+																					{rule.type}
+																				</Typography>
+																			</MenuItem>
+																		</Select>
+																		<Button
+																			variant="text"
+																			onClick={() =>
+																				handleRemoveEscalationStep(
+																					notification.id,
+																					ruleIndex
+																				)
+																			}
+																		>
+																			{t("pages.notifications.form.escalation.deleteStep")}
+																		</Button>
+																	</Stack>
+																)
+															)}
+															<Stack
+																direction="row"
+																justifyContent="space-between"
+																alignItems="center"
+															>
+																<Typography variant="body2">
+																	{t("pages.notifications.form.escalation.helper")}
+																</Typography>
+																<Button
+																	variant="outlined"
+																	onClick={() => handleAddEscalationStep(notification)}
+																>
+																	{t("pages.notifications.form.escalation.addStep")}
+																</Button>
+															</Stack>
+														</Stack>
+													) : (
+																<Stack spacing={theme.spacing(1)}>
+																	<Typography variant="subtitle2">
+																		{t("pages.notifications.form.escalation.title")}
+																	</Typography>
+																	<Typography variant="body2" color="text.secondary">
+																		{t("pages.notifications.form.escalation.unsupported")}
+																	</Typography>
+																</Stack>
+													)}
 													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}

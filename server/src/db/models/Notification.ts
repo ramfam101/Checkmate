@@ -1,5 +1,26 @@
 import { Schema, model, type Types } from "mongoose";
-import type { Notification, NotificationChannel } from "@/types/notification.js";
+import type { EscalationRule, Notification, NotificationChannel } from "@/types/notification.js";
+
+const EscalationRuleSchema = new Schema<EscalationRule>(
+	{
+		type: {
+			type: String,
+			enum: ["email", "slack", "discord", "webhook"],
+			required: true,
+		},
+		delayMinutes: {
+			type: Number,
+			required: true,
+			min: 1,
+		},
+		trigger: {
+			type: String,
+			enum: ["escalation"],
+			required: true,
+		},
+	},
+	{ _id: false }
+);
 
 interface NotificationDocument extends Omit<Notification, "id" | "userId" | "teamId" | "createdAt" | "updatedAt"> {
 	_id: Types.ObjectId;
@@ -37,6 +58,10 @@ const NotificationSchema = new Schema<NotificationDocument>(
 		homeserverUrl: { type: String },
 		roomId: { type: String },
 		accessToken: { type: String },
+		escalationRules: {
+			type: [EscalationRuleSchema],
+			default: [],
+		},
 	},
 	{
 		timestamps: true,
