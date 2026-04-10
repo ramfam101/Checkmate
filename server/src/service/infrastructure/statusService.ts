@@ -345,6 +345,11 @@ export class StatusService implements IStatusService {
 				}
 			}
 
+			if (statusChanged) {
+				monitor.lastStatusChangeAt = check.createdAt;
+				delete monitor.escalationSentAt;
+			}
+
 			// Apply the final status
 			monitor.status = newStatus;
 
