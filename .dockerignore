@@ -1,0 +1,16 @@
+.git
+.github
+.gitignore
+.coderabbit.yml
+*.md
+node_modules
+client/node_modules
+server/node_modules
+client/dist
+server/dist
+docker
+.env
+.env.*
+*.log
+coverage
+.nyc_output

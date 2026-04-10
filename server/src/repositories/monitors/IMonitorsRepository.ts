@@ -1,4 +1,4 @@
-import { type MonitorType, type Monitor, type MonitorsSummary } from "@/types/index.js";
+import { type MonitorType, type Monitor, type MonitorsSummary, type NotificationConfig } from "@/types/index.js";
 
 export interface TeamQueryConfig {
 	limit?: number;
@@ -41,7 +41,7 @@ export interface IMonitorsRepository {
 	findMonitorsSummaryByTeamId(teamId: string, config?: SummaryConfig): Promise<MonitorsSummary>;
 	findGroupsByTeamId(teamId: string): Promise<string[]>;
 	removeNotificationFromMonitors(notificationId: string): Promise<void>;
-	updateNotifications(teamId: string, monitorIds: string[], notificationIds: string[], action: "add" | "remove" | "set"): Promise<number>;
+	updateNotifications(teamId: string, monitorIds: string[], notifications: NotificationConfig[], action: "add" | "remove" | "set"): Promise<number>;
 	deleteByTeamIdsNotIn(teamIds: string[]): Promise<number>;
 	findAllMonitorIds(): Promise<string[]>;
 }

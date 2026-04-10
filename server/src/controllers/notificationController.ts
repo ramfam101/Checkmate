@@ -148,7 +148,7 @@ class NotificationController implements INotificationController {
 				throw new AppError({ message: "No notifications", status: 400 });
 			}
 
-			const result = await this.notificationsService.testAllNotifications(notifications);
+			const result = await this.notificationsService.testAllNotifications(notifications.map((cfg) => cfg.notificationId));
 
 			if (!result) {
 				throw new AppError({ message: "Failed to send all notifications", status: 500 });

@@ -102,16 +102,30 @@ export const sendTestEmailBodyValidation = z.object({
 export const updateNotificationsValidation = z
 	.object({
 		monitorIds: z.array(z.string()).min(1, "At least one monitor ID is required").max(100, "Cannot update more than 100 monitors at once"),
-		notificationIds: z.array(z.string()).max(100, "Cannot specify more than 100 notification IDs at once"),
+		notifications: z
+			.array(
+				z.object({
+					notificationId: z.string().min(1),
+					escalations: z
+						.array(
+							z.object({
+								delayMinutes: z.number().int().min(1),
+								channelId: z.string().min(1),
+							})
+						)
+						.default([]),
+				})
+			)
+			.max(100, "Cannot specify more than 100 notifications at once"),
 		action: z.enum(["add", "remove", "set"] as const),
 	})
 	.refine(
 		(data) => {
-			if (data.action !== "set" && data.notificationIds.length === 0) return false;
+			if (data.action !== "set" && data.notifications.length === 0) return false;
 			return true;
 		},
 		{
-			message: "Notification IDs cannot be empty unless action is 'set'",
-			path: ["notificationIds"],
+			message: "Notifications cannot be empty unless action is 'set'",
+			path: ["notifications"],
 		}
 	);

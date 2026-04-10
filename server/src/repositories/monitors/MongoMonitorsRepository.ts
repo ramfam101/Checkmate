@@ -293,35 +293,47 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		const oid = new mongoose.Types.ObjectId(notificationId);
+		await MonitorModel.updateMany({ "notifications.notificationId": oid }, { $pull: { notifications: { notificationId: oid } } });
+		await MonitorModel.updateMany(
+			{ "notifications.escalations.channelId": oid },
+			{ $pull: { "notifications.$[].escalations": { channelId: oid } } }
+		);
 	};
 
 	updateNotifications = async (
 		teamId: string,
 		monitorIds: string[],
-		notificationIds: string[],
+		notifications: import("@/types/monitor.js").NotificationConfig[],
 		action: "add" | "remove" | "set"
 	): Promise<number> => {
 		let objectIds;
-		let notificationObjectIds;
 		try {
 			objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
-			notificationObjectIds = notificationIds.map((id) => new mongoose.Types.ObjectId(id));
 		} catch {
-			throw new AppError({ message: "One or more monitor or notification IDs are invalid", status: 400 });
+			throw new AppError({ message: "One or more monitor IDs are invalid", status: 400 });
 		}
 		const filter = { _id: { $in: objectIds }, teamId: new mongoose.Types.ObjectId(teamId) };
+		const notifDocs = notifications.map((cfg) => ({
+			notificationId: new mongoose.Types.ObjectId(cfg.notificationId),
+			escalations: cfg.escalations.map((esc) => ({
+				delayMinutes: esc.delayMinutes,
+				channelId: new mongoose.Types.ObjectId(esc.channelId),
+			})),
+		}));
 
 		let update;
 		switch (action) {
 			case "add":
-				update = { $addToSet: { notifications: { $each: notificationObjectIds } } };
+				update = { $push: { notifications: { $each: notifDocs } } };
 				break;
-			case "remove":
-				update = { $pull: { notifications: { $in: notificationObjectIds } } };
+			case "remove": {
+				const removeIds = notifications.map((cfg) => new mongoose.Types.ObjectId(cfg.notificationId));
+				update = { $pull: { notifications: { notificationId: { $in: removeIds } } } };
 				break;
+			}
 			case "set":
-				update = { $set: { notifications: notificationObjectIds } };
+				update = { $set: { notifications: notifDocs } };
 				break;
 			default:
 				throw new AppError({ message: `Invalid action: ${action}`, status: 400 });
@@ -350,7 +362,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const notifications = (doc.notifications ?? []).map((cfg) => ({
+			notificationId: toStringId(cfg.notificationId),
+			escalations: (cfg.escalations ?? []).map((esc) => ({
+				delayMinutes: esc.delayMinutes,
+				channelId: toStringId(esc.channelId),
+			})),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -373,7 +391,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			isActive: doc.isActive,
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
+			notifications,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -409,7 +427,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const notifications = (doc.notifications ?? []).map((cfg: { notificationId: unknown; escalations?: Array<{ delayMinutes: number; channelId: unknown }> }) => ({
+			notificationId: toStringId(cfg.notificationId),
+			escalations: (cfg.escalations ?? []).map((esc) => ({
+				delayMinutes: esc.delayMinutes,
+				channelId: toStringId(esc.channelId),
+			})),
+		}));
 
 		return {
 			id: toStringId(doc._id),
@@ -432,7 +456,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			isActive: doc.isActive,
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
+			notifications,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

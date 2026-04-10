@@ -3,6 +3,16 @@ export type { CheckSnapshot } from "@/types/check.js";
 import type { GeoContinent, GroupedGeoCheck } from "@/types/geoCheck.js";
 export type { GeoContinent } from "@/types/geoCheck.js";
 
+export interface NotificationEscalation {
+	delayMinutes: number;
+	channelId: string;
+}
+
+export interface NotificationConfig {
+	notificationId: string;
+	escalations: NotificationEscalation[];
+}
+
 export const MonitorTypes = ["http", "ping", "pagespeed", "hardware", "docker", "port", "game", "grpc", "websocket", "unknown"] as const;
 export type MonitorType = (typeof MonitorTypes)[number];
 
@@ -36,7 +46,7 @@ export interface Monitor {
 	isActive: boolean;
 	interval: number;
 	uptimePercentage?: number;
-	notifications: string[];
+	notifications: NotificationConfig[];
 	secret?: string;
 	cpuAlertThreshold: number;
 	cpuAlertCounter: number;

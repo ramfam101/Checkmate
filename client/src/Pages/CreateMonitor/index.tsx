@@ -38,7 +38,7 @@ import {
 	type GamesMap,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
-import type { Notification } from "@/Types/Notification";
+import type { Notification, MonitorNotificationConfig } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
 
 interface GeneralSettingsConfig {
@@ -227,6 +227,7 @@ const CreateMonitorPage = () => {
 	const isSubmitting = isCreating || isUpdating;
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [pendingEscalationDelay, setPendingEscalationDelay] = useState(30);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
 	const handleDeleteClick = () => {
@@ -705,13 +706,13 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
+							const configs = (field.value ?? []) as MonitorNotificationConfig[];
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
 							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+								configs.some((c) => c.notificationId === n.id)
 							);
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
@@ -721,7 +722,12 @@ const CreateMonitorPage = () => {
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+											const existing = new Map(configs.map((c) => [c.notificationId, c]));
+											field.onChange(
+												newValue.map((n) =>
+													existing.get(n.id) ?? { notificationId: n.id, escalations: [] }
+												)
+											);
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
@@ -744,8 +750,8 @@ const CreateMonitorPage = () => {
 														size="small"
 														onClick={() => {
 															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
+																configs.filter(
+																	(c) => c.notificationId !== notification.id
 																)
 															);
 														}}
@@ -764,6 +770,97 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+			<Controller
+					name="notifications"
+					control={control}
+					render={({ field }) => {
+						const configs = (field.value ?? []) as MonitorNotificationConfig[];
+						const notificationOptions = (notifications ?? []).map((n) => ({
+							...n,
+							name: n.notificationName,
+						}));
+						if (configs.length === 0) return <></>;
+						const escalations = configs[0]?.escalations ?? [];
+						const updateAllEscalations = (next: typeof escalations) => {
+							field.onChange(configs.map((c) => ({ ...c, escalations: next })));
+						};
+						return (
+							<ConfigBox
+								title={t("pages.createMonitor.form.escalations.title")}
+								subtitle={t("pages.createMonitor.form.escalations.description")}
+								rightContent={
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<TextField
+											type="number"
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.delay.label"
+											)}
+											value={pendingEscalationDelay}
+											onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+												setPendingEscalationDelay(Math.max(1, Number(e.target.value)))
+											}
+											inputProps={{ min: 1 }}
+										/>
+										<Autocomplete
+											key={escalations.length}
+											options={notificationOptions}
+											value={null}
+											getOptionLabel={(option) => option.name}
+											onChange={(
+												_: unknown,
+												newValue: (typeof notificationOptions)[number] | null
+											) => {
+												if (!newValue) return;
+												updateAllEscalations([
+													...escalations,
+													{ delayMinutes: pendingEscalationDelay, channelId: newValue.id },
+												]);
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalations.option.channel.label"
+											)}
+										/>
+										{escalations.map((esc, escIndex) => {
+											const channel = notificationOptions.find(
+												(n) => n.id === esc.channelId
+											);
+											return (
+												<Stack
+													key={escIndex}
+													direction="row"
+													alignItems="center"
+													justifyContent="space-between"
+												>
+													<Typography>
+														{channel?.notificationName ?? esc.channelId}
+														{" — "}
+														{esc.delayMinutes}
+														{t("pages.createMonitor.form.escalations.minuteSuffix")}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() =>
+															updateAllEscalations(
+																escalations.filter((_, i) => i !== escIndex)
+															)
+														}
+														aria-label={t(
+															"pages.createMonitor.form.escalations.option.remove.ariaLabel"
+														)}
+													>
+														<Trash2 size={16} />
+													</IconButton>
+												</Stack>
+											);
+										})}
+									</Stack>
+								}
+							/>
+						);
+					}}
+				/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

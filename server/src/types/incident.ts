@@ -3,6 +3,11 @@
 export const IncidentResolutionTypes = ["automatic", "manual", null] as const;
 export type IncidentResolutionType = (typeof IncidentResolutionTypes)[number];
 
+export interface EscalationFiredRecord {
+	channelId: string;
+	firedAt: string;
+}
+
 export interface Incident {
 	id: string;
 	monitorId: string;
@@ -16,6 +21,7 @@ export interface Incident {
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;
+	escalationsFired: EscalationFiredRecord[];
 	createdAt: string;
 	updatedAt: string;
 }
