@@ -62,6 +62,14 @@ export class EmailService implements IEmailService {
 		return EmailService.SERVICE_NAME;
 	}
 
+	private normalizeString = (value?: string) => {
+		if (typeof value !== "string") {
+			return undefined;
+		}
+		const normalized = value.trim();
+		return normalized.length > 0 ? normalized : undefined;
+	};
+
 	init = () => {
 		this.loadTemplate = (templateName) => {
 			try {
@@ -128,22 +136,52 @@ export class EmailService implements IEmailService {
 			systemEmailRejectUnauthorized,
 		} = config;
 
+		const normalizedHost = this.normalizeString(systemEmailHost);
+		const normalizedFromAddress = this.normalizeString(systemEmailAddress);
+		const normalizedAuthUser = this.normalizeString(systemEmailUser) || normalizedFromAddress;
+		const normalizedPassword = this.normalizeString(systemEmailPassword);
+		const normalizedConnectionHost = this.normalizeString(systemEmailConnectionHost);
+		const normalizedTlsServername = this.normalizeString(systemEmailTLSServername);
+
+		const missingFields = [
+			!normalizedHost ? "systemEmailHost" : null,
+			typeof systemEmailPort !== "number" ? "systemEmailPort" : null,
+			!normalizedFromAddress ? "systemEmailAddress" : null,
+			!normalizedPassword ? "systemEmailPassword" : null,
+		].filter((field): field is string => field !== null);
+
+		if (missingFields.length > 0) {
+			this.logger.warn({
+				message: `Email transport is missing required settings: ${missingFields.join(", ")}. To configure, set SMTP settings in system settings.`,
+				service: SERVICE_NAME,
+				method: "sendEmail",
+				details: {
+					hasHost: Boolean(normalizedHost),
+					hasPort: typeof systemEmailPort === "number",
+					hasFromAddress: Boolean(normalizedFromAddress),
+					hasAuthUser: Boolean(normalizedAuthUser),
+					hasPassword: Boolean(normalizedPassword),
+				},
+			});
+			return false;
+		}
+
 		const emailConfig = {
-			host: systemEmailHost,
+			host: normalizedHost,
 			port: Number(systemEmailPort),
-			secure: systemEmailSecure,
+			secure: Boolean(systemEmailSecure),
 			auth: {
-				user: systemEmailUser || systemEmailAddress,
-				pass: systemEmailPassword,
+				user: normalizedAuthUser,
+				pass: normalizedPassword,
 			},
-			name: systemEmailConnectionHost || "localhost",
+			name: normalizedConnectionHost || "localhost",
 			connectionTimeout: 5000,
-			pool: systemEmailPool,
+			pool: Boolean(systemEmailPool),
 			tls: {
-				rejectUnauthorized: systemEmailRejectUnauthorized,
-				ignoreTLS: systemEmailIgnoreTLS,
-				requireTLS: systemEmailRequireTLS,
-				servername: systemEmailTLSServername,
+				rejectUnauthorized: systemEmailRejectUnauthorized ?? true,
+				ignoreTLS: Boolean(systemEmailIgnoreTLS),
+				requireTLS: Boolean(systemEmailRequireTLS),
+				servername: normalizedTlsServername || normalizedHost,
 			},
 		};
 		this.transporter = this.nodemailer.createTransport(emailConfig);
@@ -152,9 +190,21 @@ export class EmailService implements IEmailService {
 			await this.transporter.verify();
 		} catch (error: unknown) {
 			this.logger.warn({
-				message: "Email transporter verification failed",
+				message: `Email transporter verification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
+				details: {
+					host: normalizedHost,
+					port: Number(systemEmailPort),
+					secure: Boolean(systemEmailSecure),
+					from: normalizedFromAddress,
+					authUser: normalizedAuthUser,
+					pool: Boolean(systemEmailPool),
+					ignoreTLS: Boolean(systemEmailIgnoreTLS),
+					requireTLS: Boolean(systemEmailRequireTLS),
+					rejectUnauthorized: systemEmailRejectUnauthorized ?? true,
+					tlsServername: normalizedTlsServername || normalizedHost,
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
@@ -163,16 +213,23 @@ export class EmailService implements IEmailService {
 		try {
 			const info = await this.transporter.sendMail({
 				to: to,
-				from: systemEmailAddress,
+				from: normalizedFromAddress,
 				subject: subject,
 				html: html,
 			});
 			return info?.messageId;
 		} catch (error: unknown) {
 			this.logger.error({
-				message: error instanceof Error ? error.message : "Unknown error",
+				message: `Failed to send email: ${error instanceof Error ? error.message : "Unknown error"}`,
 				service: SERVICE_NAME,
 				method: "sendEmail",
+				details: {
+					to,
+					from: normalizedFromAddress,
+					subject,
+					host: normalizedHost,
+					port: Number(systemEmailPort),
+				},
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 		}

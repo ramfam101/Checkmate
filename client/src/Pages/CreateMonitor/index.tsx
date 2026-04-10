@@ -1044,6 +1044,78 @@ const CreateMonitorPage = () => {
 				/>
 			)}
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.escalationRules.description")}
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const rules = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Stack spacing={theme.spacing(SPACING.MD)}>
+										{rules.map((rule, index) => (
+											<Stack
+												direction="row"
+												alignItems="center"
+												key={index}
+												spacing={theme.spacing(SPACING.MD)}
+											>
+												<TextField
+													type="number"
+													value={rule.delayMinutes}
+													onChange={(e) => {
+														const newRules = [...rules];
+														newRules[index].delayMinutes = Math.max(
+															1,
+															parseInt(e.target.value) || 1
+														);
+														field.onChange(newRules);
+													}}
+													placeholder={t(
+														"pages.createMonitor.form.escalationRules.option.delayMinutes.placeholder"
+													)}
+													inputProps={{ min: 1 }}
+													sx={{ width: "100px" }}
+												/>
+												<Typography variant="body2">
+													{t("pages.createMonitor.form.escalationRules.option.minutes")}
+												</Typography>
+												<IconButton
+													size="small"
+													onClick={() => {
+														field.onChange(
+															rules.filter((_, i) => i !== index)
+														);
+													}}
+													aria-label="Remove escalation rule"
+												>
+													<Trash2 size={16} />
+												</IconButton>
+												{index < rules.length - 1 && <Divider />}
+											</Stack>
+										))}
+									</Stack>
+									<Button
+										variant="outlined"
+										onClick={() => {
+											field.onChange([
+												...rules,
+												{ delayMinutes: 5 },
+											]);
+										}}
+									>
+										{t("pages.createMonitor.form.escalationRules.option.addRule")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			<Stack
 				direction="row"
 				justifyContent="flex-end"

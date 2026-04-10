@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -26,21 +27,41 @@ export const createApp = ({
 	frontendPath: string;
 	openApiSpec: JsonObject;
 }) => {
-	const allowedOrigin = envSettings.clientHost;
+	const allowedOrigins = new Set<string>([envSettings.clientHost]);
+	const frontendIndexPath = path.join(frontendPath, "index.html");
+	const hasFrontendBuild = fs.existsSync(frontendIndexPath);
+	try {
+		const clientHostUrl = new URL(envSettings.clientHost);
+		if (envSettings.nodeEnv === "development") {
+			const port = clientHostUrl.port ? `:${clientHostUrl.port}` : "";
+			allowedOrigins.add(`${clientHostUrl.protocol}//localhost${port}`);
+			allowedOrigins.add(`${clientHostUrl.protocol}//127.0.0.1${port}`);
+		}
+	} catch {
+		// If clientHost is malformed, env validation will already fail before runtime.
+	}
 	const app = express();
 
 	app.use(generalApiLimiter);
 
 	app.use(
 		cors({
-			origin: allowedOrigin,
+			origin: (origin, callback) => {
+				if (!origin || allowedOrigins.has(origin)) {
+					callback(null, true);
+					return;
+				}
+				callback(null, false);
+			},
 			methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
 			allowedHeaders: ["Content-Type", "Authorization", "Accept-Language"],
 			credentials: true,
 		})
 	);
 
-	app.use(express.static(frontendPath));
+	if (hasFrontendBuild) {
+		app.use(express.static(frontendPath));
+	}
 
 	app.use(express.json());
 	app.use(cookieParser());
@@ -102,7 +123,29 @@ export const createApp = ({
 
 	// FE routes
 	app.get("*", (req, res) => {
-		res.sendFile(path.join(frontendPath, "index.html"));
+		if (req.path.startsWith("/api/")) {
+			res.status(404).json({
+				status: 404,
+				msg: "Route not found",
+			});
+			return;
+		}
+
+		if (hasFrontendBuild) {
+			res.sendFile(frontendIndexPath);
+			return;
+		}
+
+		if (envSettings.nodeEnv === "development") {
+			const redirectUrl = new URL(req.originalUrl, envSettings.clientHost).toString();
+			res.redirect(302, redirectUrl);
+			return;
+		}
+
+		res.status(503).json({
+			status: 503,
+			msg: "Frontend build is not available on this server",
+		});
 	});
 	app.use(handleErrors);
 	return app;

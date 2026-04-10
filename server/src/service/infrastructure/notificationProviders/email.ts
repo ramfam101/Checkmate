@@ -36,16 +36,29 @@ export class EmailProvider implements INotificationProvider {
 			return false;
 		}
 
-		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
-		if (!messageId) {
-			this.logger.warn({
-				message: "Email test alert failed",
+		try {
+			const messageId = await this.emailService.sendEmail(notification.address, subject, html);
+			if (!messageId) {
+				this.logger.warn({
+					message: "Email test alert failed - no message ID returned",
+					service: SERVICE_NAME,
+					method: "sendTestAlert",
+				});
+				return false;
+			}
+			return true;
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			const errorStack = error instanceof Error ? error.stack : undefined;
+			this.logger.error({
+				message: "Email test alert threw error",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				details: { error: errorMessage },
+				stack: errorStack,
 			});
 			return false;
 		}
-		return true;
 	}
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
@@ -65,16 +78,29 @@ export class EmailProvider implements INotificationProvider {
 			return false;
 		}
 
-		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
-		if (!messageId) {
-			this.logger.warn({
-				message: "Email notification failed",
+		try {
+			const messageId = await this.emailService.sendEmail(notification.address, subject, html);
+			if (!messageId) {
+				this.logger.warn({
+					message: "Email notification failed - no message ID returned",
+					service: SERVICE_NAME,
+					method: "sendMessage",
+				});
+				return false;
+			}
+			return true;
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			const errorStack = error instanceof Error ? error.stack : undefined;
+			this.logger.error({
+				message: "Email notification threw error",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { error: errorMessage },
+				stack: errorStack,
 			});
 			return false;
 		}
-		return true;
 	}
 
 	private buildSubject(message: NotificationMessage): string {
