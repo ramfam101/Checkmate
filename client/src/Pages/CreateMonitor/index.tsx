@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -209,6 +209,7 @@ const CreateMonitorPage = () => {
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const escalationEnabled = useWatch({ control, name: "escalationEnabled" });
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
@@ -762,6 +763,71 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Settings"
+				subtitle="Configure escalation notifications for when monitors remain down"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack direction="row" alignItems="center" spacing={theme.spacing(SPACING.LG)}>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable Escalation</Typography>
+								</Stack>
+							)}
+						/>
+						{escalationEnabled && (
+							<>
+								<Controller
+									name="escalationDelay"
+									control={control}
+									render={({ field }) => (
+										<TextField
+											fieldLabel="Delay (minutes)"
+											type="number"
+											{...field}
+											value={field.value ?? 30}
+											onChange={(e) => field.onChange(Number(e.target.value))}
+											inputProps={{ min: 1, max: 1440 }}
+										/>
+									)}
+								/>
+								<Controller
+									name="escalationNotifications"
+									control={control}
+									render={({ field }) => {
+										const escalationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedEscalation = escalationOptions.filter((n) =>
+											(field.value ?? []).includes(n.id)
+										);
+										return (
+											<Autocomplete
+												multiple
+												options={escalationOptions}
+												value={selectedEscalation}
+												getOptionLabel={(option) => option.name}
+												onChange={(_: unknown, newValue: typeof escalationOptions) => {
+													field.onChange(newValue.map((n) => n.id));
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+											/>
+										);
+									}}
+								/>
+							</>
+						)}
+					</Stack>
 				}
 			/>
 

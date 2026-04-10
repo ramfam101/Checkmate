@@ -10,6 +10,7 @@ import {
 	IStatusService,
 	IncidentService,
 	type IGeoChecksService,
+	INotificationMessageBuilder,
 } from "@/service/index.js";
 import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
 import {
@@ -19,6 +20,7 @@ import {
 	IMonitorStatsRepository,
 	IChecksRepository,
 	IIncidentsRepository,
+	INotificationsRepository,
 	IGeoChecksRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
@@ -28,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationJob(): (monitorId: string, teamId: string) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -64,6 +67,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private checksRepository: IChecksRepository;
 	private incidentsRepository: IIncidentsRepository;
+	private notificationsRepository: INotificationsRepository;
+	private notificationMessageBuilder: INotificationMessageBuilder;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
 
@@ -82,6 +87,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		monitorStatsRepository: IMonitorStatsRepository,
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
+		notificationsRepository: INotificationsRepository,
+		notificationMessageBuilder: INotificationMessageBuilder,
 		geoChecksService: IGeoChecksService,
 		geoChecksRepository: IGeoChecksRepository
 	) {
@@ -99,6 +106,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.monitorStatsRepository = monitorStatsRepository;
 		this.checksRepository = checksRepository;
 		this.incidentsRepository = incidentsRepository;
+		this.notificationsRepository = notificationsRepository;
+		this.notificationMessageBuilder = notificationMessageBuilder;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
 	}
@@ -177,6 +186,21 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Schedule escalation if enabled and incident created
+				if (decision.shouldCreateIncident && statusChangeResult.monitor.escalationEnabled && statusChangeResult.monitor.escalationNotifications.length > 0) {
+					const delayMs = statusChangeResult.monitor.escalationDelay * 60 * 1000;
+					setTimeout(() => {
+						this.getEscalationJob()(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error running escalation for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					}, delayMs);
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -455,4 +479,47 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+
+	getEscalationJob = () => {
+		return async (monitorId: string, teamId: string) => {
+			try {
+				const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+				if (!monitor) {
+					this.logger.warn({
+						message: `Monitor ${monitorId} not found for escalation`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+					return;
+				}
+
+				// Check if escalation is enabled and monitor is still down
+				if (!monitor.escalationEnabled || monitor.status !== "down") {
+					return;
+				}
+
+				// Check if incident is still active
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+				if (!activeIncident) {
+					return;
+				}
+
+				// Send escalation notifications
+				await this.notificationsService.sendEscalationNotifications(monitor, monitor.escalationNotifications);
+
+				this.logger.info({
+					message: `Sent escalation notifications for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
 }
