@@ -9,7 +9,15 @@ import { getResponseTimeColor } from "@/Utils/MonitorUtils";
 import { useTheme } from "@mui/material/styles";
 import type { MonitorStatus } from "@/Types/Monitor";
 
-export const RadialAvgResponse = ({ avg, max, monitorStatus }: { avg: number; max: number; monitorStatus?: MonitorStatus }) => {
+export const RadialAvgResponse = ({
+	avg,
+	max,
+	monitorStatus,
+}: {
+	avg: number;
+	max: number;
+	monitorStatus?: MonitorStatus;
+}) => {
 	const { t } = useTranslation();
 	const theme = useTheme();
 	const chartData = [
