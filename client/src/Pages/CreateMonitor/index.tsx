@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -758,6 +758,98 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send additional notifications if the incident continues for a set amount of time."
+				rightContent={
+					<Controller
+						name="escalatedNotifications"
+						control={control}
+						render={({ field }) => {
+							const escalationRows = field.value ?? [];
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								id: n.id,
+								name: n.notificationName,
+							}));
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationRows.map((row, index) => (
+										<Stack
+											key={index}
+											direction={{ xs: "column", md: "row" }}
+											spacing={theme.spacing(LAYOUT.MD)}
+											alignItems={{ xs: "stretch", md: "center" }}
+										>
+											<Select
+												value={row.notificationId}
+												fieldLabel="Notification Channel"
+												onChange={(e) => {
+													const updatedRows = [...escalationRows];
+													updatedRows[index] = {
+														...updatedRows[index],
+														notificationId: e.target.value,
+													};
+													field.onChange(updatedRows);
+												}}
+											>
+												<MenuItem value="">Select a notification</MenuItem>
+												{notificationOptions.map((option) => (
+													<MenuItem key={option.id} value={option.id}>
+														{option.name}
+													</MenuItem>
+												))}
+											</Select>
+
+											<TextField
+												type="number"
+												fieldLabel="Delay (minutes)"
+												value={row.delayMinutes}
+												onChange={(e) => {
+													const updatedRows = [...escalationRows];
+													updatedRows[index] = {
+														...updatedRows[index],
+														delayMinutes:
+															e.target.value === "" ? 1 : Number(e.target.value),
+													};
+													field.onChange(updatedRows);
+												}}
+											/>
+
+											<IconButton
+												size="small"
+												onClick={() => {
+													const updatedRows = escalationRows.filter(
+														(_: unknown, rowIndex: number) => rowIndex !== index
+													);
+													field.onChange(updatedRows);
+												}}
+												aria-label="Remove escalation"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+
+									<Button
+										variant="outlined"
+										onClick={() => {
+											field.onChange([
+												...escalationRows,
+												{ notificationId: "", delayMinutes: 1 },
+											]);
+										}}
+										startIcon={<Plus size={16} />}
+									>
+										Add Escalation
+									</Button>
 								</Stack>
 							);
 						}}

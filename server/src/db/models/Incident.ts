@@ -54,6 +54,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			default: null,
 			index: true,
 		},
+		sentEscalations: {
+			type: [String],
+			default: [],
+		},
 		resolutionType: {
 			type: String,
 			enum: IncidentResolutionTypes,
