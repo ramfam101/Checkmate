@@ -278,6 +278,14 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: undefined,
 		},
+		escalationAfterMinutes: {
+			type: Number,
+			default: undefined,
+		},
+		escalationNotificationChannels: {
+			type: [String],
+			default: [],
+		},
 		notifications: [
 			{
 				type: Schema.Types.ObjectId,

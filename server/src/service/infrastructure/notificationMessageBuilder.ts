@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -75,6 +76,38 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 
 		// Default to monitor_up for any other case
 		return "monitor_up";
+	}
+
+	public buildEscalationMessage(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, clientHost: string): NotificationMessage {
+		const severity = this.determineSeverity("monitor_escalation");
+		const content = this.buildEscalationContent(monitor, monitorStatusResponse);
+
+		return {
+			type: "monitor_escalation",
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
+	private buildEscalationContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const content = this.buildMonitorDownContent(monitor, monitorStatusResponse);
+		return {
+			...content,
+			title: `Escalation: Monitor ${monitor.name} is still down.`,
+			summary: `Monitor "${monitor.name}" is still down after the configured escalation interval.`,
+		};
 	}
 
 	private determineSeverity(type: NotificationType): NotificationSeverity {

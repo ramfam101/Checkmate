@@ -543,6 +543,27 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation Rules",
+					"description": "If the monitor stays down for the specified time, notify additional channels.",
+					"option": {
+						"escalateAfter": {
+							"label": "Escalate after",
+							"placeholder": "0"
+						}
+					}
+				},
+				"escalationChannels": {
+					"title": "Escalation notification channels",
+					"description": "Choose where escalation alerts should be sent when an issue remains unresolved.",
+					"option": {
+						"channels": {
+							"label": "Escalation notification channels",
+							"placeholder": "Select channels",
+							"email": "Email"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

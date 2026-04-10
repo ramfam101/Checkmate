@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -129,6 +130,44 @@ export class NotificationsService implements INotificationsService {
 			});
 		}
 		// Return true if all notifications succeeded
+		return succeeded === notifications.length;
+	};
+
+	sendEscalationNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, notificationIds: string[]) => {
+		if (!notificationIds || notificationIds.length === 0) {
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (!notifications.length) {
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, monitorStatusResponse, clientHost);
+
+		const escalationDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "escalation",
+		};
+
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, escalationDecision, notificationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		const succeeded = outcomes.filter(Boolean).length;
+		const failed = outcomes.length - succeeded;
+		if (failed > 0) {
+			this.logger.warn({
+				message: `Escalation send completed with ${succeeded} success, ${failed} failure(s)`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotifications",
+			});
+		}
+
 		return succeeded === notifications.length;
 	};
 
