@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -66,6 +66,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationSentMap: Map<string, boolean> = new Map();
 
 	constructor(
 		logger: ILogger,
@@ -177,6 +178,59 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications
+				// Clear escalation tracking when monitor comes back up
+				if (statusChangeResult.monitor.status === "up") {
+					this.escalationSentMap.delete(monitorId);
+				} else if (
+					statusChangeResult.monitor.status === "down" &&
+					!statusChangeResult.statusChanged &&
+					statusChangeResult.monitor.escalationPolicy &&
+					statusChangeResult.monitor.escalationPolicy.escalationNotifications.length > 0
+				) {
+					// Monitor is down and no status change occurred - check for escalation
+					try {
+						const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+						if (activeIncident) {
+							const incidentStartTime = new Date(activeIncident.startTime).getTime();
+							const currentTime = Date.now();
+							const minutesElapsed = (currentTime - incidentStartTime) / (1000 * 60);
+							const escalateAfterMinutes = statusChangeResult.monitor.escalationPolicy.escalateAfterMinutes;
+
+							// Check if enough time has passed and we haven't already sent escalation for this incident
+							if (minutesElapsed >= escalateAfterMinutes && !this.escalationSentMap.has(monitorId)) {
+								this.logger.info({
+									message: `Escalation triggered for monitor ${monitorId}: ${minutesElapsed}m elapsed >= ${escalateAfterMinutes}m threshold`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+
+								// Send escalation notifications
+							const escalationMonitor = { ...statusChangeResult.monitor, notifications: statusChangeResult.monitor.escalationPolicy.escalationNotifications };
+							this.notificationsService.handleNotifications(escalationMonitor, status, { shouldCreateIncident: false, shouldResolveIncident: false, shouldSendNotification: true, incidentReason: null, notificationReason: "escalation" })
+								.catch((error: unknown) => {
+									this.logger.error({
+										message: `Error sending escalation notifications for job ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+										service: SERVICE_NAME,
+										method: "getMonitorJob",
+										stack: error instanceof Error ? error.stack : undefined,
+									});
+								});
+
+								// Mark escalation as sent for this monitor
+								this.escalationSentMap.set(monitorId, true);
+							}
+						}
+					} catch (error: unknown) {
+						this.logger.warn({
+							message: `Error checking escalation policy for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
