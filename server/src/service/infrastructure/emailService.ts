@@ -151,10 +151,18 @@ export class EmailService implements IEmailService {
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
+			const missingSavedSmtp = !systemEmailHost || !String(systemEmailHost).trim();
 			this.logger.warn({
 				message: "Email transporter verification failed",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
+				details: {
+					hasSavedHost: !missingSavedSmtp,
+					hasSavedPort: systemEmailPort != null && String(systemEmailPort).length > 0,
+				},
+				...(missingSavedSmtp && {
+					hint: "SMTP host is missing in saved app settings. The Settings test-email endpoint can succeed using unsaved form values, but monitor alerts use getDBSettings(). Save email settings in the admin UI.",
+				}),
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;

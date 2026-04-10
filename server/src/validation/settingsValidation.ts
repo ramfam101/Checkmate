@@ -15,6 +15,7 @@ export const updateAppSettingsBodyValidation = z
 		systemEmailHost: z.string().nullable().optional(),
 		systemEmailAddress: z.string().nullable().optional(),
 		systemEmailPassword: z.string().nullable().optional(),
+		systemEmailPasswordClear: z.boolean().optional(),
 		systemEmailUser: z.string().nullable().optional(),
 		systemEmailConnectionHost: z.string().nullable().optional(),
 		systemEmailTLSServername: z.string().nullable().optional(),

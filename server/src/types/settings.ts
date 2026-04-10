@@ -12,6 +12,11 @@ export type SettingsUpdate = {
 	[K in keyof Settings]?: Settings[K] | null;
 };
 
+/** PATCH body for app settings; `systemEmailPasswordClear` is request-only (not stored). */
+export type AppSettingsPatch = SettingsUpdate & {
+	systemEmailPasswordClear?: boolean;
+};
+
 export interface Settings {
 	id: string;
 	checkTTL: number;

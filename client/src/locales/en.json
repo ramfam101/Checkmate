@@ -543,6 +543,18 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalatedNotifications": {
+					"title": "Escalated Notifications",
+					"subtitle": "Configure notifications that trigger after a delay if the incident persists",
+					"description": "Add escalation steps that will send notifications after the specified delay if the monitor remains down",
+					"delay": {
+						"label": "Delay (minutes)"
+					},
+					"notifications": {
+						"label": "Notification channels"
+					},
+					"add": "Add escalation step"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -1101,6 +1113,7 @@
 					"description": "Configure the email settings for your system. This is used to send notifications and alerts.",
 					"descriptionTransport": "This builds an SMTP transport for NodeMailer",
 					"descriptionTransportLink": "See specifications here",
+					"alertsUseSavedSettings": "Send test email uses the values in this form. Monitor and incident emails use saved settings — click Save after configuring SMTP.",
 					"option": {
 						"host": {
 							"label": "Email host - Hostname or IP address to connect to",

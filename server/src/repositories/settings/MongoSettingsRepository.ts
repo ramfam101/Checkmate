@@ -1,6 +1,6 @@
 import mongoose, { type UpdateQuery } from "mongoose";
 import { ISettingsRepository } from "@/repositories/settings/ISettingsRepository.js";
-import type { Settings, SettingsUpdate } from "@/types/index.js";
+import type { AppSettingsPatch, Settings } from "@/types/index.js";
 import { AppSettingsModel, type AppSettingsDocument } from "@/db/models/index.js";
 
 class MongoSettingsRepository implements ISettingsRepository {
@@ -59,12 +59,26 @@ class MongoSettingsRepository implements ISettingsRepository {
 		return this.toEntity(settings);
 	};
 
-	update = async (settings: SettingsUpdate) => {
+	update = async (settings: AppSettingsPatch) => {
+		const { systemEmailPasswordClear, ...rest } = settings;
 		const $set: Record<string, unknown> = {};
 		const $unset: Record<string, string> = {};
 
+		if (systemEmailPasswordClear === true) {
+			$unset.systemEmailPassword = "";
+		}
+
+		const newPassword =
+			typeof rest.systemEmailPassword === "string" && rest.systemEmailPassword.length > 0 ? rest.systemEmailPassword : undefined;
+
 		// Iterate through settings and separate into $set and $unset
-		Object.entries(settings).forEach(([key, value]) => {
+		Object.entries(rest).forEach(([key, value]) => {
+			if (key === "systemEmailPassword") {
+				if (newPassword !== undefined) {
+					$set.systemEmailPassword = newPassword;
+				}
+				return;
+			}
 			if (value === undefined || value === null) {
 				$unset[key] = "";
 			} else {
@@ -77,15 +91,15 @@ class MongoSettingsRepository implements ISettingsRepository {
 			...(Object.keys($unset).length > 0 && { $unset }),
 		};
 
-		await AppSettingsModel.findOneAndUpdate({}, update, {
-			upsert: true,
-		});
-
 		const updatedSettings = await AppSettingsModel.findOneAndUpdate({}, update, {
 			upsert: true,
 			new: true,
 			projection: "-__v -_id -createdAt -updatedAt -singleton",
 		});
+
+		if (!updatedSettings) {
+			throw new Error("Failed to update app settings");
+		}
 
 		return this.toEntity(updatedSettings);
 	};

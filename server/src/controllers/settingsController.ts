@@ -41,7 +41,10 @@ class SettingsController implements ISettingsController {
 			returnSettings.pagespeedKeySet = true;
 			delete sanitizedSettings.pagespeedApiKey;
 		}
-		if (typeof sanitizedSettings.systemEmailPassword !== "undefined") {
+		if (
+			typeof sanitizedSettings.systemEmailPassword === "string" &&
+			sanitizedSettings.systemEmailPassword.length > 0
+		) {
 			returnSettings.emailPasswordSet = true;
 			delete sanitizedSettings.systemEmailPassword;
 		}

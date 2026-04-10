@@ -1,5 +1,5 @@
 import { ISettingsRepository } from "@/repositories/index.js";
-import { type DbType, Settings, SettingsUpdate } from "@/types/index.js";
+import { type AppSettingsPatch, type DbType, Settings } from "@/types/index.js";
 import { AppError } from "@/utils/AppError.js";
 import { ValidatedEnv } from "@/validation/envValidation.js";
 import type { StringValue } from "ms";
@@ -20,7 +20,7 @@ export interface ISettingsService {
 	loadSettings(): EnvConfig;
 	getSettings(): EnvConfig;
 	getDBSettings(): Promise<Settings>;
-	updateDbSettings(newSettings: SettingsUpdate): Promise<Settings>;
+	updateDbSettings(newSettings: AppSettingsPatch): Promise<Settings>;
 }
 
 export class SettingsService implements ISettingsService {
@@ -70,7 +70,7 @@ export class SettingsService implements ISettingsService {
 		return this.settingsRepository;
 	}
 
-	updateDbSettings = async (newSettings: SettingsUpdate) => {
+	updateDbSettings = async (newSettings: AppSettingsPatch) => {
 		return await this.getRepository().update(newSettings);
 	};
 

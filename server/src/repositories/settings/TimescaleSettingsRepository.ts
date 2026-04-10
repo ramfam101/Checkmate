@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { ISettingsRepository } from "./ISettingsRepository.js";
-import type { Settings, SettingsUpdate } from "@/types/settings.js";
+import type { AppSettingsPatch, Settings, SettingsUpdate } from "@/types/settings.js";
 
 interface SettingsRow {
 	id: string;
@@ -90,10 +90,21 @@ export class TimescaleSettingsRepository implements ISettingsRepository {
 		return this.toEntity(row);
 	};
 
-	update = async (settings: SettingsUpdate): Promise<Settings> => {
+	update = async (settings: AppSettingsPatch): Promise<Settings> => {
+		const { systemEmailPasswordClear, ...rest } = settings;
 		const sets: string[] = [];
 		const values: unknown[] = [];
 		let paramIndex = 1;
+
+		const newPassword =
+			typeof rest.systemEmailPassword === "string" && rest.systemEmailPassword.length > 0 ? rest.systemEmailPassword : undefined;
+
+		if (newPassword !== undefined) {
+			sets.push(`system_email_password = $${paramIndex++}`);
+			values.push(newPassword);
+		} else if (systemEmailPasswordClear === true) {
+			sets.push(`system_email_password = NULL`);
+		}
 
 		const fieldMap: [keyof SettingsUpdate, string][] = [
 			["checkTTL", "check_ttl"],
@@ -103,7 +114,6 @@ export class TimescaleSettingsRepository implements ISettingsRepository {
 			["systemEmailHost", "system_email_host"],
 			["systemEmailPort", "system_email_port"],
 			["systemEmailAddress", "system_email_address"],
-			["systemEmailPassword", "system_email_password"],
 			["systemEmailUser", "system_email_user"],
 			["systemEmailConnectionHost", "system_email_connection_host"],
 			["systemEmailTLSServername", "system_email_tls_servername"],
@@ -117,16 +127,15 @@ export class TimescaleSettingsRepository implements ISettingsRepository {
 		];
 
 		for (const [key, column] of fieldMap) {
-			if (key in settings) {
+			if (key in rest) {
 				sets.push(`${column} = $${paramIndex++}`);
-				// null means unset the field
-				values.push(settings[key] ?? null);
+				values.push(rest[key] ?? null);
 			}
 		}
 
 		// Handle globalThresholds
-		if ("globalThresholds" in settings) {
-			const thresholds = settings.globalThresholds;
+		if ("globalThresholds" in rest) {
+			const thresholds = rest.globalThresholds;
 			if (thresholds === null || thresholds === undefined) {
 				sets.push(`threshold_cpu_usage = NULL`);
 				sets.push(`threshold_memory_usage = NULL`);
@@ -167,7 +176,7 @@ export class TimescaleSettingsRepository implements ISettingsRepository {
 		const row = result.rows[0];
 		if (!row) {
 			// No row existed, create one
-			return this.create(settings as Partial<Settings>);
+			return this.create(rest as Partial<Settings>);
 		}
 		return this.toEntity(row);
 	};
