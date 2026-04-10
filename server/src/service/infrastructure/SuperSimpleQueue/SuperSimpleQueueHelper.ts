@@ -38,7 +38,8 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
+	requiresEscalation: boolean;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,13 +155,13 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				// Step 6. Send notifications (best effort, don't wait)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						this.logger.warn({
+							message: `Error sending notification for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -418,7 +419,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -428,6 +429,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			requiresEscalation: false,
 		};
 
 		if (!statusChanged) {
@@ -440,6 +442,12 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+
+			// Set incident start time and reset escalation trigger
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				incidentStartTime: new Date().toISOString(),
+				escalationTriggered: false,
+			});
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
@@ -451,6 +459,38 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+
+			// Reset escalation trigger on recovery
+			await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+				escalationTriggered: false,
+			});
+		}
+
+		// Check for escalation after status change logic
+		if (
+			monitor.status === "down" &&
+			monitor.incidentStartTime &&
+			!monitor.escalationTriggered &&
+			monitor.alertDelayMinutes &&
+			monitor.alertDelayMinutes > 0 &&
+			monitor.escalationChannels &&
+			monitor.escalationChannels.length > 0
+		) {
+			const incidentStartTime = new Date(monitor.incidentStartTime).getTime();
+			const currentTime = new Date().getTime();
+			const downtimeMs = currentTime - incidentStartTime;
+			const alertDelayMs = monitor.alertDelayMinutes * 60 * 1000;
+
+			if (downtimeMs > alertDelayMs) {
+				decision.requiresEscalation = true;
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "escalation";
+
+				// Mark escalation as triggered
+				await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+					escalationTriggered: true,
+				});
+			}
 		}
 
 		return decision;

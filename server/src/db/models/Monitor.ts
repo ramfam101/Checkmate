@@ -351,6 +351,23 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: 300000,
 		},
+		alertDelayMinutes: {
+			type: Number,
+			default: 0,
+		},
+		escalationChannels: [
+			{
+				type: Schema.Types.ObjectId,
+				ref: "Notification",
+			},
+		],
+		incidentStartTime: {
+			type: Date,
+		},
+		escalationTriggered: {
+			type: Boolean,
+			default: false,
+		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
 			default: [],

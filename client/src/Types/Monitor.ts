@@ -70,12 +70,16 @@ export interface Monitor {
 	tempAlertThreshold: number;
 	tempAlertCounter: number;
 	selectedDisks: string[];
+	alertDelayMinutes: number;
+	escalationChannels: string[];
+	escalationTriggered: boolean;
 	gameId?: string;
 	grpcServiceName?: string;
 	group: string | null;
 	geoCheckEnabled?: boolean;
 	geoCheckLocations?: GeoContinent[];
 	geoCheckInterval?: number;
+	incidentStartTime?: string;
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
