@@ -177,6 +177,43 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				//Step 8. Schedule escalation notification if monitor is down and escalation is configured
+				if (
+					decision.shouldCreateIncident &&
+					monitor.escalationChannels &&
+					monitor.escalationChannels.length > 0 &&
+					monitor.escalationDelayMinutes &&
+					monitor.escalationDelayMinutes > 0
+				) {
+					const delayMs = monitor.escalationDelayMinutes * 60 * 1000;
+					setTimeout(async () => {
+						try {
+							const currentMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+							if (currentMonitor.status === "down" || currentMonitor.status === "breached") {
+								await this.notificationsService.handleEscalationNotifications(currentMonitor, status, decision);
+								this.logger.info({
+									message: `Escalation notifications sent for monitor ${monitor.id} after ${monitor.escalationDelayMinutes} minutes`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+							} else {
+								this.logger.debug({
+									message: `Monitor ${monitor.id} recovered before escalation delay, skipping escalation`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+							}
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}, delayMs);
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
