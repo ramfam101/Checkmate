@@ -7,6 +7,16 @@ export const getMonitorByIdParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
 });
 
+const monitorNotificationEscalationSchema = z.object({
+	delayMinutes: z.number().min(1, "Delay must be at least 1 minute"),
+	channelId: z.string().min(1, "Escalation channel is required"),
+});
+
+const monitorNotificationConfigSchema = z.object({
+	channelId: z.string().min(1, "Notification channel is required"),
+	escalation: monitorNotificationEscalationSchema.optional(),
+});
+
 export const getMonitorByIdQueryValidation = z.object({
 	status: booleanCoercion.optional(),
 	sortOrder: z.enum(["asc", "desc"]).optional(),
@@ -66,7 +76,7 @@ export const createMonitorBodyValidation = z.object({
 	memoryAlertThreshold: z.number().optional(),
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
+	notifications: z.array(monitorNotificationConfigSchema).optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -88,7 +98,7 @@ export const editMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
-	notifications: z.array(z.string()).optional(),
+	notifications: z.array(monitorNotificationConfigSchema).optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -143,7 +153,7 @@ const importedMonitorSchema = z.object({
 	isActive: z.boolean().default(true),
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
-	notifications: z.array(z.string()).default([]),
+	notifications: z.array(monitorNotificationConfigSchema).default([]),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

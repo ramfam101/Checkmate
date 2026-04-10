@@ -142,7 +142,14 @@ class NotificationController implements INotificationController {
 			const teamId = requireTeamId(req.user?.teamId);
 
 			const monitor = await this.monitorsRepository.findById(validatedBody.monitorId, teamId);
-			const notifications = monitor.notifications || [];
+			const notifications = (monitor.notifications || [])
+				.map((notification) => {
+					if (typeof notification === "string") {
+						return notification;
+					}
+					return notification?.channelId;
+				})
+				.filter((id): id is string => Boolean(id));
 
 			if (notifications.length === 0) {
 				throw new AppError({ message: "No notifications", status: 400 });

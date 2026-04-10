@@ -108,8 +108,34 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = (monitor.notifications ?? [])
+			.map((notification) => {
+				if (typeof notification === "string") {
+					return notification;
+				}
+				return notification?.channelId;
+			})
+			.filter((id): id is string => Boolean(id));
+
+		if (notificationIds.length === 0) {
+			this.logger.warn({
+				message: `Monitor ${monitor.id} has no configured notification channels`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+			});
+			return false;
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: `No persisted notifications found for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+				details: { notificationIds },
+			});
+			return false;
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();

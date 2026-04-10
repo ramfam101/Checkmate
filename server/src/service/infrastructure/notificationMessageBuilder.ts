@@ -53,14 +53,30 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	}
 
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
-		// Down status has highest priority (critical)
-		if (monitor.status === "down") {
+		if (decision.notificationReason === "escalation") {
+			return "monitor_still_down";
+		}
+
+		// Use decision flags first so notification direction follows incident logic,
+		// even if monitor.status is stale for a short period.
+		if (decision.notificationReason === "status_change" && decision.shouldCreateIncident) {
 			return "monitor_down";
 		}
 
-		// Threshold breach (only if not down)
+		if (decision.notificationReason === "status_change" && decision.shouldResolveIncident) {
+			if (monitor.type === "hardware" && monitor.status === "up") {
+				return "threshold_resolved";
+			}
+			return "monitor_up";
+		}
+
 		if (decision.notificationReason === "threshold_breach") {
 			return "threshold_breach";
+		}
+
+		// Down status has highest priority (critical)
+		if (monitor.status === "down") {
+			return "monitor_down";
 		}
 
 		// Recovery from threshold breach (only for hardware monitors)
@@ -80,6 +96,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_still_down":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -97,6 +114,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_still_down":
+				return this.buildMonitorStillDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -119,6 +138,27 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		// Add error message if available
+		if (monitorStatusResponse.message) {
+			details.push(`Error: ${monitorStatusResponse.message}`);
+		}
+
+		return {
+			title,
+			summary,
+			details,
+			timestamp: new Date(),
+		};
+	}
+
+	private buildMonitorStillDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+		const title = `Monitor Still Down: ${monitor.name}`;
+		const summary = `Monitor "${monitor.name}" is still down and has not recovered.`;
+		const details = [`URL: ${monitor.url}`, `Status: Still down`, `Type: ${monitor.type}`];
+
+		if (monitorStatusResponse.code) {
+			details.push(`Response Code: ${monitorStatusResponse.code}`);
+		}
+
 		if (monitorStatusResponse.message) {
 			details.push(`Error: ${monitorStatusResponse.message}`);
 		}

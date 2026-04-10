@@ -7,11 +7,23 @@ interface UseMonitorFormOptions {
 	defaultType?: MonitorType;
 }
 
+const normalizeNotifications = (
+	notifications: Monitor["notifications"] | string[] | undefined
+) => {
+	return (notifications ?? []).map((notification) => {
+		if (typeof notification === "string") {
+			return { channelId: notification };
+		}
+
+		return notification;
+	});
+};
+
 const getBaseDefaults = (data?: Monitor | null) => ({
 	name: data?.name || "",
 	description: data?.description || "",
 	interval: data?.interval || 60000,
-	notifications: data?.notifications || [],
+	notifications: normalizeNotifications(data?.notifications),
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,

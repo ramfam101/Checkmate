@@ -1,6 +1,6 @@
 import { MonitorModel } from "@/db/models/index.js";
 import type { MonitorDocument, CheckSnapshotDocument } from "@/db/models/index.js";
-import type { Monitor, MonitorsSummary, CheckSnapshot } from "@/types/index.js";
+import type { Monitor, MonitorsSummary, CheckSnapshot, MonitorNotificationConfig } from "@/types/index.js";
 import mongoose, { type FilterQuery, type PipelineStage } from "mongoose";
 import type { IMonitorsRepository, TeamQueryConfig, SummaryConfig } from "./IMonitorsRepository.js";
 import { MongoBulkWriteError } from "mongodb";
@@ -294,6 +294,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
 		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany({ "notifications.channelId": notificationId }, { $pull: { notifications: { channelId: notificationId } } });
+		await MonitorModel.updateMany(
+			{ "notifications.escalation.channelId": notificationId },
+			{ $unset: { "notifications.$[notification].escalation": "" } },
+			{ arrayFilters: [{ "notification.escalation.channelId": notificationId }] }
+		);
 	};
 
 	updateNotifications = async (
@@ -303,10 +309,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		action: "add" | "remove" | "set"
 	): Promise<number> => {
 		let objectIds;
-		let notificationObjectIds;
 		try {
 			objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
-			notificationObjectIds = notificationIds.map((id) => new mongoose.Types.ObjectId(id));
 		} catch {
 			throw new AppError({ message: "One or more monitor or notification IDs are invalid", status: 400 });
 		}
@@ -315,13 +319,14 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		let update;
 		switch (action) {
 			case "add":
-				update = { $addToSet: { notifications: { $each: notificationObjectIds } } };
+				update = { $addToSet: { notifications: { $each: notificationIds.map((id) => ({ channelId: id })) } } };
 				break;
 			case "remove":
-				update = { $pull: { notifications: { $in: notificationObjectIds } } };
+				await MonitorModel.updateMany(filter, { $pull: { notifications: { $in: notificationIds } } });
+				update = { $pull: { notifications: { channelId: { $in: notificationIds } } } };
 				break;
 			case "set":
-				update = { $set: { notifications: notificationObjectIds } };
+				update = { $set: { notifications: notificationIds.map((id) => ({ channelId: id })) } };
 				break;
 			default:
 				throw new AppError({ message: `Invalid action: ${action}`, status: 400 });
@@ -350,7 +355,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const notificationConfigs = this.toNotificationConfigs(doc.notifications ?? []);
 
 		return {
 			id: toStringId(doc._id),
@@ -373,7 +378,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			isActive: doc.isActive,
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
+			notifications: notificationConfigs,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -409,7 +414,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const notificationConfigs = this.toNotificationConfigs(doc.notifications ?? []);
 
 		return {
 			id: toStringId(doc._id),
@@ -432,7 +437,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			isActive: doc.isActive,
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
+			notifications: notificationConfigs,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -483,9 +488,66 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 	};
 
+	private toNotificationConfigs = (notifications: unknown[]): MonitorNotificationConfig[] => {
+		const toStringId = (value: unknown): string => {
+			if (value instanceof mongoose.Types.ObjectId) {
+				return value.toString();
+			}
+			return value?.toString() ?? "";
+		};
+
+		return notifications
+			.map((notification): MonitorNotificationConfig | null => {
+				if (!notification) {
+					return null;
+				}
+
+				if (notification instanceof mongoose.Types.ObjectId || typeof notification === "string") {
+					return { channelId: toStringId(notification) };
+				}
+
+				if (typeof notification === "object" && "channelId" in notification) {
+					const config = notification as {
+						channelId?: unknown;
+						escalation?: { delayMinutes?: unknown; channelId?: unknown };
+					};
+
+					const channelId = toStringId(config.channelId);
+					if (!channelId) {
+						return null;
+					}
+
+					const escalation =
+						config.escalation?.channelId && typeof config.escalation.delayMinutes === "number"
+							? {
+									delayMinutes: config.escalation.delayMinutes,
+									channelId: toStringId(config.escalation.channelId),
+								}
+							: undefined;
+
+					return {
+						channelId,
+						escalation,
+					};
+				}
+
+				return null;
+			})
+			.filter((notification): notification is MonitorNotificationConfig => Boolean(notification));
+	};
+
 	deleteByTeamIdsNotIn = async (teamIds: string[]): Promise<number> => {
-		const objectIds = teamIds.map((id) => new mongoose.Types.ObjectId(id));
-		const result = await MonitorModel.deleteMany({ teamId: { $nin: objectIds } });
+		const objectIds = teamIds.filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id));
+		if (objectIds.length === 0) {
+			return 0;
+		}
+
+		const result = await MonitorModel.deleteMany({
+			teamId: {
+				$type: "objectId",
+				$nin: objectIds,
+			},
+		});
 		return result.deletedCount ?? 0;
 	};
 

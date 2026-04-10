@@ -50,6 +50,11 @@ export class EmailProvider implements INotificationProvider {
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
 		if (!notification.address) {
+			this.logger.warn({
+				message: "Missing address",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+			});
 			return false;
 		}
 
@@ -85,6 +90,8 @@ export class EmailProvider implements INotificationProvider {
 				return `Monitor ${message.monitor.name} is back up`;
 			case "threshold_breach":
 				return `Monitor ${message.monitor.name} threshold exceeded`;
+			case "monitor_still_down":
+				return `Monitor ${message.monitor.name} is still down`;
 			case "threshold_resolved":
 				return `Monitor ${message.monitor.name} thresholds resolved`;
 			default:
@@ -105,17 +112,43 @@ export class EmailProvider implements INotificationProvider {
 			details: message.content.details,
 			incidentUrl: message.content.incident?.url,
 		};
+		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
+		if (html) {
+			return html;
+		}
 
-		this.logger.info({
-			message: "[DEBUG] Building email from message",
+		this.logger.warn({
+			message: "Failed to build unified notification template, falling back to basic email",
 			service: SERVICE_NAME,
 			method: "buildEmailFromMessage",
-			details: { context },
+			details: { monitorName: message.monitor.name, type: message.type },
 		});
 
-		const html = await this.emailService.buildEmail("unifiedNotificationTemplate", context);
+		return this.buildFallbackEmailFromMessage(message);
+	}
 
-		return html;
+	private buildFallbackEmailFromMessage(message: NotificationMessage): string {
+		const details = (message.content.details ?? []).map((detail) => `<li>${detail}</li>`).join("");
+		const thresholdLines = (message.content.thresholds ?? [])
+			.map((threshold) => `<li>${threshold.metric}: ${threshold.formattedValue} (threshold: ${threshold.threshold}${threshold.unit})</li>`)
+			.join("");
+
+		return `
+			<html>
+				<body style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
+					<h2>${message.content.title}</h2>
+					<p>${message.content.summary}</p>
+					<ul>
+						<li><strong>Monitor:</strong> ${message.monitor.name}</li>
+						<li><strong>URL:</strong> ${message.monitor.url}</li>
+						<li><strong>Type:</strong> ${message.monitor.type}</li>
+						<li><strong>Status:</strong> ${message.monitor.status}</li>
+					</ul>
+					${thresholdLines ? `<h3>Threshold Breaches</h3><ul>${thresholdLines}</ul>` : ""}
+					${details ? `<h3>Additional Details</h3><ul>${details}</ul>` : ""}
+				</body>
+			</html>
+		`;
 	}
 
 	private getColorForSeverity(severity: string): string {

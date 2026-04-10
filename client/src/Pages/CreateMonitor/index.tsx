@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
@@ -705,13 +705,13 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
 							}));
+							const notificationConfigs = field.value ?? [];
 							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+								notificationConfigs.some((config) => config.channelId === n.id)
 							);
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
@@ -721,7 +721,15 @@ const CreateMonitorPage = () => {
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+											field.onChange(
+												newValue.map((notification) => {
+													return (
+														notificationConfigs.find(
+															(config) => config.channelId === notification.id
+														) ?? { channelId: notification.id }
+													);
+												})
+											);
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
@@ -744,8 +752,8 @@ const CreateMonitorPage = () => {
 														size="small"
 														onClick={() => {
 															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
+																notificationConfigs.filter(
+																	(item) => item.channelId !== notification.id
 																)
 															);
 														}}
@@ -758,6 +766,133 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="notifications"
+						control={control}
+						render={({ field }): JSX.Element => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const notificationConfigs = field.value ?? [];
+							const selectedNotifications = notificationOptions.filter((n) =>
+								notificationConfigs.some((config) => config.channelId === n.id)
+							);
+
+							if (selectedNotifications.length === 0) {
+								return <Fragment />;
+							}
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{selectedNotifications.map((notification) => {
+										const config = notificationConfigs.find(
+											(item) => item.channelId === notification.id
+										) ?? {
+											channelId: notification.id,
+										};
+										const escalationOptions = notificationOptions;
+
+										return (
+											<Stack
+												key={notification.id}
+												spacing={theme.spacing(LAYOUT.SM)}
+												sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}
+											>
+												<Typography fontWeight={600}>
+													{notification.notificationName}
+												</Typography>
+												<Select
+													value={config.escalation?.channelId ?? ""}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.option.notifications.label"
+													)}
+													onChange={(event) => {
+														const escalationChannelId = String(event.target.value || "");
+														field.onChange(
+															notificationConfigs.map((item) => {
+																if (item.channelId !== notification.id) {
+																	return item;
+																}
+
+																if (!escalationChannelId) {
+																	return { channelId: item.channelId };
+																}
+
+																return {
+																	channelId: item.channelId,
+																	escalation: {
+																		channelId: escalationChannelId,
+																		delayMinutes: item.escalation?.delayMinutes ?? 30,
+																	},
+																};
+															})
+														);
+													}}
+												>
+													<MenuItem value="">
+														{t(
+															"pages.createMonitor.form.escalation.option.notifications.placeholder"
+														)}
+													</MenuItem>
+													{escalationOptions.map((option) => (
+														<MenuItem
+															key={option.id}
+															value={option.id}
+														>
+															{option.notificationName}
+														</MenuItem>
+													))}
+												</Select>
+												<TextField
+													value={config.escalation?.delayMinutes ?? 30}
+													onChange={(event) => {
+														const delayMinutes = Math.max(
+															1,
+															Number(event.target.value || 1)
+														);
+														field.onChange(
+															notificationConfigs.map((item) => {
+																if (item.channelId !== notification.id) {
+																	return item;
+																}
+
+																const escalationChannelId =
+																	item.escalation?.channelId ?? notification.id;
+
+																return {
+																	channelId: item.channelId,
+																	escalation: {
+																		channelId: escalationChannelId,
+																		delayMinutes,
+																	},
+																};
+															})
+														);
+													}}
+													type="number"
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.option.delay.label"
+													)}
+													placeholder={t(
+														"pages.createMonitor.form.escalation.option.delay.placeholder"
+													)}
+													fullWidth
+												/>
+											</Stack>
+										);
+									})}
 								</Stack>
 							);
 						}}

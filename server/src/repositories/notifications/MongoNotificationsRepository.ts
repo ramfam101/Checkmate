@@ -57,7 +57,11 @@ class MongoNotificationsRepository implements INotificationsRepository {
 	};
 
 	findNotificationsByIds = async (ids: string[]) => {
-		const mongoIds = ids.map((id) => new mongoose.Types.ObjectId(id));
+		const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+		if (!validIds.length) {
+			return [];
+		}
+		const mongoIds = validIds.map((id) => new mongoose.Types.ObjectId(id));
 		const documents = await NotificationModel.find({ _id: { $in: mongoIds } });
 		return this.mapDocuments(documents);
 	};
