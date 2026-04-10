@@ -157,7 +157,7 @@ export class MatrixProvider implements INotificationProvider {
 
 		// Incident link (if incident exists)
 		if (message.content.incident) {
-			const incidentUrl = `${message.clientHost}/infrastructure/${message.monitor.id}`;
+			const incidentUrl = message.content.incident.url;
 			plainLines.push("");
 			plainLines.push(`View Incident: ${incidentUrl}`);
 			htmlLines.push(`<p><a href="${this.escapeHtml(incidentUrl)}">View Incident</a></p>`);

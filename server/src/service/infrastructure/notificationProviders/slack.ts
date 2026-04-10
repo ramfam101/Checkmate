@@ -166,7 +166,7 @@ export class SlackProvider implements INotificationProvider {
 							text: "View Incident",
 							emoji: true,
 						},
-						url: `${message.clientHost}/infrastructure/${message.monitor.id}`,
+						url: message.content.incident.url,
 						style: "primary",
 					},
 				],

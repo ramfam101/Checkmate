@@ -7,6 +7,7 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 	resolvedBy?: Types.ObjectId | null;
 	startTime: Date;
 	endTime: Date | null;
+	escalatedAt?: Date | null;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -70,6 +71,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 		},
 		comment: {
 			type: String,
+			default: null,
+		},
+		escalatedAt: {
+			type: Date,
 			default: null,
 		},
 	},

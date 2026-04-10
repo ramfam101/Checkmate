@@ -259,7 +259,7 @@ export class TeamsProvider implements INotificationProvider {
 			actions.push({
 				type: "Action.OpenUrl",
 				title: "View Incident",
-				url: `${message.clientHost}/incidents/${message.content.incident.id}`,
+				url: message.content.incident.url,
 			});
 		}
 

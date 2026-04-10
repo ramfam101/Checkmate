@@ -16,6 +16,7 @@ export interface Incident {
 	resolvedBy?: string | null;
 	resolvedByEmail?: string | null;
 	comment?: string | null;
+	escalatedAt?: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -36,6 +37,7 @@ export interface IncidentSummaryItem {
 	resolutionType: IncidentResolutionType;
 	message: string | null;
 	statusCode: number | null;
+	escalatedAt?: string | null;
 	createdAt: string;
 }
 
