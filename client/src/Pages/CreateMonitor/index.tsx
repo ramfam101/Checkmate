@@ -32,14 +32,12 @@ import {
 import { SPACING, LAYOUT } from "@/Utils/Theme/constants";
 import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
 import { useMonitorForm } from "@/Hooks/useMonitorForm";
-import {
-	type Monitor,
-	type MonitorType,
-	type GamesMap,
-	supportsGeoCheck,
-} from "@/Types/Monitor";
+import type { Monitor, MonitorType, GamesMap } from "@/Types/Monitor";
+import { supportsGeoCheck } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -705,14 +703,16 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
 							const notificationOptions = (notifications ?? []).map((n) => ({
 								...n,
 								name: n.notificationName,
 							}));
+
+							const selectedIds = (field.value ?? []).map((n) => n.channelId);
 							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
+								selectedIds.includes(n.id)
 							);
+
 							return (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Autocomplete
@@ -721,41 +721,146 @@ const CreateMonitorPage = () => {
 										value={selectedNotifications}
 										getOptionLabel={(option) => option.name}
 										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
+											const previousConfigs = field.value ?? [];
+
+											const nextConfigs = newValue.map((notification) => {
+												const existing = previousConfigs.find(
+													(config) => config.channelId === notification.id
+												);
+
+												return (
+													existing ?? {
+														channelId: notification.id,
+													}
+												);
+											});
+
+											field.onChange(nextConfigs);
 										}}
 										isOptionEqualToValue={(option, value) => option.id === value.id}
 									/>
+
 									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
-											{selectedNotifications.map((notification, index) => (
-												<Stack
-													direction="row"
-													alignItems="center"
-													key={notification.id}
-													width="100%"
-												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
-													<IconButton
-														size="small"
-														onClick={() => {
-															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
+										<Stack spacing={2}>
+											{selectedNotifications.map((notification) => {
+												const currentConfig = (field.value ?? []).find(
+													(config) => config.channelId === notification.id
+												);
+
+												const escalationEnabled = Boolean(currentConfig?.escalation);
+
+												return (
+													<Stack
+														key={notification.id}
+														spacing={1.5}
+														sx={{
+															border: "1px solid",
+															borderColor: "divider",
+															borderRadius: 2,
+															p: 2,
 														}}
-														aria-label="Remove notification"
 													>
-														<Trash2 size={16} />
-													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
-												</Stack>
-											))}
+														<Typography fontWeight={600}>
+															{notification.notificationName}
+														</Typography>
+
+														<FormControlLabel
+															control={
+																<Checkbox
+																	checked={escalationEnabled}
+																	onChange={(e) => {
+																		const checked = e.target.checked;
+
+																		const updated = (field.value ?? []).map((config) => {
+																			if (config.channelId !== notification.id)
+																				return config;
+
+																			return {
+																				...config,
+																				escalation: checked
+																					? {
+																							delayMinutes: 15,
+																							channelId: "",
+																						}
+																					: undefined,
+																			};
+																		});
+
+																		field.onChange(updated);
+																	}}
+																/>
+															}
+															label="Enable escalation"
+														/>
+
+														{escalationEnabled && (
+															<Stack spacing={1.5}>
+																<TextField
+																	fieldLabel="Escalate after (minutes)"
+																	type="number"
+																	value={currentConfig?.escalation?.delayMinutes ?? 15}
+																	onChange={(e) => {
+																		const value = Number(e.target.value);
+
+																		const updated = (field.value ?? []).map((config) => {
+																			if (config.channelId !== notification.id)
+																				return config;
+
+																			return {
+																				...config,
+																				escalation: {
+																					delayMinutes: value,
+																					channelId: config.escalation?.channelId ?? "",
+																				},
+																			};
+																		});
+
+																		field.onChange(updated);
+																	}}
+																/>
+
+																<Autocomplete
+																	options={notificationOptions.filter(
+																		(n) => n.id !== notification.id
+																	)}
+																	value={
+																		notificationOptions.find(
+																			(n) => n.id === currentConfig?.escalation?.channelId
+																		) ?? null
+																	}
+																	getOptionLabel={(option) => option.name}
+																	onChange={(_: unknown, newValue: any) => {
+																		const updated = (field.value ?? []).map((config) => {
+																			if (config.channelId !== notification.id)
+																				return config;
+
+																			return {
+																				...config,
+																				escalation: {
+																					delayMinutes:
+																						config.escalation?.delayMinutes ?? 15,
+																					channelId: newValue?.id ?? "",
+																				},
+																			};
+																		});
+
+																		field.onChange(updated);
+																	}}
+																	renderInput={(params) => (
+																		<TextField
+																			{...params}
+																			fieldLabel="Escalation channel"
+																		/>
+																	)}
+																	isOptionEqualToValue={(option, value) =>
+																		option.id === value.id
+																	}
+																/>
+															</Stack>
+														)}
+													</Stack>
+												);
+											})}
 										</Stack>
 									)}
 								</Stack>

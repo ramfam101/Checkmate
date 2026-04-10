@@ -11,7 +11,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -66,6 +66,67 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationTimers = new Map<string, NodeJS.Timeout[]>();
+
+	private clearEscalationTimers(monitorId: string) {
+		const timers = this.escalationTimers.get(monitorId) ?? [];
+		for (const timer of timers) {
+			clearTimeout(timer);
+		}
+
+		this.escalationTimers.delete(monitorId);
+	}
+
+	private scheduleEscalations(monitor: Monitor, status: MonitorStatusResponse, decision: MonitorActionDecision) {
+		this.clearEscalationTimers(monitor.id);
+
+		const timers: NodeJS.Timeout[] = [];
+
+		for (const notificationConfig of monitor.notifications ?? []) {
+			const escalation = notificationConfig.escalation;
+
+			if (!escalation?.channelId || escalation.delayMinutes <= 0) {
+				continue;
+			}
+
+			const timer = setTimeout(
+				async () => {
+					try {
+						const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+						if (!activeIncident || activeIncident.status === false) {
+							return;
+						}
+
+						const escalationMonitor: Monitor = {
+							...monitor,
+							notifications: [
+								{
+									channelId: escalation.channelId,
+								},
+							],
+						};
+
+						await this.notificationsService.handleNotifications(escalationMonitor, status, decision);
+					} catch (error: unknown) {
+						this.logger.error({
+							message: `Failed to send escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "scheduleEscalations",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				},
+				escalation.delayMinutes * 60 * 10000
+			);
+
+			timers.push(timer);
+		}
+
+		if (timers.length > 0) {
+			this.escalationTimers.set(monitor.id, timers);
+		}
+	}
 
 	constructor(
 		logger: ILogger,
@@ -166,6 +227,14 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				if (decision.shouldCreateIncident) {
+					this.scheduleEscalations(statusChangeResult.monitor, status, decision);
+				}
+
+				if (decision.shouldResolveIncident || statusChangeResult.monitor.status === "up") {
+					this.clearEscalationTimers(statusChangeResult.monitor.id);
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
