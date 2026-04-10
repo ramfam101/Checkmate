@@ -28,6 +28,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationCheckJob(): () => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -37,6 +38,9 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldScheduleEscalation: boolean;
+	shouldSendEscalation: boolean;
+	shouldCancelEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -172,6 +176,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalation (best effort, don't wait)
+				this.handleEscalation(statusChangeResult.monitor, decision).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error handling escalation for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -426,11 +440,17 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldScheduleEscalation: false,
+			shouldSendEscalation: false,
+			shouldCancelEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
 
 		if (!statusChanged) {
+			if (monitor.escalationEnabled && !monitor.escalationScheduledAt && (monitor.status === "down" || monitor.status === "breached")) {
+				decision.shouldScheduleEscalation = true;
+			}
 			return decision;
 		}
 
@@ -440,19 +460,162 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
+
+			// Start or restart the escalation reminder cycle for this outage
+			if (monitor.escalationEnabled) {
+				decision.shouldScheduleEscalation = true;
+			}
 		} else if (monitor.status === "breached") {
 			// Hardware monitor exceeded thresholds
 			decision.shouldCreateIncident = true;
 			decision.shouldSendNotification = true;
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
+
+			// Start or restart the escalation reminder cycle for this outage
+			if (monitor.escalationEnabled) {
+				decision.shouldScheduleEscalation = true;
+			}
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
 			// Monitor recovered from down or breached state
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+
+			// Cancel any pending or repeating escalation reminders
+			if (monitor.escalationScheduledAt || monitor.escalationSentAt) {
+				decision.shouldCancelEscalation = true;
+			}
 		}
 
 		return decision;
 	}
+
+	private async handleEscalation(monitor: Monitor, decision: MonitorActionDecision): Promise<void> {
+		const monitorId = monitor.id;
+		const teamId = monitor.teamId;
+
+		try {
+			if (decision.shouldScheduleEscalation) {
+				// Schedule escalation
+				await this.monitorsRepository.updateById(monitorId, teamId, {
+					escalationScheduledAt: new Date(),
+					escalationSentAt: null, // Reset sent status
+				});
+				this.logger.debug({
+					message: `Scheduled escalation for monitor ${monitorId} in ${monitor.escalationDelayMinutes} minutes`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			} else if (decision.shouldCancelEscalation) {
+				// Cancel escalation
+				await this.monitorsRepository.updateById(monitorId, teamId, {
+					escalationScheduledAt: null,
+					escalationSentAt: null,
+				});
+				this.logger.debug({
+					message: `Canceled escalation for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "handleEscalation",
+				});
+			}
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error handling escalation for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "handleEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			throw error;
+		}
+	}
+
+	getEscalationCheckJob = () => {
+		return async () => {
+			try {
+				this.logger.debug({
+					message: "Checking for pending escalations",
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+
+				const monitors = await this.monitorsRepository.findAll();
+				const monitorsNeedingEscalation = (monitors || []).filter(
+					(monitor) => monitor.escalationEnabled && !!monitor.escalationEmail && (monitor.status === "down" || monitor.status === "breached")
+				);
+
+				for (const monitor of monitorsNeedingEscalation) {
+					if (!monitor.escalationScheduledAt) {
+						await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+							escalationScheduledAt: new Date(),
+							escalationSentAt: null,
+						});
+						this.logger.debug({
+							message: `Scheduled escalation for monitor ${monitor.id} in ${monitor.escalationDelayMinutes || 30} minutes`,
+							service: SERVICE_NAME,
+							method: "getEscalationCheckJob",
+						});
+						continue;
+					}
+
+					const scheduledAt = new Date(monitor.escalationScheduledAt);
+					if (Number.isNaN(scheduledAt.getTime())) {
+						this.logger.warn({
+							message: `Invalid escalationScheduledAt for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "getEscalationCheckJob",
+						});
+						continue;
+					}
+
+					const escalationTime = new Date(scheduledAt.getTime() + (monitor.escalationDelayMinutes || 30) * 60 * 1000);
+
+					if (new Date() >= escalationTime) {
+						try {
+							const success = await this.notificationsService.sendEscalationNotification(monitor);
+							if (success) {
+								const sentAt = new Date();
+								await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+									escalationSentAt: sentAt,
+									escalationScheduledAt: sentAt,
+								});
+								this.logger.info({
+									message: `Sent recurring escalation notification for monitor ${monitor.id}`,
+									service: SERVICE_NAME,
+									method: "getEscalationCheckJob",
+								});
+							} else {
+								this.logger.warn({
+									message: `Escalation notification send returned false for monitor ${monitor.id}`,
+									service: SERVICE_NAME,
+									method: "getEscalationCheckJob",
+								});
+							}
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Failed to send escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getEscalationCheckJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}
+				}
+
+				this.logger.debug({
+					message: `Checked ${monitorsNeedingEscalation.length} monitors for escalations`,
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: `Error in escalation check job: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "getEscalationCheckJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				throw error;
+			}
+		};
+	};
 }

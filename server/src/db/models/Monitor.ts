@@ -355,6 +355,32 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: [checkSnapshotSchema],
 			default: [],
 		},
+		escalationEnabled: {
+			type: Boolean,
+			default: false,
+		},
+		escalationDelayMinutes: {
+			type: Number,
+			min: 1,
+			max: 1440, // 24 hours max
+		},
+		escalationEmail: {
+			type: String,
+			validate: {
+				validator: function (v: string) {
+					return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+				},
+				message: "Invalid email format",
+			},
+		},
+		escalationScheduledAt: {
+			type: Date,
+			default: null,
+		},
+		escalationSentAt: {
+			type: Date,
+			default: null,
+		},
 	},
 	{
 		timestamps: true,

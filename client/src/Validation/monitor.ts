@@ -11,7 +11,7 @@ const baseSchema = z.object({
 		.min(1, "Monitor name is required")
 		.max(50, "Monitor name must be at most 50 characters"),
 	description: z.string().optional(),
-	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
+	interval: z.number().min(60000, "Interval must be at least 1 minute"),
 	notifications: z.array(z.string()),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
@@ -26,6 +26,15 @@ const baseSchema = z.object({
 	geoCheckInterval: z
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
+		.optional(),
+	escalationEnabled: z.boolean().optional(),
+	escalationDelayMinutes: z
+		.number()
+		.min(1, "Delay must be at least 1 minute")
+		.max(1440, "Delay must be at most 24 hours")
+		.optional(),
+	escalationEmail: z
+		.union([z.string().email("Invalid email format"), z.literal("")])
 		.optional(),
 });
 

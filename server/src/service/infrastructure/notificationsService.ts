@@ -5,6 +5,7 @@ import { INotificationProvider } from "./notificationProviders/INotificationProv
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
 import { ILogger } from "@/utils/logger.js";
+import { AppError } from "@/utils/AppError.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 
 export interface INotificationsService {
@@ -14,7 +15,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	sendEscalationNotification: (monitor: Monitor) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -141,36 +142,123 @@ export class NotificationsService implements INotificationsService {
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
 
+	sendEscalationNotification = async (monitor: Monitor) => {
+		if (!monitor.escalationEnabled || !monitor.escalationEmail) {
+			this.logger.warn({
+				message: `Escalation not enabled or no email configured for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
+
+		try {
+			// Create escalation notification message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, clientHost);
+
+			// Create a temporary email notification object for escalation
+			const escalationNotification: Notification = {
+				id: `escalation-${monitor.id}`,
+				userId: monitor.userId || "",
+				teamId: monitor.teamId,
+				type: "email",
+				notificationName: `Escalation for ${monitor.name}`,
+				address: monitor.escalationEmail,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+
+			// Send escalation email using sendMessage method
+			const success = await this.emailProvider.sendMessage!(escalationNotification, escalationMessage);
+
+			if (success) {
+				this.logger.info({
+					message: `Escalation notification sent to ${monitor.escalationEmail} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			} else {
+				this.logger.error({
+					message: `Failed to send escalation notification to ${monitor.escalationEmail} for monitor ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "sendEscalationNotification",
+				});
+			}
+
+			return success;
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Error sending escalation notification for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
+	};
+
 	sendTestNotification = async (notification: Partial<Notification>) => {
+		let success = false;
+
 		switch (notification.type) {
 			case "email":
-				return await this.emailProvider.sendTestAlert(notification);
+				success = await this.emailProvider.sendTestAlert(notification);
+				break;
 			case "slack":
-				return await this.slackProvider.sendTestAlert(notification);
+				success = await this.slackProvider.sendTestAlert(notification);
+				break;
 			case "discord":
-				return await this.discordProvider.sendTestAlert(notification);
+				success = await this.discordProvider.sendTestAlert(notification);
+				break;
 			case "pager_duty":
-				return await this.pagerDutyProvider.sendTestAlert(notification);
+				success = await this.pagerDutyProvider.sendTestAlert(notification);
+				break;
 			case "matrix":
-				return await this.matrixProvider.sendTestAlert(notification);
+				success = await this.matrixProvider.sendTestAlert(notification);
+				break;
 			case "webhook":
-				return await this.webhookProvider.sendTestAlert(notification);
+				success = await this.webhookProvider.sendTestAlert(notification);
+				break;
 			case "teams":
-				return await this.teamsProvider.sendTestAlert(notification);
+				success = await this.teamsProvider.sendTestAlert(notification);
+				break;
 			default:
-				return false;
+				throw new AppError({
+					message: `Unsupported notification type: ${notification.type ?? "unknown"}`,
+					status: 400,
+					service: SERVICE_NAME,
+					method: "sendTestNotification",
+				});
 		}
+
+		if (!success) {
+			const providerHint =
+				notification.type === "email"
+					? "Check the SMTP host, username, password/App Password, and TLS settings in Email Settings."
+					: `Check the ${notification.type ?? "unknown"} notification configuration and server logs.`;
+
+			throw new AppError({
+				message: `Failed to send ${notification.type ?? "unknown"} test notification. ${providerHint}`,
+				status: 500,
+				service: SERVICE_NAME,
+				method: "sendTestNotification",
+			});
+		}
+
+		return true;
 	};
 
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
-		const tasks = notifications.map((notification) => this.sendTestNotification(notification));
-		const outcomes = await Promise.all(tasks);
-		const succeeded = outcomes.filter(Boolean).length;
-		const failed = outcomes.length - succeeded;
-		if (failed > 0) {
-			return false;
+		const outcomes = await Promise.allSettled(notifications.map((notification) => this.sendTestNotification(notification)));
+		const firstFailure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+
+		if (firstFailure) {
+			throw firstFailure.reason;
 		}
+
 		return true;
 	};
 

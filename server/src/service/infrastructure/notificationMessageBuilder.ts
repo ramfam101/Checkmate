@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -270,5 +271,41 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 
 		return breaches;
+	}
+
+	buildEscalationMessage(monitor: Monitor, clientHost: string): NotificationMessage {
+		const type: NotificationType = "monitor_down"; // Escalation is for ongoing down status
+		const severity: NotificationSeverity = "critical"; // Escalations are high priority
+
+		const content: NotificationContent = {
+			title: `ESCALATION: Monitor Still Down - ${monitor.name}`,
+			summary: `Monitor "${monitor.name}" has been down for more than ${monitor.escalationDelayMinutes || 30} minutes and requires immediate attention.`,
+			details: [
+				`URL: ${monitor.url}`,
+				`Status: ${monitor.status}`,
+				`Type: ${monitor.type}`,
+				`Escalation Delay: ${monitor.escalationDelayMinutes || 30} minutes`,
+				`Time Down: Monitor has been in a failed state`,
+			],
+			timestamp: new Date(),
+		};
+
+		return {
+			type,
+			severity,
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
 	}
 }
