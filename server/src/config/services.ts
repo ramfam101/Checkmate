@@ -60,6 +60,7 @@ import { PortProvider } from "@/service/infrastructure/network/PortProvider.js";
 import { GameProvider } from "@/service/infrastructure/network/GameProvider.js";
 import { GrpcProvider } from "@/service/infrastructure/network/GrpcProvider.js";
 import { WebSocketProvider } from "@/service/infrastructure/network/WebSocketProvider.js";
+import { EscalationService, type IEscalationService } from "@/service/infrastructure/escalationService.js";
 
 // Third-party
 import axios from "axios";
@@ -131,6 +132,7 @@ export type InitializedServices = {
 	notificationsService: INotificationsService;
 	statusPageService: IStatusPageService;
 	notificationMessageBuilder: INotificationMessageBuilder;
+	escalationService: IEscalationService;
 
 	// Repositories
 	monitorsRepository: IMonitorsRepository;
@@ -246,6 +248,14 @@ export const initializeServices = async ({
 		notificationMessageBuilder
 	);
 
+	const escalationService = new EscalationService(
+		incidentsRepository,
+		monitorsRepository,
+		notificationsRepository,
+		notificationsService,
+		logger
+	);
+
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
 		networkService,
@@ -262,7 +272,8 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		escalationService
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
@@ -328,6 +339,7 @@ export const initializeServices = async ({
 		notificationsService,
 		statusPageService,
 		notificationMessageBuilder,
+		escalationService,
 
 		// Repositories
 		monitorsRepository,

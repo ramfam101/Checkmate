@@ -80,7 +80,7 @@ export interface IMonitorService {
 	deleteAllMonitors(args: { teamId: string }): Promise<number>;
 
 	// notifications
-	updateNotifications(args: { teamId: string; monitorIds: string[]; notificationIds: string[]; action: "add" | "remove" | "set" }): Promise<number>;
+	updateNotifications(args: { teamId: string; monitorIds: string[]; notifications: import("@/types/monitor.js").NotificationConfig[]; action: "add" | "remove" | "set" }): Promise<number>;
 
 	// other
 	exportMonitorsToJSON(args: { teamId: string }): Promise<Monitor[]>;
@@ -445,15 +445,15 @@ export class MonitorService implements IMonitorService {
 	updateNotifications = async ({
 		teamId,
 		monitorIds,
-		notificationIds,
+		notifications,
 		action,
 	}: {
 		teamId: string;
 		monitorIds: string[];
-		notificationIds: string[];
+		notifications: import("@/types/monitor.js").NotificationConfig[];
 		action: "add" | "remove" | "set";
 	}): Promise<number> => {
-		const modifiedCount = await this.monitorsRepository.updateNotifications(teamId, monitorIds, notificationIds, action);
+		const modifiedCount = await this.monitorsRepository.updateNotifications(teamId, monitorIds, notifications, action);
 
 		// If notifications were updated, we should update the jobs in the queue
 		if (modifiedCount > 0) {

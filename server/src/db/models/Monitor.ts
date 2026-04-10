@@ -1,6 +1,7 @@
 import { Schema, model, Types } from "mongoose";
 import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
+import type { NotificationConfig } from "@/types/monitor.js";
 import type {
 	CheckAudits,
 	CheckCaptureInfo,
@@ -22,7 +23,7 @@ type MonitorDocumentBase = Omit<
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
-	notifications: Types.ObjectId[];
+	notifications: Array<{ notificationId: Types.ObjectId; escalations: Array<{ delayMinutes: number; channelId: Types.ObjectId }> }>;
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -173,6 +174,22 @@ const snapshotAuditsSchema = new Schema<CheckAudits>(
 	{ _id: false }
 );
 
+const escalationSchema = new Schema(
+	{
+		delayMinutes: { type: Number, required: true },
+		channelId: { type: Schema.Types.ObjectId, ref: "Notification", required: true },
+	},
+	{ _id: false }
+);
+
+const notificationConfigSchema = new Schema(
+	{
+		notificationId: { type: Schema.Types.ObjectId, ref: "Notification", required: true },
+		escalations: { type: [escalationSchema], default: [] },
+	},
+	{ _id: false }
+);
+
 const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{
 		id: { type: String, required: true },
@@ -278,12 +295,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: undefined,
 		},
-		notifications: [
-			{
-				type: Schema.Types.ObjectId,
-				ref: "Notification",
-			},
-		],
+		notifications: { type: [notificationConfigSchema], default: [] },
 		secret: {
 			type: String,
 		},

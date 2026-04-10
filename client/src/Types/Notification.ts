@@ -1,3 +1,13 @@
+export interface EscalationRule {
+	delayMinutes: number;
+	channelId: string;
+}
+
+export interface MonitorNotificationConfig {
+	notificationId: string;
+	escalations: EscalationRule[];
+}
+
 export const NotificationChannels = [
 	"email",
 	"slack",

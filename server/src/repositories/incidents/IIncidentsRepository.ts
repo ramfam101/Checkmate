@@ -25,5 +25,7 @@ export interface IIncidentsRepository {
 	// delete
 	deleteByMonitorId(monitorId: string, teamId: string): Promise<number>;
 	deleteByMonitorIdsNotIn(monitorIds: string[]): Promise<number>;
-	// other
+	// escalation
+	findActiveWithPendingEscalations(now: Date): Promise<Incident[]>;
+	markEscalationFired(incidentId: string, channelId: string, firedAt: Date): Promise<void>;
 }

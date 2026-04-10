@@ -60,6 +60,10 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationsFired: (doc.escalationsFired ?? []).map((r) => ({
+				channelId: this.toStringId(r.channelId),
+				firedAt: this.toDateString(r.firedAt),
+			})),
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -286,6 +290,19 @@ class MongoIncidentRepository implements IIncidentsRepository {
 		const objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
 		const result = await IncidentModel.deleteMany({ monitorId: { $nin: objectIds } });
 		return result.deletedCount ?? 0;
+	};
+
+	findActiveWithPendingEscalations = async (now: Date): Promise<Incident[]> => {
+		const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+		const docs = await IncidentModel.find({ status: true, startTime: { $lte: oneMinuteAgo } });
+		return this.mapDocuments(docs);
+	};
+
+	markEscalationFired = async (incidentId: string, channelId: string, firedAt: Date): Promise<void> => {
+		await IncidentModel.updateOne(
+			{ _id: new mongoose.Types.ObjectId(incidentId) },
+			{ $push: { escalationsFired: { channelId: new mongoose.Types.ObjectId(channelId), firedAt } } }
+		);
 	};
 }
 export default MongoIncidentRepository;

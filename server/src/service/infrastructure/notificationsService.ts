@@ -1,4 +1,4 @@
-import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
+import type { Monitor, MonitorStatusResponse, Notification, Incident } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalationNotification: (notification: Notification, monitor: Monitor, incident: Incident) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -108,7 +109,7 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = (monitor.notifications ?? []).map((cfg) => cfg.notificationId);
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications
@@ -130,6 +131,28 @@ export class NotificationsService implements INotificationsService {
 		}
 		// Return true if all notifications succeeded
 		return succeeded === notifications.length;
+	};
+
+	sendEscalationNotification = async (notification: Notification, monitor: Monitor, incident: Incident): Promise<boolean> => {
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const syntheticDecision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: "status_down",
+			notificationReason: "status_change",
+		};
+		const syntheticStatus = {
+			monitorId: monitor.id,
+			teamId: monitor.teamId,
+			type: monitor.type,
+			status: false,
+			code: incident.statusCode ?? 0,
+			message: incident.message ?? "",
+		} as MonitorStatusResponse;
+		const message = this.notificationMessageBuilder.buildMessage(monitor, syntheticStatus, syntheticDecision, clientHost);
+		return this.send(notification, monitor, syntheticStatus, syntheticDecision, message);
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
