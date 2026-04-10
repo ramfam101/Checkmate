@@ -6,6 +6,8 @@ import type { IMonitorsRepository, TeamQueryConfig, SummaryConfig } from "./IMon
 import { MongoBulkWriteError } from "mongodb";
 import { AppError } from "@/utils/AppError.js";
 
+const NON_PENDING_MONITOR_STATUSES = ["paused", "maintenance"] as const;
+
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
 		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
@@ -232,37 +234,53 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		const pipeline = [
 			{ $match: match },
 			{
+				$addFields: {
+					displayStatus: {
+						$cond: [
+							{
+								$and: [
+									{ $eq: [{ $size: { $ifNull: ["$recentChecks", []] } }, 0] },
+									{ $not: [{ $in: ["$status", [...NON_PENDING_MONITOR_STATUSES]] }] },
+								],
+							},
+							"initializing",
+							{ $ifNull: ["$status", "initializing"] },
+						],
+					},
+				},
+			},
+			{
 				$group: {
 					_id: null,
 					totalMonitors: { $sum: 1 },
 					upMonitors: {
 						$sum: {
-							$cond: [{ $eq: ["$status", "up"] }, 1, 0],
+							$cond: [{ $eq: ["$displayStatus", "up"] }, 1, 0],
 						},
 					},
 					downMonitors: {
 						$sum: {
-							$cond: [{ $eq: ["$status", "down"] }, 1, 0],
+							$cond: [{ $eq: ["$displayStatus", "down"] }, 1, 0],
 						},
 					},
 					pausedMonitors: {
 						$sum: {
-							$cond: [{ $eq: ["$status", "paused"] }, 1, 0],
+							$cond: [{ $eq: ["$displayStatus", "paused"] }, 1, 0],
 						},
 					},
 					initializingMonitors: {
 						$sum: {
-							$cond: [{ $eq: ["$status", "initializing"] }, 1, 0],
+							$cond: [{ $eq: ["$displayStatus", "initializing"] }, 1, 0],
 						},
 					},
 					maintenanceMonitors: {
 						$sum: {
-							$cond: [{ $eq: ["$status", "maintenance"] }, 1, 0],
+							$cond: [{ $eq: ["$displayStatus", "maintenance"] }, 1, 0],
 						},
 					},
 					breachedMonitors: {
 						$sum: {
-							$cond: [{ $eq: ["$status", "breached"] }, 1, 0],
+							$cond: [{ $eq: ["$displayStatus", "breached"] }, 1, 0],
 						},
 					},
 				},
@@ -338,6 +356,20 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return documents.map((doc) => this.toEntity(doc));
 	};
 
+	private getDisplayStatus = (status: Monitor["status"] | undefined, recentChecks: CheckSnapshot[]): Monitor["status"] => {
+		const effectiveStatus = status ?? "initializing";
+
+		if (recentChecks.length > 0) {
+			return effectiveStatus;
+		}
+
+		if (NON_PENDING_MONITOR_STATUSES.includes(effectiveStatus as (typeof NON_PENDING_MONITOR_STATUSES)[number])) {
+			return effectiveStatus;
+		}
+
+		return "initializing";
+	};
+
 	private toEntity = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
 			if (value instanceof mongoose.Types.ObjectId) {
@@ -351,6 +383,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const recentChecks = (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check));
 
 		return {
 			id: toStringId(doc._id),
@@ -358,7 +391,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			teamId: toStringId(doc.teamId),
 			name: doc.name,
 			description: doc.description ?? undefined,
-			status: doc.status ?? "initializing",
+			status: this.getDisplayStatus(doc.status, recentChecks),
 			statusWindow: doc.statusWindow ?? [],
 			statusWindowSize: doc.statusWindowSize,
 			statusWindowThreshold: doc.statusWindowThreshold,
@@ -387,7 +420,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
-			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
+			recentChecks,
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
@@ -410,6 +443,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const recentChecks = (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check));
 
 		return {
 			id: toStringId(doc._id),
@@ -417,7 +451,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			teamId: toStringId(doc.teamId),
 			name: doc.name,
 			description: doc.description ?? undefined,
-			status: doc.status ?? "initializing",
+			status: this.getDisplayStatus(doc.status, recentChecks),
 			statusWindow: doc.statusWindow ?? [],
 			statusWindowSize: doc.statusWindowSize,
 			statusWindowThreshold: doc.statusWindowThreshold,
@@ -446,7 +480,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
-			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
+			recentChecks,
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,

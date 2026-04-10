@@ -931,6 +931,16 @@
 					"description": "Configure your Matrix homeserver connection for notifications.",
 					"title": "Matrix configuration"
 				},
+				"escalation": {
+					"addStep": "Add step",
+					"channelLabel": "Channel type",
+					"delayLabel": "Delay in minutes",
+					"deleteStep": "Delete escalation step",
+					"description": "Add delayed escalation steps for incidents that remain active.",
+					"helper": "Escalation steps are sent after the incident has remained open for the configured number of minutes.",
+					"title": "Escalation steps",
+					"unsupported": "Escalation steps are currently available only for email, slack, discord, and webhook channels."
+				},
 				"notificationName": {
 					"description": "A descriptive name for the notification channel",
 					"optionName": "Channel name",

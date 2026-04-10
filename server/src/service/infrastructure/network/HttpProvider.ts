@@ -10,18 +10,28 @@ import CacheableLookup from "cacheable-lookup";
 
 export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 	readonly type = "http";
+	private fallbackGot: Got;
+	private static readonly DEFAULT_HEADERS = {
+		"user-agent": "Checkmate/1.0 (+https://github.com/bluewave-labs/checkmate)",
+		accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+		"accept-language": "en-US,en;q=0.9",
+	};
 
 	constructor(
 		private got: Got,
 		private advancedMatcher: IAdvancedMatcher
 	) {
-		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
-		this.got = got.extend({
-			dnsCache: cacheable,
+		this.fallbackGot = got.extend({
 			timeout: {
 				request: 30000,
 			},
+			headers: HttpProvider.DEFAULT_HEADERS,
 			retry: { limit: 1 },
+		});
+
+		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
+		this.got = this.fallbackGot.extend({
+			dnsCache: cacheable,
 		});
 	}
 
@@ -56,6 +66,71 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 		};
 	}
 
+	private isDnsLookupFailure(error: unknown): error is RequestError {
+		if (!(error instanceof RequestError)) {
+			return false;
+		}
+
+		const code = error.code?.toLowerCase?.() ?? "";
+		const message = error.message.toLowerCase();
+
+		return (
+			code === "edestruction" ||
+			code === "enotfound" ||
+			code === "eai_again" ||
+			message.includes("edestruction") ||
+			message.includes("enotfound") ||
+			message.includes("eai_again") ||
+			message.includes("getaddrinfo") ||
+			message.includes("querya")
+		);
+	}
+
+	private async executeRequest<T>(client: Got, monitor: Monitor, options: Record<string, unknown>): Promise<MonitorStatusResponse<T>> {
+		const response = await client<string>(monitor.url, options);
+		const contentType = response.headers["content-type"] || "";
+		const isJson = contentType.includes("application/json");
+
+		if (monitor.jsonPath && !isJson) {
+			return {
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				type: monitor.type,
+				status: false,
+				code: response.statusCode,
+				message: "Response is not JSON",
+				responseTime: response.timings.phases.total ?? 0,
+				timings: response.timings,
+				payload: response.body as unknown as T,
+			};
+		}
+
+		let payload: T;
+		if (isJson) {
+			try {
+				payload = JSON.parse(response.body) as T;
+			} catch {
+				payload = response.body as unknown as T;
+			}
+		} else {
+			payload = response.body as unknown as T;
+		}
+
+		const matchResult = this.advancedMatcher.validate<T>(payload, monitor);
+		return {
+			monitorId: monitor.id,
+			teamId: monitor.teamId,
+			type: monitor.type,
+			status: response.ok && matchResult.ok,
+			code: response.statusCode,
+			message: matchResult.ok ? (response.statusMessage ?? "OK") : matchResult.message,
+			responseTime: response.timings.phases.total ?? 0,
+			timings: response.timings,
+			payload,
+			extracted: matchResult.extracted,
+		};
+	}
+
 	async handle<T>(monitor: Monitor): Promise<MonitorStatusResponse<T>> {
 		const { url, secret, jsonPath, ignoreTlsErrors } = monitor;
 
@@ -72,49 +147,16 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 		};
 
 		try {
-			const response = await this.got<string>(url, options);
-			const contentType = response.headers["content-type"] || "";
-			const isJson = contentType.includes("application/json");
-
-			if (jsonPath && !isJson) {
-				return {
-					monitorId: monitor.id,
-					teamId: monitor.teamId,
-					type: monitor.type,
-					status: false,
-					code: response.statusCode,
-					message: "Response is not JSON",
-					responseTime: response.timings.phases.total ?? 0,
-					timings: response.timings,
-					payload: response.body as unknown as T,
-				};
-			}
-
-			let payload: T;
-			if (isJson) {
-				try {
-					payload = JSON.parse(response.body) as T;
-				} catch {
-					payload = response.body as unknown as T;
-				}
-			} else {
-				payload = response.body as unknown as T;
-			}
-
-			const matchResult = this.advancedMatcher.validate<T>(payload, monitor);
-			return {
-				monitorId: monitor.id,
-				teamId: monitor.teamId,
-				type: monitor.type,
-				status: response.ok && matchResult.ok,
-				code: response.statusCode,
-				message: matchResult.ok ? (response.statusMessage ?? "OK") : matchResult.message,
-				responseTime: response.timings.phases.total ?? 0,
-				timings: response.timings,
-				payload,
-				extracted: matchResult.extracted,
-			};
+			return await this.executeRequest<T>(this.got, monitor, options);
 		} catch (error: unknown) {
+			if (this.isDnsLookupFailure(error)) {
+				try {
+					return await this.executeRequest<T>(this.fallbackGot, monitor, options);
+				} catch (fallbackError: unknown) {
+					return this.handleHttpError(fallbackError, monitor);
+				}
+			}
+
 			return this.handleHttpError(error, monitor);
 		}
 	}

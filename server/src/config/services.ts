@@ -110,6 +110,7 @@ import {
 	IMaintenanceWindowsRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
+import { initializeEscalationService } from "@/business/escalationService.js";
 
 export type InitializedServices = {
 	settingsService: ISettingsService;
@@ -245,6 +246,12 @@ export const initializeServices = async ({
 		logger,
 		notificationMessageBuilder
 	);
+
+	initializeEscalationService({
+		notificationsService,
+		settingsService,
+		logger,
+	});
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,

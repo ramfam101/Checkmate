@@ -12,6 +12,7 @@ import { AppError } from "@/utils/AppError.js";
 import { INotificationsService } from "@/service/index.js";
 import { requireTeamId, requireUserId } from "./controllerUtils.js";
 import { IMonitorsRepository } from "@/repositories/index.js";
+import { processEscalations } from "@/business/escalationService.js";
 
 const SERVICE_NAME = "NotificationController";
 
@@ -125,6 +126,7 @@ class NotificationController implements INotificationController {
 			const notificationId = validatedParams.id;
 
 			const editedNotification = await this.notificationsService.updateById(notificationId, teamId, validatedBody);
+			await processEscalations({ notificationIds: [notificationId], catchUpBaseNotification: true });
 			return res.status(200).json({
 				success: true,
 				msg: "Notification updated successfully",
