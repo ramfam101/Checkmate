@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	sendEscalation: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -81,7 +82,6 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Route to provider based on notification type
 		switch (notification.type) {
 			case "webhook":
 				return await this.webhookProvider.sendMessage!(notification, notificationMessage);
@@ -107,11 +107,18 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+	private sendNotificationsToIds = async (
+		notificationIds: string[],
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	) => {
+		if (!notificationIds.length) {
+			return false;
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
-		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
@@ -121,15 +128,21 @@ export class NotificationsService implements INotificationsService {
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
 		const failed = outcomes.length - succeeded;
+
 		if (failed > 0) {
 			this.logger.warn({
 				message: `Notification send completed with ${succeeded} success, ${failed} failure(s)`,
 				service: SERVICE_NAME,
-				method: "sendNotifications",
+				method: "sendNotificationsToIds",
 			});
 		}
-		// Return true if all notifications succeeded
+
 		return succeeded === notifications.length;
+	};
+
+	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const notificationIds = monitor.notifications ?? [];
+		return await this.sendNotificationsToIds(notificationIds, monitor, monitorStatusResponse, decision);
 	};
 
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
@@ -137,8 +150,60 @@ export class NotificationsService implements INotificationsService {
 			return false;
 		}
 
-		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+	};
+
+	sendEscalation = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
+		const channelId = monitor.escalation?.channelId;
+
+		if (!channelId) {
+			return false;
+		}
+
+		const notifications = await this.notificationsRepository.findNotificationsByIds([channelId]);
+
+		if (!notifications.length) {
+			return false;
+		}
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const delayMinutes = monitor.escalation?.delayMinutes ?? 0;
+
+		const notificationMessage: NotificationMessage = {
+			type: "monitor_down",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: Monitor ${monitor.name} still down`,
+				summary: `Monitor "${monitor.name}" has remained down for ${delayMinutes} minute(s).`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: ${monitor.status}`,
+					`Type: ${monitor.type}`,
+					`Escalation delay: ${delayMinutes} minute(s)`,
+					...(monitorStatusResponse.code ? [`Response Code: ${monitorStatusResponse.code}`] : []),
+					...(monitorStatusResponse.message ? [`Error: ${monitorStatusResponse.message}`] : []),
+				],
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+
+		const outcomes = await Promise.all(tasks);
+		return outcomes.every(Boolean);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, setValue, handleSubmit, clearErrors } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,7 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalation = watch("escalation");
 
 	useEffect(() => {
 		clearErrors();
@@ -762,6 +763,73 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+			<ConfigBox
+				title="Escalated Notifications"
+				subtitle="Send an escalation alert if the incident stays active after a delay."
+				rightContent={
+					<Stack spacing={2}>
+						<Stack
+							direction="row"
+							alignItems="center"
+							spacing={1}
+						>
+							<Switch
+								checked={!!watchedEscalation}
+								onChange={(e) => {
+									if (e.target.checked) {
+										setValue("escalation", {
+											delayMinutes: 5,
+											channelId: "",
+										});
+									} else {
+										setValue("escalation", null);
+									}
+								}}
+							/>
+							<Typography>Enable escalated notification</Typography>
+						</Stack>
+
+						{watchedEscalation && (
+							<>
+								<Controller
+									name="escalation.delayMinutes"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											fieldLabel="Escalate after (minutes)"
+											type="number"
+											value={field.value ?? ""}
+											onChange={(e) => field.onChange(Number(e.target.value))}
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message}
+											fullWidth
+										/>
+									)}
+								/>
+
+								<Controller
+									name="escalation.channelId"
+									control={control}
+									render={({ field }) => (
+										<Autocomplete
+											fieldLabel="Escalation channel"
+											options={notifications ?? []}
+											value={
+												(notifications ?? []).find(
+													(notification) => notification.id === field.value
+												) ?? null
+											}
+											getOptionLabel={(option) => option.notificationName}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											onChange={(_, newValue) => field.onChange(newValue?.id ?? "")}
+										/>
+									)}
+								/>
+							</>
+						)}
+					</Stack>
 				}
 			/>
 

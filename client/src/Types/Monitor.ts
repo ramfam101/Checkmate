@@ -79,6 +79,7 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	escalation?: MonitorEscalation | null;
 }
 
 export type MonitorWithChecks = Monitor;
@@ -190,6 +191,10 @@ export interface Game {
 	options?: {
 		port?: number;
 	};
+}
+export interface MonitorEscalation {
+	delayMinutes: number;
+	channelId: string;
 }
 
 export type GamesMap = Record<string, Game>;

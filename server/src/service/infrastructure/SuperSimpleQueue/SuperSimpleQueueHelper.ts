@@ -112,32 +112,40 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			try {
 				const monitorId = monitor.id;
 				const teamId = monitor.teamId;
+
 				if (!monitorId) {
-					throw new AppError({ message: "No monitor id", service: SERVICE_NAME, method: "getMonitorJob" });
+					throw new AppError({
+						message: "No monitor id",
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+					});
 				}
 
-				// Step 1.  Check for maintenance window, if found, skip the check
-
+				// Step 1. Check for maintenance window, if found, skip the check
 				const maintenanceWindowActive = await this.isInMaintenanceWindow(monitorId, teamId);
+
 				if (maintenanceWindowActive) {
 					this.logger.debug({
 						message: `Monitor ${monitorId} is in maintenance window`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 					});
+
 					if (monitor.status !== "maintenance") {
-						await this.monitorsRepository.updateById(monitorId, teamId, { status: "maintenance" });
+						await this.monitorsRepository.updateById(monitorId, teamId, {
+							status: "maintenance",
+						});
 					}
 					return;
 				}
 
-				// Step 2.  Request monitor status
+				// Step 2. Request monitor status
 				const status = await this.networkService.requestStatus(monitor);
 				if (!status) {
 					throw new Error("No network response");
 				}
 
-				// Step 3.  Build check
+				// Step 3. Build check
 				const check = this.checkService.buildCheck(status);
 				if (!check) {
 					this.logger.warn({
@@ -148,19 +156,23 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 					return;
 				}
-				// Step 4 Add check to buffer
+
+				// Step 4. Add check to buffer
 				this.buffer.addToBuffer(check);
-				// Step 4.  Update monitor status
+
+				// Step 5. Update monitor status
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
-				// Step 5.  Get decisions
+				// Step 6. Get decisions
 				const decision = this.evaluateMonitorAction(statusChangeResult);
 
-				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
+				// Step 7. Handle normal notifications (best effort, continue even in event of failure)
 				if (decision.shouldSendNotification) {
 					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
 						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${
+								error instanceof Error ? error.message : "Unknown error"
+							}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
@@ -168,15 +180,55 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
+				// Step 8. Handle incidents and capture the active/resolved incident
+				let incident = await this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status);
+
+				if (!incident && (statusChangeResult.monitor.status === "down" || statusChangeResult.monitor.status === "breached")) {
+					incident = await this.incidentsRepository.findActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId);
+				}
+
+				// Step 9. Handle escalated notification once per active incident
+				if (
+					incident &&
+					incident.status === true &&
+					statusChangeResult.monitor.escalation?.channelId &&
+					statusChangeResult.monitor.escalation?.delayMinutes
+				) {
+					const startedAt = new Date(incident.startTime).getTime();
+					const delayMs = statusChangeResult.monitor.escalation.delayMinutes * 60 * 1000;
+					const isDue = Date.now() - startedAt >= delayMs;
+					const notSentYet = !incident.escalatedAt;
+
+					if (isDue && notSentYet) {
+						this.logger.info({
+							message: `Escalation due for monitor ${statusChangeResult.monitor.id}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+							details: {
+								startTime: incident.startTime,
+								delayMinutes: statusChangeResult.monitor.escalation.delayMinutes,
+								channelId: statusChangeResult.monitor.escalation.channelId,
+								escalatedAt: incident.escalatedAt,
+							},
+						});
+						this.notificationsService
+							.sendEscalation(statusChangeResult.monitor, status, decision)
+							.then(async () => {
+								incident.escalatedAt = new Date().toISOString();
+								await this.incidentsRepository.updateById(incident.id, incident.teamId, incident);
+							})
+							.catch((error: unknown) => {
+								this.logger.warn({
+									message: `Error sending escalation for job ${statusChangeResult.monitor.id}: ${
+										error instanceof Error ? error.message : "Unknown error"
+									}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
