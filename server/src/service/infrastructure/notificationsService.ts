@@ -15,6 +15,7 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendEscalationNotification: (monitor: Monitor, notification: Notification, delayMinutes: number) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -196,5 +197,46 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	sendEscalationNotification = async (monitor: Monitor, notification: Notification, delayMinutes: number): Promise<boolean> => {
+		try {
+			// Build escalation notification message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+			
+			// Create a mock MonitorStatusResponse for escalation (monitor is down)
+			const mockStatusResponse: MonitorStatusResponse = {
+				monitorId: monitor.id,
+				teamId: monitor.teamId,
+				type: monitor.type,
+				status: false, // false = down
+				responseTime: 0,
+				code: 503,
+				message: `Monitor still down after ${delayMinutes} minutes`,
+			};
+
+			// Create escalation notification message
+			const escalationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, mockStatusResponse, delayMinutes, clientHost);
+
+			// Create a mock MonitorActionDecision for escalation
+			const mockDecision = {
+				shouldCreateIncident: false,
+				shouldResolveIncident: false,
+				shouldSendNotification: true,
+				incidentReason: null,
+				notificationReason: "escalation" as const,
+			};
+
+			// Send the notification
+			return await this.send(notification, monitor, mockStatusResponse, mockDecision, escalationMessage);
+		} catch (error) {
+			this.logger.error({
+				message: `Error sending escalation notification: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "sendEscalationNotification",
+			});
+			return false;
+		}
 	};
 }
