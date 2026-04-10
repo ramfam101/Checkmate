@@ -231,6 +231,28 @@ const NotificationsCreatePage = () => {
 					}
 				/>
 			)}
+			<ConfigBox
+				title="Escalation Delay"
+				subtitle="Send a follow-up notification if the incident is still active after this many minutes. Set to 0 to disable escalation."
+				rightContent={
+                	<Controller
+                        name="escalationDelayMinutes"
+                        control={control}
+                        render={({ field, fieldState }) => (
+                            <TextField
+								{...field}
+								type="number"
+								fieldLabel="Delay (minutes)"
+								placeholder="0"
+								fullWidth
+								error={!!fieldState.error}
+								helperText={fieldState.error?.message ?? ""}
+								onChange={(e) => field.onChange(Number(e.target.value))}
+                            />
+                        )}
+                	/>
+        		}
+			/>
 			<Stack
 				direction="row"
 				justifyContent="flex-end"

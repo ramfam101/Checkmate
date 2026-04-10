@@ -13,6 +13,21 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationNotifications: z
+        .array(
+            z.object({
+                delay: z.coerce.number().min(1, "Delay must be at least 1 minute"),
+                contacts: z.array(
+                    z.object({
+                        type: z.string(),
+                        address: z.string().min(1, "Contact address is required"),
+                    })
+                ),
+                enabled: z.boolean(),
+            })
+        )
+        .optional()
+        .default([]),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

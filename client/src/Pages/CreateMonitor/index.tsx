@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -203,6 +203,10 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const escalationFieldArray = useFieldArray({
+        control,
+        name: "escalationNotifications",
+	});
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -909,6 +913,92 @@ const CreateMonitorPage = () => {
 					}
 				/>
 			)}
+
+<ConfigBox
+                                title="Escalation Rules"
+                                subtitle="If the monitor stays down for the specified time, notify additional channels."
+                                rightContent={
+                                        <Stack spacing={theme.spacing(8)}>
+                                                {escalationFieldArray.fields.map((item, index) => (
+                                                        <Stack key={item.id} spacing={theme.spacing(4)}>
+                                                                <Controller
+                                                                        name={`escalationNotifications.${index}.delay`}
+                                                                        control={control}
+                                                                        render={({ field, fieldState }) => (
+                                                                                <TextField
+                                                                                        {...field}
+                                                                                        type="number"
+                                                                                        fieldLabel="Escalate after (minutes)"
+                                                                                        placeholder="5"
+                                                                                        fullWidth
+                                                                                        error={!!fieldState.error}
+                                                                                        helperText={fieldState.error?.message ?? ""}
+                                                                                        onChange={(e) => field.onChange(Number(e.target.value))}
+                                                                                />
+                                                                        )}
+                                                                />
+                                                                <Typography color="text.secondary">Escalation notification channels</Typography>
+                                                                <Controller
+                                                                        name={`escalationNotifications.${index}.contacts.0.address`}
+                                                                        control={control}
+                                                                        render={({ field, fieldState }) => (
+                                                                                <Select
+                                                                                        {...field}
+                                                                                        value={field.value ?? ""}
+                                                                                        fieldLabel="Escalation Email"
+                                                                                        fullWidth
+                                                                                        error={!!fieldState.error}
+                                                                                >
+                                                                                        <MenuItem value="">Select a notification</MenuItem>
+                                                                                        {(notifications ?? [])
+                                                                                                .filter((n) => n.type === "email")
+                                                                                                .map((n) => (
+                                                                                                        <MenuItem key={n.id} value={n.address ?? ""}>
+                                                                                                                {n.notificationName || n.address}
+                                                                                                        </MenuItem>
+                                                                                                ))}
+                                                                                </Select>
+                                                                        )}
+                                                                />
+                                                                <Stack direction="row" alignItems="center" spacing={theme.spacing(4)}>
+                                                                        <Controller
+                                                                                name={`escalationNotifications.${index}.enabled`}
+                                                                                control={control}
+                                                                                render={({ field }) => (
+                                                                                        <Stack direction="row" alignItems="center" spacing={theme.spacing(2)}>
+                                                                                                <Switch
+                                                                                                        checked={field.value ?? true}
+                                                                                                        onChange={(e) => field.onChange(e.target.checked)}
+                                                                                                />
+                                                                                                <Typography>Enabled</Typography>
+                                                                                        </Stack>
+                                                                                )}
+                                                                        />
+                                                                        <IconButton
+                                                                                size="small"
+                                                                                onClick={() => escalationFieldArray.remove(index)}
+                                                                                aria-label="Remove escalation rule"
+                                                                        >
+                                                                                <Trash2 size={16} />
+                                                                        </IconButton>
+                                                                </Stack>
+                                                        </Stack>
+                                                ))}
+                                                <Button
+                                                        variant="outlined"
+                                                        onClick={() =>
+                                                                escalationFieldArray.append({
+                                                                        delay: 5,
+                                                                        contacts: [{ type: "email", address: "" }],
+                                                                        enabled: true,
+                                                                })
+                                                        }
+                                                >
+                                                        Add escalation rule
+                                                </Button>
+                                        </Stack>
+                                }
+                        />
 
 			{supportsGeoCheck(watchedType) && (
 				<ConfigBox
