@@ -236,6 +236,11 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: 60,
 		},
+		escalationDelayMinutes: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
 		type: {
 			type: String,
 			required: true,
