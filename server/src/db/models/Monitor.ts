@@ -284,6 +284,21 @@ const MonitorSchema = new Schema<MonitorDocument>(
 				ref: "Notification",
 			},
 		],
+                escalationNotifications: {
+                        type: [
+                                {
+                                        delay: { type: Number, required: true, default: 0 },
+                                        contacts: [
+                                                {
+                                                        type: { type: String, required: true },
+                                                        address: { type: String, required: true },
+                                                },
+                                        ],
+                                        enabled: { type: Boolean, default: true },
+                                },
+                        ],
+                        default: [],
+                },
 		secret: {
 			type: String,
 		},
