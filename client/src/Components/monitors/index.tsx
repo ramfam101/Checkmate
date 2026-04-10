@@ -14,3 +14,6 @@ export * from "./charts/HistogramPageSpeedDetails";
 export * from "./charts/HistogramPageSpeedDetailsTooltip";
 export * from "./charts/HistogramInfrastructure";
 export * from "./HeaderMonitorsSummary";
+export { EscalationSettings } from "./EscalationSettings";
+export { default as EscalationStatus } from "./EscalationStatus";
+export { default as EscalationRules } from "./EscalationRules";

@@ -20,6 +20,7 @@ class IncidentRoutes {
 		// Individual incident routes
 		this.router.get("/:incidentId", this.incidentController.getIncidentById);
 		this.router.put("/:incidentId/resolve", isAllowed(["admin", "superadmin"]), this.incidentController.resolveIncidentManually);
+		this.router.put("/:incidentId/acknowledge", isAllowed(["admin", "superadmin"]), this.incidentController.acknowledgeIncident);
 	}
 
 	getRouter() {

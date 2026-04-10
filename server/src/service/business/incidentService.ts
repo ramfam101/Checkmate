@@ -29,6 +29,7 @@ export interface IIncidentService {
 	): Promise<{ incidents: Incident[]; count: number }>;
 	getIncidentSummary(teamId: string, limit?: number): Promise<IncidentSummary>;
 	getIncidentById(incidentId: string, teamId: string): Promise<{ incident: Incident; monitor: Monitor; user: User | null }>;
+	acknowledgeIncident(incidentId: string, teamId: string): Promise<Incident>;
 }
 
 export class IncidentService implements IIncidentService {
@@ -258,6 +259,46 @@ export class IncidentService implements IIncidentService {
 				method: "getIncidentById",
 				message: error instanceof Error ? error.message : "Unknown error",
 				details: { incidentId },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			throw error;
+		}
+	};
+
+	acknowledgeIncident = async (incidentId: string, teamId: string) => {
+		try {
+			if (!incidentId) {
+				throw new AppError({ message: "No incident ID provided", service: SERVICE_NAME, method: "acknowledgeIncident" });
+			}
+			if (!teamId) {
+				throw new AppError({ message: "No team ID provided", service: SERVICE_NAME, method: "acknowledgeIncident" });
+			}
+
+			const incident = await this.incidentsRepository.findById(incidentId, teamId);
+			if (!incident) {
+				throw new AppError({ message: "Incident not found", service: SERVICE_NAME, method: "acknowledgeIncident" });
+			}
+
+			// Update incident with acknowledgment
+			const updatedIncident = await this.incidentsRepository.updateById(incidentId, teamId, {
+				acknowledged: true,
+				acknowledgedAt: new Date().toISOString(),
+			});
+
+			this.logger.info({
+				service: SERVICE_NAME,
+				method: "acknowledgeIncident",
+				message: `Incident ${incidentId} acknowledged successfully`,
+				details: { incidentId, teamId },
+			});
+
+			return updatedIncident;
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "acknowledgeIncident",
+				message: error instanceof Error ? error.message : "Unknown error",
+				details: { incidentId, teamId },
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
