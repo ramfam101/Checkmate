@@ -17,6 +17,7 @@ import type {
 	IIncidentsRepository,
 	IMonitorsRepository,
 	IMonitorStatsRepository,
+	INotificationsRepository,
 	IStatusPagesRepository,
 } from "@/repositories/index.js";
 import demoMonitorsData from "@/utils/demoMonitors.json" with { type: "json" };
@@ -100,6 +101,7 @@ export class MonitorService implements IMonitorService {
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private statusPagesRepository: IStatusPagesRepository;
 	private incidentsRepository: IIncidentsRepository;
+	private notificationsRepository: INotificationsRepository;
 
 	constructor({
 		jobQueue,
@@ -112,6 +114,7 @@ export class MonitorService implements IMonitorService {
 		monitorStatsRepository,
 		statusPagesRepository,
 		incidentsRepository,
+		notificationsRepository,
 	}: {
 		jobQueue: ISuperSimpleQueue;
 		emailService: IEmailService;
@@ -123,6 +126,7 @@ export class MonitorService implements IMonitorService {
 		monitorStatsRepository: IMonitorStatsRepository;
 		statusPagesRepository: IStatusPagesRepository;
 		incidentsRepository: IIncidentsRepository;
+		notificationsRepository: INotificationsRepository;
 	}) {
 		this.jobQueue = jobQueue;
 		this.emailService = emailService;
@@ -134,6 +138,7 @@ export class MonitorService implements IMonitorService {
 		this.monitorStatsRepository = monitorStatsRepository;
 		this.statusPagesRepository = statusPagesRepository;
 		this.incidentsRepository = incidentsRepository;
+		this.notificationsRepository = notificationsRepository;
 	}
 
 	get serviceName(): string {
@@ -165,7 +170,26 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
+	private validateEscalationChannel = async (teamId: string, body: Partial<Monitor>) => {
+		const escalation = body.escalation;
+		if (!escalation) {
+			return;
+		}
+
+		try {
+			await this.notificationsRepository.findById(escalation.channelId, teamId);
+		} catch {
+			throw new AppError({
+				message: "Escalation channel does not exist for this team",
+				status: 400,
+				service: SERVICE_NAME,
+				method: "validateEscalationChannel",
+			});
+		}
+	};
+
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
+		await this.validateEscalationChannel(teamId, body);
 		const monitor = await this.monitorsRepository.create(body, teamId, userId);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
@@ -437,6 +461,7 @@ export class MonitorService implements IMonitorService {
 	};
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
+		await this.validateEscalationChannel(teamId, body);
 		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;
@@ -571,6 +596,8 @@ export class MonitorService implements IMonitorService {
 			createdAt: "",
 			updatedAt: "",
 		}));
+
+		await Promise.all(cleanedMonitors.map((monitor) => this.validateEscalationChannel(teamId, monitor)));
 
 		const createdMonitors = await this.createMonitors(cleanedMonitors);
 

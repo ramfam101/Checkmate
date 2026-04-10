@@ -21,6 +21,21 @@ export interface IEmailService {
 	init(): void;
 	buildEmail(template: string, context: Record<string, unknown>): Promise<string | undefined>;
 	sendEmail(to: string, subject: string, html: string, transportConfig?: EmailTransportConfig): Promise<string | false | undefined>;
+	getLastError(): EmailTransportErrorDetails | null;
+}
+
+export interface EmailTransportErrorDetails extends Record<string, unknown> {
+	stage: "verify" | "send";
+	message: string;
+	name?: string;
+	code?: string;
+	errno?: string;
+	syscall?: string;
+	address?: string;
+	port?: number;
+	command?: string;
+	responseCode?: number;
+	response?: string;
 }
 
 export class EmailService implements IEmailService {
@@ -34,6 +49,7 @@ export class EmailService implements IEmailService {
 	private nodemailer: Mailer;
 	private logger: ILogger;
 	private transporter: ReturnType<typeof import("nodemailer").createTransport> | null = null;
+	private lastError: EmailTransportErrorDetails | null = null;
 	private templateLookup: Record<string, ((context: Record<string, unknown>) => string) | undefined>;
 	private loadTemplate: (templateName: string) => ((context: Record<string, unknown>) => string) | undefined;
 
@@ -61,6 +77,44 @@ export class EmailService implements IEmailService {
 	get serviceName() {
 		return EmailService.SERVICE_NAME;
 	}
+
+	getLastError = () => {
+		return this.lastError;
+	};
+
+	private mapTransportError = (stage: "verify" | "send", error: unknown): EmailTransportErrorDetails => {
+		if (!(error instanceof Error)) {
+			return {
+				stage,
+				message: "Unknown SMTP transport error",
+			};
+		}
+
+		const transportError = error as Error & {
+			code?: string;
+			errno?: string;
+			syscall?: string;
+			address?: string;
+			port?: number;
+			command?: string;
+			responseCode?: number;
+			response?: string;
+		};
+
+		return {
+			stage,
+			message: transportError.message,
+			name: transportError.name,
+			code: transportError.code,
+			errno: transportError.errno,
+			syscall: transportError.syscall,
+			address: transportError.address,
+			port: transportError.port,
+			command: transportError.command,
+			responseCode: transportError.responseCode,
+			response: transportError.response,
+		};
+	};
 
 	init = () => {
 		this.loadTemplate = (templateName) => {
@@ -107,6 +161,7 @@ export class EmailService implements IEmailService {
 	};
 
 	sendEmail = async (to: string, subject: string, html: string, transportConfig?: EmailTransportConfig) => {
+		this.lastError = null;
 		let config: EmailTransportConfig;
 		if (typeof transportConfig !== "undefined") {
 			config = transportConfig;
@@ -151,11 +206,13 @@ export class EmailService implements IEmailService {
 		try {
 			await this.transporter.verify();
 		} catch (error: unknown) {
+			this.lastError = this.mapTransportError("verify", error);
 			this.logger.warn({
 				message: "Email transporter verification failed",
 				service: SERVICE_NAME,
 				method: "verifyTransporter",
 				stack: error instanceof Error ? error.stack : undefined,
+				details: this.lastError,
 			});
 			return false;
 		}
@@ -169,11 +226,13 @@ export class EmailService implements IEmailService {
 			});
 			return info?.messageId;
 		} catch (error: unknown) {
+			this.lastError = this.mapTransportError("send", error);
 			this.logger.error({
 				message: error instanceof Error ? error.message : "Unknown error",
 				service: SERVICE_NAME,
 				method: "sendEmail",
 				stack: error instanceof Error ? error.stack : undefined,
+				details: this.lastError,
 			});
 		}
 	};

@@ -35,10 +35,16 @@ class NotificationController implements INotificationController {
 	testNotification = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const notification = testNotificationBodyValidation.parse(req.body);
-			const success = await this.notificationsService.sendTestNotification(notification);
+			const result = await this.notificationsService.sendTestNotification(notification);
 
-			if (!success) {
-				throw new AppError({ message: "Sending notification failed", status: 500 });
+			if (!result.success) {
+				throw new AppError({
+					message: `Sending notification failed: ${result.error ?? "Unknown provider error"}`,
+					status: 500,
+					service: SERVICE_NAME,
+					method: "testNotification",
+					details: result.details,
+				});
 			}
 
 			return res.status(200).json({

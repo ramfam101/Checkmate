@@ -4,7 +4,14 @@ import { INotificationProvider } from "@/service/index.js";
 import { buildTestEmail } from "@/service/infrastructure/notificationProviders/utils.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import type { ILogger } from "@/utils/logger.js";
-import { IEmailService } from "@/service/infrastructure/emailService.js";
+import { IEmailService, type EmailTransportErrorDetails } from "@/service/infrastructure/emailService.js";
+
+type NotificationProviderTestResult = {
+	success: boolean;
+	error?: string;
+	details?: Record<string, unknown>;
+};
+
 export class EmailProvider implements INotificationProvider {
 	private emailService: IEmailService;
 	private logger: ILogger;
@@ -14,42 +21,89 @@ export class EmailProvider implements INotificationProvider {
 		this.logger = logger;
 	}
 
+	private buildTransportFailureReason = (transportError: EmailTransportErrorDetails | null) => {
+		if (!transportError) {
+			return "SMTP send failed";
+		}
+
+		const stage = transportError.stage;
+		const code = typeof transportError.code === "string" ? transportError.code : "UNKNOWN";
+		const base = typeof transportError.message === "string" ? transportError.message : "Unknown transport error";
+
+		return `SMTP ${stage} failed (${code}): ${base}`;
+	};
+
 	async sendTestAlert(notification: Partial<Notification>): Promise<boolean> {
+		const result = await this.sendTestAlertWithResult(notification);
+		return result.success;
+	}
+
+	async sendTestAlertWithResult(notification: Partial<Notification>): Promise<NotificationProviderTestResult> {
 		const subject = "Test notification";
 		const html = await buildTestEmail(this.emailService);
 
 		if (!notification.address) {
+			const details = { type: notification.type };
 			this.logger.warn({
 				message: "Missing address",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				details,
 			});
-			return false;
+			return {
+				success: false,
+				error: "Missing recipient email address",
+				details,
+			};
 		}
 
 		if (!html) {
+			const details = { type: notification.type, address: notification.address };
 			this.logger.warn({
 				message: "Failed to build test email content",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				details,
 			});
-			return false;
+			return {
+				success: false,
+				error: "Failed to build email template",
+				details,
+			};
 		}
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
+			const transportError = this.emailService.getLastError();
+			const details = {
+				address: notification.address,
+				transportError,
+			};
+			const reason = this.buildTransportFailureReason(transportError);
 			this.logger.warn({
 				message: "Email test alert failed",
 				service: SERVICE_NAME,
 				method: "sendTestAlert",
+				details,
 			});
-			return false;
+			return {
+				success: false,
+				error: reason,
+				details,
+			};
 		}
-		return true;
+
+		return { success: true };
 	}
 
 	async sendMessage(notification: Notification, message: NotificationMessage): Promise<boolean> {
 		if (!notification.address) {
+			this.logger.warn({
+				message: "Missing recipient email address",
+				service: SERVICE_NAME,
+				method: "sendMessage",
+				details: { notificationId: notification.id, monitor: message.monitor.name },
+			});
 			return false;
 		}
 
@@ -61,19 +115,27 @@ export class EmailProvider implements INotificationProvider {
 				message: "Failed to build email content",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: { notificationId: notification.id, monitor: message.monitor.name },
 			});
 			return false;
 		}
 
 		const messageId = await this.emailService.sendEmail(notification.address, subject, html);
 		if (!messageId) {
+			const transportError = this.emailService.getLastError();
 			this.logger.warn({
 				message: "Email notification failed",
 				service: SERVICE_NAME,
 				method: "sendMessage",
+				details: {
+					notificationId: notification.id,
+					address: notification.address,
+					transportError,
+				},
 			});
 			return false;
 		}
+
 		return true;
 	}
 

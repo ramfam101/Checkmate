@@ -14,9 +14,14 @@ const handleErrors = (error: unknown, req: Request, res: Response, _next: NextFu
 		stack: error instanceof AppError ? error.stack : undefined,
 		details: error instanceof AppError ? error.details : undefined,
 	});
+	const runtimeEnv = (process.env.NODE_ENV ?? "").toLowerCase();
+	const debugEnvs = new Set(["development", "dev", "test", "local"]);
+	const shouldIncludeDetails =
+		error instanceof AppError && typeof error.details !== "undefined" && debugEnvs.has(runtimeEnv) && process.env.API_ERROR_DETAILS !== "false";
 	res.status(status).json({
 		status,
 		msg: message,
+		...(shouldIncludeDetails ? { details: error.details } : {}),
 	});
 };
 

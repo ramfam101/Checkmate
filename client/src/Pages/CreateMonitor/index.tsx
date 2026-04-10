@@ -202,13 +202,14 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const watchedEscalation = watch("escalation");
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
@@ -762,6 +763,133 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalation.delayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<Stack spacing={theme.spacing(SPACING.XS)}>
+									<TextField
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.delayMinutes.label"
+										)}
+										type="number"
+										value={watchedEscalation?.delayMinutes ?? 0}
+										onChange={(event) => {
+											const value = Number(event.target.value);
+											const safeValue = Number.isNaN(value) ? 0 : value;
+											const nextChannelId = watchedEscalation?.channelId ?? "";
+
+											if (safeValue <= 0 && !nextChannelId) {
+												setValue("escalation", null);
+												return;
+											}
+
+											setValue("escalation", {
+												delayMinutes: safeValue,
+												channelId: nextChannelId,
+											});
+											field.onChange(safeValue);
+										}}
+										inputProps={{ min: 0, max: 1440 }}
+									/>
+									{fieldState.error?.message && (
+										<Typography color="error">{fieldState.error.message}</Typography>
+									)}
+								</Stack>
+							)}
+						/>
+
+						<Controller
+							name="escalation.channelId"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((notification) => ({
+									...notification,
+									name: notification.notificationName,
+								}));
+								const selectedEscalation =
+									notificationOptions.find(
+										(notification) => notification.id === watchedEscalation?.channelId
+									) || null;
+
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											options={notificationOptions}
+											value={selectedEscalation}
+											getOptionLabel={(option) => option.name}
+											onChange={(
+												_: unknown,
+												newValue: (typeof notificationOptions)[number] | null
+											) => {
+												const nextChannelId = newValue?.id ?? "";
+												const nextDelay = watchedEscalation?.delayMinutes ?? 0;
+
+												if (!nextChannelId && nextDelay <= 0) {
+													setValue("escalation", null);
+													field.onChange("");
+													return;
+												}
+
+												setValue("escalation", {
+													delayMinutes: nextDelay,
+													channelId: nextChannelId,
+												});
+												field.onChange(nextChannelId);
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel={t(
+												"pages.createMonitor.form.escalation.option.channel.label"
+											)}
+										/>
+										{selectedEscalation && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												<Stack
+													direction="row"
+													alignItems="center"
+													width="100%"
+												>
+													<Typography flexGrow={1}>
+														{selectedEscalation.notificationName}
+													</Typography>
+													<IconButton
+														size="small"
+														onClick={() => {
+															const nextDelay = watchedEscalation?.delayMinutes ?? 0;
+															if (nextDelay <= 0) {
+																setValue("escalation", null);
+															} else {
+																setValue("escalation", {
+																	delayMinutes: nextDelay,
+																	channelId: "",
+																});
+															}
+															field.onChange("");
+														}}
+														aria-label="Remove escalation notification"
+													>
+														<Trash2 size={16} />
+													</IconButton>
+												</Stack>
+												<Divider />
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
 				}
 			/>
 
