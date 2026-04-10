@@ -13,6 +13,30 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	//** ADDED ESCALATION FIELD ON MONITOR-NOTIFICATION CONFIG **//
+	escalationSteps: z
+		.array(
+			z.object({
+				delayMinutes: z.number().min(0),
+				channelIds: z.array(z.string()),
+			})
+		)
+		.optional()
+		.refine(
+			(steps) => {
+				if (!steps) return true;
+				return steps.every((step) => {
+					const hasDelay = step.delayMinutes > 0;
+					const hasChannels = (step.channelIds ?? []).length > 0;
+					// Both must be filled or both must be empty
+					return (hasDelay && hasChannels) || (!hasDelay && !hasChannels);
+				});
+			},
+			{
+				message: "Both delay and channels must be filled, or both must be empty",
+			}
+		),
+	////////////////////////////////////////////////////////////////
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")

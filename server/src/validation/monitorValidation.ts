@@ -67,6 +67,30 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	//** ADDED ESCALATION FIELD ON MONITOR-NOTIFICATION CONFIG **//
+	escalationSteps: z
+		.array(
+			z.object({
+				delayMinutes: z.number().min(0),
+				channelIds: z.array(z.string()),
+			})
+		)
+		.optional()
+		.refine(
+			(steps) => {
+				if (!steps) return true;
+				return steps.every((step) => {
+					const hasDelay = step.delayMinutes > 0;
+					const hasChannels = (step.channelIds ?? []).length > 0;
+					// Both must be filled or both must be empty
+					return (hasDelay && hasChannels) || (!hasDelay && !hasChannels);
+				});
+			},
+			{
+				message: "Both delay and channels must be filled, or both must be empty",
+			}
+		),
+	////////////////////////////////////////////////////////////////
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -89,6 +113,30 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	//** ADDED ESCALATION FIELD ON MONITOR-NOTIFICATION CONFIG **//
+	escalationSteps: z
+		.array(
+			z.object({
+				delayMinutes: z.number().min(0),
+				channelIds: z.array(z.string()),
+			})
+		)
+		.optional()
+		.refine(
+			(steps) => {
+				if (!steps) return true;
+				return steps.every((step) => {
+					const hasDelay = step.delayMinutes > 0;
+					const hasChannels = (step.channelIds ?? []).length > 0;
+					// Both must be filled or both must be empty
+					return (hasDelay && hasChannels) || (!hasDelay && !hasChannels);
+				});
+			},
+			{
+				message: "Both delay and channels must be filled, or both must be empty",
+			}
+		),
+	////////////////////////////////////////////////////////////////
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),

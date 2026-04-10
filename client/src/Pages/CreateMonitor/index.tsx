@@ -16,6 +16,9 @@ import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
+///*** ADDED ESCALATION FIELD ON MONITOR-NOTIFICATION CONFIG ***//
+//import { EscalationRules } from "@/Components/monitors/EscalationRules";
+//////////////////////////////////////////////////////////////////////////
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -764,7 +767,98 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
-
+{/**** ADDED ESCALATION CONFIG BOX UI ****/}
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="If the monitor stays down for the specified time, notify additional channels."
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationSteps.0.delayMinutes"
+							control={control}
+							render={({ field, fieldState }) => (
+								<TextField
+									{...field}
+									value={field.value ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										field.onChange(val === "" ? 0 : Number(val));
+									}}
+									type="number"
+									fieldLabel="Escalate after (minutes)"
+									placeholder="0"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+								/>
+							)}
+						/>
+						<Controller
+							name="escalationSteps.0.channelIds"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									id: n.id,
+									name: n.notificationName,
+									type: n.type,
+								}));
+								const selectedChannels = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedChannels}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+											fieldLabel="Escalation notification channels"
+										/>
+										{selectedChannels.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedChannels.map((channel, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={channel.id}
+														width="100%"
+													>
+														<Typography flexGrow={1}>
+															{channel.name}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== channel.id
+																	)
+																);
+															}}
+															aria-label="Remove escalation channel"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedChannels.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					</Stack>
+				}
+			/>
+{/*///////////////////////////////////////////////////////////////////////////////*/}
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

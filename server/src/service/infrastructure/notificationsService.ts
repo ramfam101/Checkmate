@@ -15,6 +15,7 @@ export interface INotificationsService {
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
 
+	sendNotification: (notification: Notification, message: NotificationMessage) => Promise<boolean>; //** ADDED METHOD TO SEND A SINGLE NOTIFICATION WITH CUSTOM MESSAGE - USED FOR ESCALATION CHECKS **//
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -140,7 +141,11 @@ export class NotificationsService implements INotificationsService {
 		// Send notifications based on decision
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
-
+//** ADDED METHOD TO SEND A SINGLE NOTIFICATION WITH CUSTOM MESSAGE - USED FOR ESCALATION CHECKS **//
+	sendNotification = async (notification: Notification, message: NotificationMessage) => {
+		return await this.send(notification, {} as Monitor, {} as MonitorStatusResponse, {} as MonitorActionDecision, message);
+	};
+///////////////////////////////////////////////////////////////////////////////////////////////
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {
 			case "email":

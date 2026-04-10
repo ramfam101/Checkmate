@@ -12,6 +12,7 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	description: data?.description || "",
 	interval: data?.interval || 60000,
 	notifications: data?.notifications || [],
+	escalationSteps: data?.escalationSteps && data.escalationSteps.length > 0 ? data.escalationSteps : [{ delayMinutes: 0, channelIds: [] }], //** ADDED ESCALATION STEPS TO BASE DEFAULTS - ALL TYPES CAN HAVE ESCALATION STEPS **//
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
