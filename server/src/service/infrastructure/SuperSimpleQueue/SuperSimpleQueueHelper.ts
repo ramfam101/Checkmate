@@ -177,6 +177,52 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Handle escalation notifications
+				const currentMonitor = statusChangeResult.monitor;
+
+				// Reset escalation flag when monitor recovers
+				if (decision.shouldResolveIncident && currentMonitor.escalationSent) {
+					this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: false }).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error resetting escalation flag for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					});
+				}
+
+				// Check if escalation should fire (monitor still down, not a new transition)
+				if (
+					!statusChangeResult.statusChanged &&
+					currentMonitor.status === "down" &&
+					!currentMonitor.escalationSent &&
+					currentMonitor.escalationWaitMinutes > 0 &&
+					(currentMonitor.escalationNotifications?.length ?? 0) > 0
+				) {
+					const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+					if (activeIncident) {
+						const incidentStart = new Date(activeIncident.startTime);
+						const downtimeMinutes = (Date.now() - incidentStart.getTime()) / 60000;
+						if (downtimeMinutes >= currentMonitor.escalationWaitMinutes) {
+							this.notificationsService.handleEscalationNotifications(currentMonitor, status).catch((error: unknown) => {
+								this.logger.error({
+									message: `Error sending escalation notifications for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+									stack: error instanceof Error ? error.stack : undefined,
+								});
+							});
+							this.monitorsRepository.updateById(monitorId, teamId, { escalationSent: true }).catch((error: unknown) => {
+								this.logger.warn({
+									message: `Error setting escalation flag for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+									service: SERVICE_NAME,
+									method: "getMonitorJob",
+								});
+							});
+						}
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

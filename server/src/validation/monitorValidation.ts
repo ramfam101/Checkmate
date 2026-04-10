@@ -78,6 +78,8 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationWaitMinutes: z.number().min(0).optional(),
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -90,7 +92,9 @@ export const editMonitorBodyValidation = z.object({
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
 	secret: z.string().optional(),
-	ignoreTlsErrors: z.boolean().optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+	escalationWaitMinutes: z.number().min(0).optional(),
+	ignoredTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -160,6 +164,9 @@ const importedMonitorSchema = z.object({
 	geoCheckEnabled: z.boolean().default(false),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
 	geoCheckInterval: z.number().min(300000).default(300000),
+	escalationNotifications: z.array(z.string()).default([]),
+	escalationWaitMinutes: z.number().min(0).default(0),
+	escalationSent: z.boolean().default(false),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
 });
