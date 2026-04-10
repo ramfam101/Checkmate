@@ -72,6 +72,23 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+		acknowledged: {
+			type: Boolean,
+			default: false,
+			index: true,
+		},
+		acknowledgedAt: {
+			type: Date,
+			default: null,
+		},
+		lastEscalationAt: {
+			type: Date,
+			default: null,
+		},
+		escalatedNotificationIds: {
+			type: [String],
+			default: [],
+		},
 	},
 	{ timestamps: true }
 );

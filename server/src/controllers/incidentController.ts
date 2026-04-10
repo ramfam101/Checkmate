@@ -11,6 +11,7 @@ export interface IIncidentController {
 	getIncidentSummary: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getIncidentById: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	resolveIncidentManually: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	acknowledgeIncident: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class IncidentController implements IIncidentController {
 	private incidentService: IIncidentService;
@@ -96,6 +97,26 @@ class IncidentController implements IIncidentController {
 				success: true,
 				msg: "Incident resolved successfully",
 				data: resolvedIncident,
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	acknowledgeIncident = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			const teamId = requireTeamId(req.user?.teamId);
+			const incidentId = req.params?.incidentId;
+			if (!incidentId) {
+				throw new AppError({ message: "Incident ID is required", service: SERVICE_NAME, status: 400 });
+			}
+
+			const acknowledgedIncident = await this.incidentService.acknowledgeIncident(incidentId, teamId);
+
+			return res.status(200).json({
+				success: true,
+				msg: "Incident acknowledged successfully",
+				data: acknowledgedIncident,
 			});
 		} catch (error) {
 			next(error);

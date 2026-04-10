@@ -43,6 +43,7 @@ export interface IMonitorController {
 	getAllGames: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	getGroupsByTeamId: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 	updateNotifications: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
+	updateEscalations: (req: Request, res: Response, next: NextFunction) => Promise<Response | void>;
 }
 class MonitorController implements IMonitorController {
 	static SERVICE_NAME = SERVICE_NAME;
@@ -448,6 +449,81 @@ class MonitorController implements IMonitorController {
 				success: true,
 				msg: `Notifications updated successfully on ${modifiedCount} monitor(s)`,
 				data: { modifiedCount },
+			});
+		} catch (error) {
+			next(error);
+		}
+	};
+
+	updateEscalations = async (req: Request, res: Response, next: NextFunction) => {
+		try {
+			console.log("updateEscalations - Received request body:", req.body);
+			const teamId = requireTeamId(req.user?.teamId);
+			const { monitorId, escalations } = req.body;
+
+			console.log("updateEscalations - Extracted monitorId:", monitorId);
+			console.log("updateEscalations - Extracted escalations:", escalations);
+
+			if (!monitorId || typeof monitorId !== "string") {
+				throw new AppError({
+					message: `Monitor ID is required and must be a string. Received: ${JSON.stringify(monitorId)}, Request body: ${JSON.stringify(req.body)}`,
+					status: 400,
+				});
+			}
+
+			if (!Array.isArray(escalations)) {
+				throw new AppError({
+					message: "Escalations must be an array",
+					status: 400,
+				});
+			}
+
+			// Validate escalation format
+			for (const escalation of escalations) {
+				if (!escalation.notificationId || typeof escalation.delayMinutes !== "number" || !escalation.escalationChannelId) {
+					throw new AppError({
+						message: "Each escalation must have notificationId, delayMinutes (number), and escalationChannelId",
+						status: 400,
+					});
+				}
+				if (escalation.delayMinutes < 1) {
+					throw new AppError({
+						message: "Delay must be at least 1 minute",
+						status: 400,
+					});
+				}
+			}
+
+			// Verify all notification and escalation channel IDs belong to this team
+			const teamNotifications = await this.notificationsService.findNotificationsByTeamId(teamId);
+			const validNotificationIds = teamNotifications.map((n) => n.id);
+
+			for (const escalation of escalations) {
+				if (!validNotificationIds.includes(escalation.notificationId)) {
+					throw new AppError({
+						message: `Notification ${escalation.notificationId} does not belong to your team`,
+						status: 403,
+					});
+				}
+				if (!validNotificationIds.includes(escalation.escalationChannelId)) {
+					throw new AppError({
+						message: `Escalation channel ${escalation.escalationChannelId} does not belong to your team`,
+						status: 403,
+					});
+				}
+			}
+
+			// Update the monitor with escalations
+			const updatedMonitor = await this.monitorService.editMonitor({
+				teamId,
+				monitorId,
+				body: { escalations },
+			});
+
+			return res.status(200).json({
+				success: true,
+				msg: "Escalations updated successfully",
+				data: { monitor: updatedMonitor },
 			});
 		} catch (error) {
 			next(error);

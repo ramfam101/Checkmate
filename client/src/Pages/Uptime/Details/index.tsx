@@ -8,6 +8,7 @@ import {
 	HeaderMonitorControls,
 	HeaderGeoTabs,
 	GeoChecksMap,
+	EscalationSettings,
 } from "@/Components/monitors";
 import { TrendingUp, AlertTriangle } from "lucide-react";
 import { ChecksTable } from "@/Pages/Uptime/Details/Components/ChecksTable";
@@ -22,6 +23,7 @@ import { useSelector } from "react-redux";
 import { useGet } from "@/Hooks/UseApi";
 import { type MonitorDetailsResponse, supportsGeoCheck } from "@/Types/Monitor";
 import type { ChecksResponse } from "@/Types/Check";
+import type { Notification } from "@/Types/Notification";
 import type {
 	GeoChecksResult,
 	FlatGeoChecksResponse,
@@ -69,6 +71,12 @@ const UptimeDetailsPage = () => {
 		monitorDetailsUrl,
 		{},
 		{ refreshInterval: 10000, keepPreviousData: true, revalidateOnFocus: false }
+	);
+
+	const { data: notifications } = useGet<Notification[]>(
+		"/notifications/team",
+		{},
+		{ keepPreviousData: true, revalidateOnFocus: false }
 	);
 
 	const monitorData = monitorDetailsData?.monitorData;
@@ -186,6 +194,13 @@ const UptimeDetailsPage = () => {
 				monitorStats={monitorStats}
 				certificateExpiry={certificateExpiry}
 			/>
+			{monitor && (
+				<EscalationSettings
+					monitor={monitor}
+					notifications={notifications ?? []}
+					onSaveSuccess={refetchMonitor}
+				/>
+			)}
 			<HeaderTimeRange
 				isLoading={monitorIsLoading || checksIsLoading}
 				hasDateRange={true}

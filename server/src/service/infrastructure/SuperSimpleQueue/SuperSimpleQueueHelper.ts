@@ -30,6 +30,7 @@ export interface ISuperSimpleQueueHelper {
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
+	getEscalationCleanupJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
 }
 
@@ -412,6 +413,128 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					message: error instanceof Error ? error.message : "Unknown error",
 					service: SERVICE_NAME,
 					method: "getCleanupRetentionJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		};
+	};
+
+	getEscalationCleanupJob = () => {
+		return async () => {
+			try {
+				this.logger.info({
+					message: "Starting escalation check for unacknowledged incidents",
+					service: SERVICE_NAME,
+					method: "getEscalationCleanupJob",
+				});
+
+				// Find all unacknowledged, active incidents
+				const activeIncidents = await this.incidentsRepository.findActiveIncidents();
+				if (!activeIncidents || activeIncidents.length === 0) {
+					this.logger.debug({
+						message: "No active incidents found",
+						service: SERVICE_NAME,
+						method: "getEscalationCleanupJob",
+					});
+					return;
+				}
+
+				let escalationCount = 0;
+
+				for (const incident of activeIncidents) {
+					// Skip if incident is acknowledged
+					if (incident.acknowledged) {
+						continue;
+					}
+
+					// Get the monitor to access escalation config
+					const monitor = await this.monitorsRepository.findById(incident.monitorId.toString(), incident.teamId.toString());
+					if (!monitor || !monitor.escalations || monitor.escalations.length === 0) {
+						continue;
+					}
+
+					const now = new Date();
+					const incidentStartTime = new Date(incident.startTime);
+
+					// Check each escalation rule
+					for (const escalation of monitor.escalations) {
+						const delayMs = escalation.delayMinutes * 60 * 1000;
+						const escalationTime = new Date(incidentStartTime.getTime() + delayMs);
+
+						// Check if enough time has passed since incident start
+						if (now >= escalationTime) {
+							// Check if this escalation has already been triggered for this incident
+							const escalatedIds = incident.escalatedNotificationIds || [];
+							if (!escalatedIds.includes(escalation.escalationChannelId)) {
+								// Trigger escalation notification
+								const escalationNotification = await this.notificationsRepository.findById(escalation.escalationChannelId, incident.teamId.toString());
+								if (escalationNotification) {
+									// Build a notification decision for escalation
+									const escalationDecision = {
+										shouldCreateIncident: false,
+										shouldResolveIncident: false,
+										shouldSendNotification: true,
+										incidentReason: null,
+										notificationReason: "escalation" as const,
+									};
+
+									// Send escalation notification
+									await this.notificationsService.handleNotifications(monitor, 
+										{ 
+											code: incident.statusCode || 0,
+											message: `ESCALATION: ${incident.message || 'Unacknowledged incident'}`,
+											statusCode: incident.statusCode || 0,
+										} as any,
+										escalationDecision
+									).catch((error: unknown) => {
+										this.logger.error({
+											message: `Error sending escalation notification for incident ${incident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+											service: SERVICE_NAME,
+											method: "getEscalationCleanupJob",
+											stack: error instanceof Error ? error.stack : undefined,
+										});
+									});
+
+									// Update incident to mark that this escalation has been triggered
+									const updatedEscalatedIds = [...escalatedIds, escalation.escalationChannelId];
+									await this.incidentsRepository.updateById(
+										incident.id.toString(),
+										incident.teamId.toString(),
+										{
+											lastEscalationAt: now.toISOString(),
+											escalatedNotificationIds: updatedEscalatedIds,
+										}
+									).catch((error: unknown) => {
+										this.logger.warn({
+											message: `Error updating incident escalation state ${incident.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+											service: SERVICE_NAME,
+											method: "getEscalationCleanupJob",
+										});
+									});
+
+									escalationCount++;
+
+									this.logger.info({
+										message: `Triggered escalation for incident ${incident.id} to channel ${escalation.escalationChannelId}`,
+										service: SERVICE_NAME,
+										method: "getEscalationCleanupJob",
+									});
+								}
+							}
+						}
+					}
+				}
+
+				this.logger.info({
+					message: `Escalation check completed. ${escalationCount} escalations triggered.`,
+					service: SERVICE_NAME,
+					method: "getEscalationCleanupJob",
+				});
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationCleanupJob",
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 			}

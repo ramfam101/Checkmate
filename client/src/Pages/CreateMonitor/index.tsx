@@ -15,7 +15,7 @@ import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import { Trash2 } from "lucide-react";
-import { HeaderDeleteControls } from "@/Components/monitors";
+import { HeaderDeleteControls, EscalationSettings } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
 import { BasePage, ConfigBox } from "@/Components/design-elements";
@@ -756,12 +756,36 @@ const CreateMonitorPage = () => {
 													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
-										</Stack>
-									)}
-								</Stack>
-							);
-						}}
-					/>
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+					}
+				/>
+
+			<ConfigBox
+				title={t("pages.monitor.escalations.title", "Escalation Rules")}
+				subtitle={t(
+					"pages.monitor.escalations.description",
+					"If the monitor stays down for the specified time, notify additional channels."
+				)}
+				rightContent={
+					existingMonitor ? (
+						<EscalationSettings
+							monitor={existingMonitor}
+							notifications={notifications ?? []}
+							onSaveSuccess={refetchMonitor}
+						/>
+					) : (
+						<Typography>
+							{t(
+								"pages.createMonitor.escalations.saveMonitorToConfigure",
+								"Save the monitor before configuring escalation rules."
+								)}
+						</Typography>
+					)
 				}
 			/>
 
@@ -795,34 +819,7 @@ const CreateMonitorPage = () => {
 				/>
 			)}
 
-			{watchedType === "http" && (
-				<ConfigBox
-					title={t("pages.createMonitor.form.advanced.title")}
-					subtitle={t("pages.createMonitor.form.advanced.description")}
-					rightContent={
-						<Stack spacing={theme.spacing(LAYOUT.MD)}>
-							<Controller
-								name="useAdvancedMatching"
-								control={control}
-								render={({ field }) => (
-									<Stack
-										direction="row"
-										alignItems="center"
-										spacing={theme.spacing(SPACING.LG)}
-									>
-										<Switch
-											checked={field.value ?? false}
-											onChange={(e) => field.onChange(e.target.checked)}
-										/>
-										<Typography>
-											{t(
-												"pages.createMonitor.form.advanced.option.advancedMatching.label"
-											)}
-										</Typography>
-									</Stack>
-								)}
-							/>
-							{watchedUseAdvancedMatching && (
+			{watchedUseAdvancedMatching && (
 								<Stack spacing={theme.spacing(LAYOUT.MD)}>
 									<Controller
 										name="matchMethod"
@@ -905,10 +902,6 @@ const CreateMonitorPage = () => {
 									</Typography>
 								</Stack>
 							)}
-						</Stack>
-					}
-				/>
-			)}
 
 			{supportsGeoCheck(watchedType) && (
 				<ConfigBox
