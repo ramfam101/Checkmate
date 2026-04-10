@@ -253,14 +253,10 @@ export class NotificationsService implements INotificationsService {
 	testAllNotifications = async (notificationIds: string[]) => {
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 		const outcomes = await Promise.allSettled(notifications.map((notification) => this.sendTestNotification(notification)));
-		const failed = outcomes.filter((outcome) => outcome.status === "rejected");
+		const firstFailure = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
 
-		if (failed.length > 0) {
-			const firstFailure = failed[0];
-			if (firstFailure.status === "rejected") {
-				throw firstFailure.reason;
-			}
-			return false;
+		if (firstFailure) {
+			throw firstFailure.reason;
 		}
 
 		return true;

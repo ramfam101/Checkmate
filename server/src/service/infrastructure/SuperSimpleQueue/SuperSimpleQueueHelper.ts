@@ -448,12 +448,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 
 		if (!statusChanged) {
-			// Check if escalation should be sent even when status hasn't changed
-			if (monitor.escalationEnabled && monitor.escalationScheduledAt && !monitor.escalationSentAt) {
-				const escalationTime = new Date(monitor.escalationScheduledAt.getTime() + (monitor.escalationDelayMinutes || 30) * 60 * 1000);
-				if (new Date() >= escalationTime && (monitor.status === "down" || monitor.status === "breached")) {
-					decision.shouldSendEscalation = true;
-				}
+			if (monitor.escalationEnabled && !monitor.escalationScheduledAt && (monitor.status === "down" || monitor.status === "breached")) {
+				decision.shouldScheduleEscalation = true;
 			}
 			return decision;
 		}
@@ -465,8 +461,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.incidentReason = "status_down";
 			decision.notificationReason = "status_change";
 
-			// Schedule escalation if enabled and not already scheduled/sent
-			if (monitor.escalationEnabled && !monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+			// Start or restart the escalation reminder cycle for this outage
+			if (monitor.escalationEnabled) {
 				decision.shouldScheduleEscalation = true;
 			}
 		} else if (monitor.status === "breached") {
@@ -476,8 +472,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
 
-			// Schedule escalation if enabled and not already scheduled/sent
-			if (monitor.escalationEnabled && !monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+			// Start or restart the escalation reminder cycle for this outage
+			if (monitor.escalationEnabled) {
 				decision.shouldScheduleEscalation = true;
 			}
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
@@ -486,8 +482,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
 
-			// Cancel any pending escalation
-			if (monitor.escalationScheduledAt && !monitor.escalationSentAt) {
+			// Cancel any pending or repeating escalation reminders
+			if (monitor.escalationScheduledAt || monitor.escalationSentAt) {
 				decision.shouldCancelEscalation = true;
 			}
 		}
@@ -508,17 +504,6 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 				this.logger.debug({
 					message: `Scheduled escalation for monitor ${monitorId} in ${monitor.escalationDelayMinutes} minutes`,
-					service: SERVICE_NAME,
-					method: "handleEscalation",
-				});
-			} else if (decision.shouldSendEscalation) {
-				// Send escalation notification
-				await this.notificationsService.sendEscalationNotification(monitor);
-				await this.monitorsRepository.updateById(monitorId, teamId, {
-					escalationSentAt: new Date(),
-				});
-				this.logger.info({
-					message: `Sent escalation notification for monitor ${monitorId}`,
 					service: SERVICE_NAME,
 					method: "handleEscalation",
 				});
@@ -554,31 +539,58 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					method: "getEscalationCheckJob",
 				});
 
-				// Find all monitors with pending escalations
 				const monitors = await this.monitorsRepository.findAll();
-				const monitorsWithPendingEscalations = (monitors || []).filter(
-					(monitor) =>
-						monitor.escalationEnabled &&
-						monitor.escalationScheduledAt &&
-						!monitor.escalationSentAt &&
-						(monitor.status === "down" || monitor.status === "breached")
+				const monitorsNeedingEscalation = (monitors || []).filter(
+					(monitor) => monitor.escalationEnabled && !!monitor.escalationEmail && (monitor.status === "down" || monitor.status === "breached")
 				);
 
-				for (const monitor of monitorsWithPendingEscalations) {
-					const escalationTime = new Date(monitor.escalationScheduledAt!.getTime() + (monitor.escalationDelayMinutes || 30) * 60 * 1000);
+				for (const monitor of monitorsNeedingEscalation) {
+					if (!monitor.escalationScheduledAt) {
+						await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+							escalationScheduledAt: new Date(),
+							escalationSentAt: null,
+						});
+						this.logger.debug({
+							message: `Scheduled escalation for monitor ${monitor.id} in ${monitor.escalationDelayMinutes || 30} minutes`,
+							service: SERVICE_NAME,
+							method: "getEscalationCheckJob",
+						});
+						continue;
+					}
+
+					const scheduledAt = new Date(monitor.escalationScheduledAt);
+					if (Number.isNaN(scheduledAt.getTime())) {
+						this.logger.warn({
+							message: `Invalid escalationScheduledAt for monitor ${monitor.id}`,
+							service: SERVICE_NAME,
+							method: "getEscalationCheckJob",
+						});
+						continue;
+					}
+
+					const escalationTime = new Date(scheduledAt.getTime() + (monitor.escalationDelayMinutes || 30) * 60 * 1000);
 
 					if (new Date() >= escalationTime) {
-						// Time to send escalation
 						try {
-							await this.notificationsService.sendEscalationNotification(monitor);
-							await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
-								escalationSentAt: new Date(),
-							});
-							this.logger.info({
-								message: `Sent escalation notification for monitor ${monitor.id}`,
-								service: SERVICE_NAME,
-								method: "getEscalationCheckJob",
-							});
+							const success = await this.notificationsService.sendEscalationNotification(monitor);
+							if (success) {
+								const sentAt = new Date();
+								await this.monitorsRepository.updateById(monitor.id, monitor.teamId, {
+									escalationSentAt: sentAt,
+									escalationScheduledAt: sentAt,
+								});
+								this.logger.info({
+									message: `Sent recurring escalation notification for monitor ${monitor.id}`,
+									service: SERVICE_NAME,
+									method: "getEscalationCheckJob",
+								});
+							} else {
+								this.logger.warn({
+									message: `Escalation notification send returned false for monitor ${monitor.id}`,
+									service: SERVICE_NAME,
+									method: "getEscalationCheckJob",
+								});
+							}
 						} catch (error: unknown) {
 							this.logger.error({
 								message: `Failed to send escalation for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -591,7 +603,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				}
 
 				this.logger.debug({
-					message: `Checked ${monitorsWithPendingEscalations.length} monitors for escalations`,
+					message: `Checked ${monitorsNeedingEscalation.length} monitors for escalations`,
 					service: SERVICE_NAME,
 					method: "getEscalationCheckJob",
 				});

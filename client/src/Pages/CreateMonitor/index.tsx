@@ -252,11 +252,18 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		const payload: MonitorFormData = {
+			...data,
+			escalationEnabled: true,
+			escalationDelayMinutes: Number(data.escalationDelayMinutes ?? 30),
+			escalationEmail: data.escalationEmail ?? "",
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
