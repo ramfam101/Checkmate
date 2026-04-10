@@ -21,6 +21,7 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 						type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
 						notificationName: data?.notificationName || "",
 						address: data?.address || "",
+						escalationTimes: data?.escalationTimes || [],
 					};
 
 		return { schema: notificationSchema, defaults };

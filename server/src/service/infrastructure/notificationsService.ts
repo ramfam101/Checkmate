@@ -14,10 +14,20 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	handleEscalatedNotifications?: (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		activeIncident: import("@/types/index.js").Incident
+	) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
+
+type EmailNotificationPartial = Partial<Notification> & {
+	type: "email";
+	escalationTimes?: number[];
+};
 
 const SERVICE_NAME = "NotificationsService";
 
@@ -141,6 +151,50 @@ export class NotificationsService implements INotificationsService {
 		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
 	};
 
+	handleEscalatedNotifications = async (
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		activeIncident: import("@/types/index.js").Incident
+	) => {
+		const notificationIds = monitor.notifications ?? [];
+		if (notificationIds.length === 0) return false;
+		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+
+		const now = Date.now();
+		const startTime = parseInt(activeIncident.startTime);
+		if (isNaN(startTime)) return false;
+
+		const durationMinutes = (now - startTime) / 60000;
+		const prevDurationMinutes = (now - monitor.interval - startTime) / 60000;
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: null,
+			notificationReason: "status_change",
+		};
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		notificationMessage.content.title = `[ESCALATION] ${notificationMessage.content.title}`;
+
+		const tasks = notifications.map(async (notification) => {
+			if (notification.type === "email" && notification.escalationTimes && notification.escalationTimes.length > 0) {
+				const shouldEscalate = notification.escalationTimes.some((t: number) => {
+					return prevDurationMinutes < t && t <= durationMinutes;
+				});
+				if (shouldEscalate) {
+					return await this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage);
+				}
+			}
+			return false;
+		});
+
+		const outcomes = await Promise.all(tasks);
+		return outcomes.filter(Boolean).length > 0;
+	};
+
 	sendTestNotification = async (notification: Partial<Notification>) => {
 		switch (notification.type) {
 			case "email":
@@ -177,6 +231,15 @@ export class NotificationsService implements INotificationsService {
 	createNotification = async (notificationData: Partial<Notification>, userId: string, teamId: string): Promise<Notification> => {
 		notificationData.userId = userId;
 		notificationData.teamId = teamId;
+
+		if (notificationData.type === "email") {
+			const emailNotification = notificationData as EmailNotificationPartial;
+			emailNotification.escalationTimes = emailNotification.escalationTimes || [];
+			return await this.notificationsRepository.create(emailNotification);
+		}
+
+		// For non-email notifications, remove escalationTimes if present
+		delete (notificationData as any).escalationTimes;
 		return await this.notificationsRepository.create(notificationData);
 	};
 

@@ -171,6 +171,43 @@ const NotificationsCreatePage = () => {
 					}
 				/>
 			)}
+			{watchedType === "email" && (
+				<ConfigBox
+					title="Escalated Notifications"
+					subtitle="Comma-separated list of durations (in minutes) after which an escalated email notification will be sent. For example, '5, 15, 30'."
+					rightContent={
+						<Controller
+							name="escalationTimes"
+							control={control}
+							defaultValue={defaults.escalationTimes || []}
+							render={({ field: { onChange, value, ref }, fieldState }) => (
+								<TextField
+									inputRef={ref}
+									type="text"
+									fieldLabel="Escalation Delay Times (minutes)"
+									placeholder="e.g. 5, 15, 30"
+									fullWidth
+									error={!!fieldState.error}
+									helperText={fieldState.error?.message ?? ""}
+									value={Array.isArray(value) ? value.join(", ") : ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										if (!val) {
+											onChange([]);
+											return;
+										}
+										const parsed = val
+											.split(",")
+											.map((v) => parseInt(v.trim()))
+											.filter((v) => !isNaN(v));
+										onChange(parsed);
+									}}
+								/>
+							)}
+						/>
+					}
+				/>
+			)}
 			{watchedType === "matrix" && (
 				<ConfigBox
 					title={t("pages.notifications.form.matrix.title")}

@@ -13,6 +13,7 @@ const emailSchema = baseSchema.extend({
 		.string()
 		.min(1, "Email is required")
 		.email("Please enter a valid email address"),
+	escalationTimes: z.array(z.number()),
 });
 
 const slackSchema = baseSchema.extend({

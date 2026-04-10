@@ -54,11 +54,18 @@ class NotificationController implements INotificationController {
 	createNotification = async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const validatedBody = createNotificationBodyValidation.parse(req.body);
-
 			const teamId = requireTeamId(req.user?.teamId);
 			const userId = requireUserId(req.user?.id);
 
-			const notification = await this.notificationsService.createNotification(validatedBody, userId, teamId);
+			// Narrow type if it's an email notification
+			let notificationData: Partial<Notification> = { ...validatedBody };
+			if (validatedBody.type === "email") {
+				// Tell TS this is an EmailNotificationPartial
+				notificationData = { ...validatedBody } as Partial<Notification> & { escalationTimes?: number[] };
+			}
+
+			const notification = await this.notificationsService.createNotification(notificationData, userId, teamId);
+
 			return res.status(200).json({
 				success: true,
 				msg: "Notification created successfully",
