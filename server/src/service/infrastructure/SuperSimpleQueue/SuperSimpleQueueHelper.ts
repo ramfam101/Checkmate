@@ -177,6 +177,32 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+			const escalationDelayMinutes = statusChangeResult.monitor.escalationDelayMinutes ?? 0;
+				if (decision.shouldCreateIncident && escalationDelayMinutes > 0) {
+					setTimeout(async () => {
+						try {
+							const latestMonitor = await this.monitorsRepository.findById(
+								statusChangeResult.monitor.id,
+								statusChangeResult.monitor.teamId
+							);
+							if (!latestMonitor || latestMonitor.status !== "down") {
+								return;
+							}
+							await this.notificationsService.handleEscalatedNotifications(
+								latestMonitor,
+								status,
+								{ shouldCreateIncident: false, shouldResolveIncident: false, shouldSendNotification: true, incidentReason: "status_down", notificationReason: "status_change" }
+							);
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Error sending escalation notification for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					}, escalationDelayMinutes * 60 * 1000);
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",

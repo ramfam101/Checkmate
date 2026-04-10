@@ -764,6 +764,29 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Set up escalated notifications if the monitor stays down"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationDelayMinutes"
+							control={control}
+							render={({ field }) => (
+								<TextField
+									{...field}
+									value={field.value ?? 0}
+									onChange={(e) => field.onChange(Number(e.target.value))}
+									type="number"
+									fieldLabel="Escalate after (minutes)"
+									placeholder="0"
+									fullWidth
+								/>
+							)}
+						/>
+					</Stack>
+				}
+			/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
