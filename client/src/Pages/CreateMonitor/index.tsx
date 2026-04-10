@@ -199,7 +199,7 @@ const CreateMonitorPage = () => {
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema as any),
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;

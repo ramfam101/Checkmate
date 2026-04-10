@@ -39,7 +39,7 @@ export interface Monitor {
 	notifications: string[];
 	escalateAfter: number;
   	escalationChannels: string[];
-	lastStatusChange?: string | Date;
+	lastStatusChange: string | Date;
 	isEscalated: boolean;
 	secret?: string;
 	cpuAlertThreshold: number;

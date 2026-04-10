@@ -15,7 +15,7 @@ const baseSchema = z.object({
 	notifications: z.array(z.string()),
 	escalateAfter: z.number().min(0, "Must be 0 or greater"),
     escalationChannels: z.array(z.string()),
-	lastStatusChange: z.union([z.date(), z.string()]).optional(), // Add this!
+	lastStatusChange: z.union([z.date(), z.string()]), // Add this!
     isEscalated: z.boolean().default(false),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
