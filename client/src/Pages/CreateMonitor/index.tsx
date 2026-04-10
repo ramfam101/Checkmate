@@ -202,7 +202,7 @@ const CreateMonitorPage = () => {
 		resolver: zodResolver(schema),
 		defaultValues: defaults,
 	});
-	const { control, watch, handleSubmit, clearErrors } = form;
+	const { control, watch, handleSubmit, clearErrors, setValue } = form;
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -212,6 +212,8 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const watchedEscalation = watch("escalation");
+	const hasEscalation = Boolean(watchedEscalation);
 
 	useEffect(() => {
 		clearErrors();
@@ -701,67 +703,143 @@ const CreateMonitorPage = () => {
 				title={t("pages.createMonitor.form.notifications.title")}
 				subtitle={t("pages.createMonitor.form.notifications.description")}
 				rightContent={
-					<Controller
-						name="notifications"
-						control={control}
-						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
-							const selectedNotifications = notificationOptions.filter((n) =>
-								(field.value ?? []).includes(n.id)
-							);
-							return (
-								<Stack spacing={theme.spacing(LAYOUT.MD)}>
-									<Autocomplete
-										multiple
-										options={notificationOptions}
-										value={selectedNotifications}
-										getOptionLabel={(option) => option.name}
-										onChange={(_: unknown, newValue: typeof notificationOptions) => {
-											field.onChange(newValue.map((n) => n.id));
-										}}
-										isOptionEqualToValue={(option, value) => option.id === value.id}
-									/>
-									{selectedNotifications.length > 0 && (
-										<Stack
-											flex={1}
-											width="100%"
-										>
-											{selectedNotifications.map((notification, index) => (
-												<Stack
-													direction="row"
-													alignItems="center"
-													key={notification.id}
-													width="100%"
-												>
-													<Typography flexGrow={1}>
-														{notification.notificationName}
-													</Typography>
-													<IconButton
-														size="small"
-														onClick={() => {
-															field.onChange(
-																(field.value ?? []).filter(
-																	(id: string) => id !== notification.id
-																)
-															);
-														}}
-														aria-label="Remove notification"
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="notifications"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+								const selectedNotifications = notificationOptions.filter((n) =>
+									(field.value ?? []).includes(n.id)
+								);
+								return (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Autocomplete
+											multiple
+											options={notificationOptions}
+											value={selectedNotifications}
+											getOptionLabel={(option) => option.name}
+											onChange={(_: unknown, newValue: typeof notificationOptions) => {
+												field.onChange(newValue.map((n) => n.id));
+											}}
+											isOptionEqualToValue={(option, value) => option.id === value.id}
+										/>
+										{selectedNotifications.length > 0 && (
+											<Stack
+												flex={1}
+												width="100%"
+											>
+												{selectedNotifications.map((notification, index) => (
+													<Stack
+														direction="row"
+														alignItems="center"
+														key={notification.id}
+														width="100%"
 													>
-														<Trash2 size={16} />
-													</IconButton>
-													{index < selectedNotifications.length - 1 && <Divider />}
-												</Stack>
-											))}
-										</Stack>
+														<Typography flexGrow={1}>
+															{notification.notificationName}
+														</Typography>
+														<IconButton
+															size="small"
+															onClick={() => {
+																field.onChange(
+																	(field.value ?? []).filter(
+																		(id: string) => id !== notification.id
+																	)
+																);
+															}}
+															aria-label="Remove notification"
+														>
+															<Trash2 size={16} />
+														</IconButton>
+														{index < selectedNotifications.length - 1 && <Divider />}
+													</Stack>
+												))}
+											</Stack>
+										)}
+									</Stack>
+								);
+							}}
+						/>
+
+						<Stack
+							direction="row"
+							alignItems="center"
+							spacing={theme.spacing(SPACING.LG)}
+						>
+							<Switch
+								checked={hasEscalation}
+								onChange={(e) => {
+									if (e.target.checked) {
+										setValue("escalation", {
+											delayMinutes: watchedEscalation?.delayMinutes ?? 15,
+											channelId: watchedEscalation?.channelId ?? "",
+										});
+									} else {
+										setValue("escalation", undefined);
+									}
+								}}
+							/>
+							<Typography>
+								{t("pages.createMonitor.form.notifications.option.escalation.enable")}
+							</Typography>
+						</Stack>
+
+						{hasEscalation && (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Controller
+									name="escalation.delayMinutes"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											{...field}
+											type="number"
+											value={field.value ?? 15}
+											onChange={(e) => field.onChange(Number(e.target.value))}
+											fieldLabel={t(
+												"pages.createMonitor.form.notifications.option.escalation.delay"
+											)}
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
 									)}
-								</Stack>
-							);
-						}}
-					/>
+								/>
+
+								<Controller
+									name="escalation.channelId"
+									control={control}
+									render={({ field, fieldState }) => (
+										<Select
+											{...field}
+											value={field.value ?? ""}
+											fieldLabel={t(
+												"pages.createMonitor.form.notifications.option.escalation.channel"
+											)}
+											error={!!fieldState.error}
+										>
+											<MenuItem value="">
+												{t(
+													"pages.createMonitor.form.notifications.option.escalation.selectChannel"
+												)}
+											</MenuItem>
+											{(notifications ?? []).map((notification) => (
+												<MenuItem
+													key={notification.id}
+													value={notification.id}
+												>
+													{notification.notificationName}
+												</MenuItem>
+											))}
+										</Select>
+									)}
+								/>
+							</Stack>
+						)}
+					</Stack>
 				}
 			/>
 
