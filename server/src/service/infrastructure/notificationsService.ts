@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IIncidentsRepository, IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -26,6 +26,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -41,6 +42,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -55,6 +57,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -82,6 +85,36 @@ export class NotificationsService implements INotificationsService {
 				method: "send",
 			});
 			return false;
+		}
+
+		// Final race-condition guard: verify current monitor status immediately before provider send.
+		// This prevents stale "down" or "up" messages when status flips between scheduling and dispatch.
+		if (
+			notificationMessage.type === "monitor_down" ||
+			notificationMessage.type === "monitor_down_escalation" ||
+			notificationMessage.type === "monitor_up"
+		) {
+			const latestMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+			if (notificationMessage.type === "monitor_up" && latestMonitor.status !== "up") {
+				return false;
+			}
+			if (
+				(notificationMessage.type === "monitor_down" || notificationMessage.type === "monitor_down_escalation") &&
+				latestMonitor.status !== "down"
+			) {
+				return false;
+			}
+			if (notificationMessage.type === "monitor_down" || notificationMessage.type === "monitor_down_escalation") {
+				const latestCheck = latestMonitor.recentChecks?.[latestMonitor.recentChecks.length - 1];
+				if (latestCheck && latestCheck.status === true) {
+					return false;
+				}
+
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+				if (!activeIncident) {
+					return false;
+				}
+			}
 		}
 
 		// Route to provider based on notification type
@@ -113,8 +146,33 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const escalationIds = monitor.escalationNotifications ?? [];
+		const primaryIds = monitor.notifications ?? [];
+		const notificationIds =
+			decision.notificationReason === "escalation"
+				? (escalationIds.length > 0 ? escalationIds : primaryIds)
+				: primaryIds;
+
+		if (notificationIds.length === 0) {
+			this.logger.warn({
+				message: `No notification channels configured for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+				details: { reason: decision.notificationReason ?? "unknown" },
+			});
+			return false;
+		}
+
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+		if (notifications.length === 0) {
+			this.logger.warn({
+				message: `Configured notification channels not found for monitor ${monitor.id}`,
+				service: SERVICE_NAME,
+				method: "sendNotifications",
+				details: { configuredIds: notificationIds },
+			});
+			return false;
+		}
 
 		// Build notification message once for all notifications
 		const settings = this.settingsService.getSettings();
@@ -140,6 +198,32 @@ export class NotificationsService implements INotificationsService {
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
+		}
+
+		// Guard against async race conditions where a stale "down" event is processed
+		// after the monitor has already recovered.
+		if (decision.notificationReason === "status_change" && monitor.status === "down") {
+			const latestMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+			if (latestMonitor.status !== "down") {
+				this.logger.debug({
+					message: `Skipping stale down notification for monitor ${monitor.id}; current status is ${latestMonitor.status}`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+				});
+				return false;
+			}
+		}
+
+		if (decision.notificationReason === "escalation") {
+			const latestMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+			if (latestMonitor.status !== "down") {
+				this.logger.debug({
+					message: `Skipping stale escalation notification for monitor ${monitor.id}; current status is ${latestMonitor.status}`,
+					service: SERVICE_NAME,
+					method: "handleNotifications",
+				});
+				return false;
+			}
 		}
 
 		// Send notifications based on decision

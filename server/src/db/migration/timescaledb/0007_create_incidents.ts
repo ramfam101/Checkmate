@@ -8,6 +8,7 @@ export const createIncidents = async (pool: Pool) => {
 			team_id             UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
 			start_time          TIMESTAMPTZ NOT NULL,
 			end_time            TIMESTAMPTZ,
+			escalation_sent_at  TIMESTAMPTZ,
 			status              BOOLEAN,
 			message             TEXT,
 			status_code         INTEGER,

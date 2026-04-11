@@ -27,6 +27,19 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
+	escalationEnabled: z.boolean(),
+	escalationDelay: z.number().optional(),
+	escalationNotifications: z.array(z.string()).optional(),
+}).refine((data) => {
+	// If escalation is enabled, delay and at least one notification are required
+	if (data.escalationEnabled) {
+		return data.escalationDelay !== undefined && data.escalationDelay >= 1 &&
+			   data.escalationNotifications && data.escalationNotifications.length > 0;
+	}
+	return true;
+}, {
+	message: "Escalation delay and notifications are required when escalation is enabled",
+	path: ["escalationEnabled"],
 });
 
 // HTTP monitor schema

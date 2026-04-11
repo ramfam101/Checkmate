@@ -40,7 +40,10 @@ export const createApp = ({
 		})
 	);
 
-	app.use(express.static(frontendPath));
+	// Only serve static files in production (not in dev where Vite serves on :5173)
+	if (process.env.NODE_ENV === "production") {
+		app.use(express.static(frontendPath));
+	}
 
 	app.use(express.json());
 	app.use(cookieParser());

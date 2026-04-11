@@ -40,6 +40,9 @@ interface MonitorRow {
 	geo_check_enabled: boolean;
 	geo_check_locations: GeoContinent[] | null;
 	geo_check_interval_ms: number;
+	escalation_enabled: boolean;
+	escalation_delay: number;
+	escalation_notifications: string[]; // JSON array of notification IDs
 	created_at: Date;
 	updated_at: Date;
 }
@@ -50,7 +53,7 @@ const MONITOR_COLUMNS = `id, user_id, team_id, name, description, type, status, 
 	cpu_alert_threshold, cpu_alert_counter, memory_alert_threshold, memory_alert_counter,
 	disk_alert_threshold, disk_alert_counter, temp_alert_threshold, temp_alert_counter, selected_disks,
 	game_id, grpc_service_name, monitor_group, geo_check_enabled, geo_check_locations, geo_check_interval_ms,
-	created_at, updated_at`;
+	escalation_enabled, escalation_delay, escalation_notifications, created_at, updated_at`;
 
 export class TimescaleMonitorsRepository implements IMonitorsRepository {
 	constructor(private pool: Pool) {}
@@ -598,6 +601,9 @@ export class TimescaleMonitorsRepository implements IMonitorsRepository {
 			["geoCheckEnabled", "geo_check_enabled"],
 			["geoCheckLocations", "geo_check_locations"],
 			["geoCheckInterval", "geo_check_interval_ms"],
+			["escalationEnabled", "escalation_enabled"],
+			["escalationDelay", "escalation_delay"],
+			["escalationNotifications", "escalation_notifications"],
 		];
 
 		for (const [key, column] of fieldMap) {
@@ -1038,6 +1044,9 @@ export class TimescaleMonitorsRepository implements IMonitorsRepository {
 		geoCheckLocations: row.geo_check_locations ?? [],
 		geoCheckInterval: row.geo_check_interval_ms,
 		recentChecks: [],
+		escalationEnabled: row.escalation_enabled ?? false,
+		escalationDelay: row.escalation_delay ?? 15,
+		escalationNotifications: row.escalation_notifications ?? [],
 		createdAt: row.created_at.toISOString(),
 		updatedAt: row.updated_at.toISOString(),
 	});

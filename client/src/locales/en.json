@@ -543,6 +543,24 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Send additional notifications if alerts remain unresolved",
+					"title": "Escalation",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation"
+						},
+						"delay": {
+							"label": "Escalate after (minutes)"
+						},
+						"notifications": {
+							"label": "Escalation notification channels"
+						}
+					},
+					"error": {
+						"noEmailConfigured": "No email notification channels configured. Please add an email notification channel in Notifications to enable escalation."
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

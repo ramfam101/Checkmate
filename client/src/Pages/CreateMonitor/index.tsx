@@ -14,7 +14,8 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import InputAdornment from "@mui/material/InputAdornment";
+import { Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -193,6 +194,28 @@ const CreateMonitorPage = () => {
 	const { data: notifications } = useGet<Notification[]>("/notifications/team");
 	const { data: games } = useGet<GamesMap>("/monitors/games");
 
+	// Map notifications to have 'name' property for Autocomplete
+	const notificationOptions = (notifications ?? []).map((n) => ({
+		...n,
+		name: n.notificationName,
+	}));
+
+	// Filter to only email notifications from configured email settings
+	const emailNotificationOptions = useMemo(() => {
+		if (!notifications) return [];
+		return notifications
+			.filter((n) => n.type === "email")
+			.map((n) => ({
+				...n,
+				name: n.notificationName,
+			}));
+	}, [notifications]);
+
+	// Create escalation notification options - only specific email notifications
+	const escalationNotificationOptions = useMemo(() => {
+		return emailNotificationOptions;
+	}, [emailNotificationOptions]);
+
 	const { schema, defaults } = useMonitorForm({
 		data: existingMonitor ?? null,
 		defaultType,
@@ -203,10 +226,14 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { isDirty } = form.formState;
 
 	useEffect(() => {
+		if (isDirty) {
+			return;
+		}
 		form.reset(defaults);
-	}, [defaults, form]);
+	}, [defaults, form, isDirty]);
 
 	const watchedType = watch("type") as MonitorType;
 
@@ -705,11 +732,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -761,6 +783,171 @@ const CreateMonitorPage = () => {
 								</Stack>
 							);
 						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationEnabled"
+						control={control}
+						render={({ field: enabledField }) => (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={enabledField.value ?? false}
+										onChange={(e) => enabledField.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalation.option.enabled.label")}
+									</Typography>
+								</Stack>
+								{enabledField.value && (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Controller
+											name="escalationDelay"
+											control={control}
+											render={({ field: delayField, fieldState }) => (
+												<TextField
+													{...delayField}
+													value={delayField.value ?? ""}
+													onKeyDown={(e) => {
+														const current = typeof delayField.value === "number" && delayField.value >= 1
+															? delayField.value
+															: 1;
+
+														if (e.key === "ArrowUp") {
+															e.preventDefault();
+															delayField.onChange(current + 1);
+															return;
+														}
+
+														if (e.key === "ArrowDown") {
+															e.preventDefault();
+															delayField.onChange(Math.max(1, current - 1));
+															return;
+														}
+													}}
+													type="number"
+													inputProps={{
+														min: 1,
+														step: 1,
+														readOnly: true,
+													}}
+													InputProps={{
+														endAdornment: (
+															<InputAdornment position="end">
+																<Stack
+																	direction="column"
+																	spacing={0}
+																	alignItems="center"
+																>
+																	<IconButton
+																		size="small"
+																		onClick={() => {
+																			const current = typeof delayField.value === "number" && delayField.value >= 1
+																				? delayField.value
+																				: 1;
+																			delayField.onChange(current + 1);
+																		}}
+																		aria-label="Increase escalation delay"
+																		tabIndex={-1}
+																	>
+																		<ChevronUp size={14} />
+																	</IconButton>
+																	<IconButton
+																		size="small"
+																		onClick={() => {
+																			const current = typeof delayField.value === "number" && delayField.value >= 1
+																				? delayField.value
+																				: 1;
+																			delayField.onChange(Math.max(1, current - 1));
+																		}}
+																		aria-label="Decrease escalation delay"
+																		tabIndex={-1}
+																	>
+																		<ChevronDown size={14} />
+																	</IconButton>
+																</Stack>
+															</InputAdornment>
+														),
+													}}
+													onPaste={(e) => e.preventDefault()}
+													fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+													error={!!fieldState.error}
+													helperText={fieldState.error?.message}
+												/>
+											)}
+										/>
+										<Controller
+											name="escalationNotifications"
+											control={control}
+											render={({ field: notificationsField }) => {
+												const selectedIds = notificationsField.value ?? [];
+												const selectedOptions = escalationNotificationOptions.filter((opt) => selectedIds.includes(opt.id));
+												
+												return (
+													<Stack>
+														<Autocomplete
+															multiple
+															options={escalationNotificationOptions}
+															getOptionLabel={(option) => option.name}
+															isOptionEqualToValue={(option, value) => option.id === value.id}
+															value={selectedOptions}
+															onChange={(_: unknown, newOptions: typeof escalationNotificationOptions) => {
+																const newIds = newOptions.map((opt) => opt.id);
+																notificationsField.onChange(newIds);
+															}}
+														/>
+														{selectedOptions.length > 0 && (
+															<Stack
+																flex={1}
+																width="100%"
+																spacing={theme.spacing(LAYOUT.MD)}
+															>
+																{selectedOptions.map((notification, index) => (
+																	<Stack
+																		direction="row"
+																		alignItems="center"
+																		key={notification.id}
+																		width="100%"
+																	>
+																		<Typography flexGrow={1}>
+																			{notification.notificationName}
+																		</Typography>
+																		<IconButton
+																			size="small"
+																			onClick={() => {
+																				notificationsField.onChange(
+																					(notificationsField.value ?? []).filter(
+																						(id: string) => id !== notification.id
+																					)
+																				);
+																			}}
+																			aria-label="Remove notification"
+																		>
+																			<Trash2 size={16} />
+																		</IconButton>
+																		{index < selectedOptions.length - 1 && <Divider />}
+																	</Stack>
+																))}
+															</Stack>
+														)}
+													</Stack>
+												);
+											}}
+										/>
+									</Stack>
+								)}
+							</Stack>
+						)}
 					/>
 				}
 			/>

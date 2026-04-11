@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -154,29 +154,64 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				const statusChangeResult = await this.statusService.updateMonitorStatus(status, check);
 
 				// Step 5.  Get decisions
-				const decision = this.evaluateMonitorAction(statusChangeResult);
+				const decision = await this.evaluateMonitorAction(statusChangeResult);
+
+				// Step 5.05 Claim recovery notification slot atomically.
+				// Only one worker should resolve the active incident and send the "back up" message.
+				if (decision.shouldResolveIncident && decision.notificationReason === "status_change") {
+					const claimedRecovery = await this.incidentsRepository.resolveActiveByMonitorId(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId);
+					if (!claimedRecovery) {
+						decision.shouldResolveIncident = false;
+						decision.shouldSendNotification = false;
+					}
+				}
+
+				// Step 5.1  Check if escalation notification is due for active downtime incident
+				const escalationIncident = await this.getEscalationCandidate(statusChangeResult.monitor, decision);
+				if (escalationIncident) {
+					decision.shouldSendNotification = true;
+					decision.notificationReason = "escalation";
+				}
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					if (decision.notificationReason === "escalation" && escalationIncident) {
+						try {
+							const claimed = await this.incidentsRepository.markEscalationSentIfUnset(escalationIncident.id, escalationIncident.teamId);
+							if (claimed) {
+								await this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision);
+							}
+						} catch (error: unknown) {
+							this.logger.error({
+								message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					} else {
+						this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
+					}
+				}
+
+				// Step 7. Handle incidents (best effort, don't wait)
+				if (decision.shouldCreateIncident || decision.shouldResolveIncident) {
+					this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
+						this.logger.warn({
+							message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 							service: SERVICE_NAME,
 							method: "getMonitorJob",
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
 				}
-
-				// Step 7. Handle incidents (best effort, don't wait)
-				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
-					this.logger.warn({
-						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-						service: SERVICE_NAME,
-						method: "getMonitorJob",
-						stack: error instanceof Error ? error.stack : undefined,
-					});
-				});
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -418,7 +453,7 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		};
 	};
 
-	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {
+	private async evaluateMonitorAction(statusChangeResult: StatusChangeResult): Promise<MonitorActionDecision> {
 		const { monitor, statusChanged, prevStatus } = statusChangeResult;
 
 		// Initialize result
@@ -447,12 +482,49 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.incidentReason = "threshold_breach";
 			decision.notificationReason = "threshold_breach";
 		} else if (monitor.status === "up" && (prevStatus === "down" || prevStatus === "breached")) {
-			// Monitor recovered from down or breached state
-			decision.shouldResolveIncident = true;
-			decision.shouldSendNotification = true;
-			decision.notificationReason = "status_change";
+			// Monitor recovered from down or breached state.
+			// Guard against accidental "up" alerts by requiring an active incident first.
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (activeIncident) {
+				decision.shouldResolveIncident = true;
+				decision.shouldSendNotification = true;
+				decision.notificationReason = "status_change";
+			}
 		}
 
 		return decision;
 	}
+
+	private getEscalationCandidate = async (monitor: Monitor, decision: MonitorActionDecision) => {
+		if (decision.shouldCreateIncident || decision.shouldResolveIncident) {
+			return null;
+		}
+
+		if (monitor.status !== "down" || !monitor.escalationEnabled) {
+			return null;
+		}
+
+		if (!monitor.escalationDelay || monitor.escalationDelay < 1) {
+			return null;
+		}
+
+		const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!activeIncident || activeIncident.escalationSentAt) {
+			return null;
+		}
+
+		const incidentStart = new Date(activeIncident.startTime).getTime();
+		if (Number.isNaN(incidentStart)) {
+			return null;
+		}
+
+		const elapsedMs = Date.now() - incidentStart;
+		const escalationDelayMs = monitor.escalationDelay * 60 * 1000;
+
+		if (elapsedMs < escalationDelayMs) {
+			return null;
+		}
+
+		return activeIncident;
+	};
 }

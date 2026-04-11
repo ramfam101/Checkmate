@@ -53,6 +53,7 @@ class MongoIncidentsRepository implements IIncidentsRepository {
 			teamId: this.toStringId(doc.teamId),
 			startTime: this.toDateString(doc.startTime),
 			endTime: doc.endTime ? this.toDateString(doc.endTime) : null,
+			escalationSentAt: doc.escalationSentAt ? this.toDateString(doc.escalationSentAt) : null,
 			status: doc.status,
 			message: doc.message ?? null,
 			statusCode: doc.statusCode ?? null,
@@ -147,6 +148,45 @@ class MongoIncidentsRepository implements IIncidentsRepository {
 			throw new AppError({ message: `Failed to update incident with id ${incidentId}`, status: 500 });
 		}
 		return this.toEntity(updatedIncident);
+	};
+
+	markEscalationSentIfUnset = async (incidentId: string, teamId: string): Promise<boolean> => {
+		const updatedIncident = await IncidentModel.findOneAndUpdate(
+			{
+				_id: new mongoose.Types.ObjectId(incidentId),
+				teamId: new mongoose.Types.ObjectId(teamId),
+				status: true,
+				escalationSentAt: null,
+			},
+			{
+				$set: {
+					escalationSentAt: new Date(),
+				},
+			},
+			{ new: true }
+		);
+
+		return Boolean(updatedIncident);
+	};
+
+	resolveActiveByMonitorId = async (monitorId: string, teamId: string): Promise<boolean> => {
+		const updatedIncident = await IncidentModel.findOneAndUpdate(
+			{
+				monitorId: new mongoose.Types.ObjectId(monitorId),
+				teamId: new mongoose.Types.ObjectId(teamId),
+				status: true,
+			},
+			{
+				$set: {
+					status: false,
+					endTime: new Date(),
+					resolutionType: "automatic",
+				},
+			},
+			{ new: true }
+		);
+
+		return Boolean(updatedIncident);
 	};
 
 	countByTeamId = async (

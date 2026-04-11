@@ -9,6 +9,7 @@ interface IncidentRow {
 	team_id: string;
 	start_time: Date;
 	end_time: Date | null;
+	escalation_sent_at: Date | null;
 	status: boolean;
 	message: string | null;
 	status_code: number | null;
@@ -20,7 +21,7 @@ interface IncidentRow {
 	updated_at: Date;
 }
 
-const COLUMNS = `id, monitor_id, team_id, start_time, end_time, status, message, status_code,
+const COLUMNS = `id, monitor_id, team_id, start_time, end_time, escalation_sent_at, status, message, status_code,
 	resolution_type, resolved_by, resolved_by_email, comment, created_at, updated_at`;
 
 export class TimescaleIncidentsRepository implements IIncidentsRepository {
@@ -28,14 +29,15 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 
 	create = async (incident: Partial<Incident>): Promise<Incident> => {
 		const result = await this.pool.query<IncidentRow>(
-			`INSERT INTO incidents (monitor_id, team_id, start_time, end_time, status, message, status_code, resolution_type, resolved_by, resolved_by_email, comment)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			`INSERT INTO incidents (monitor_id, team_id, start_time, end_time, escalation_sent_at, status, message, status_code, resolution_type, resolved_by, resolved_by_email, comment)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			 RETURNING ${COLUMNS}`,
 			[
 				incident.monitorId,
 				incident.teamId,
 				incident.startTime ? new Date(Number(incident.startTime) || incident.startTime) : new Date(),
 				incident.endTime ? new Date(Number(incident.endTime) || incident.endTime) : null,
+				incident.escalationSentAt ? new Date(Number(incident.escalationSentAt) || incident.escalationSentAt) : null,
 				incident.status ?? true,
 				incident.message ?? null,
 				incident.statusCode ?? null,
@@ -203,6 +205,7 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 			["message", "message"],
 			["statusCode", "status_code"],
 			["endTime", "end_time"],
+			["escalationSentAt", "escalation_sent_at"],
 			["resolutionType", "resolution_type"],
 			["resolvedBy", "resolved_by"],
 			["resolvedByEmail", "resolved_by_email"],
@@ -211,7 +214,10 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 
 		for (const [key, column] of fieldMap) {
 			if (patch[key] !== undefined) {
-				const value = key === "endTime" && patch[key] ? new Date(Number(patch[key]) || (patch[key] as string)) : patch[key];
+				const value =
+					(key === "endTime" || key === "escalationSentAt") && patch[key]
+						? new Date(Number(patch[key]) || (patch[key] as string))
+						: patch[key];
 				sets.push(`${column} = $${paramIndex++}`);
 				values.push(value);
 			}
@@ -234,6 +240,38 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 			throw new AppError({ message: `Failed to update incident with id ${incidentId}`, status: 500 });
 		}
 		return this.toEntity(row);
+	};
+
+	markEscalationSentIfUnset = async (incidentId: string, teamId: string): Promise<boolean> => {
+		const result = await this.pool.query<{ id: string }>(
+			`UPDATE incidents
+			 SET escalation_sent_at = NOW(), updated_at = NOW()
+			 WHERE id = $1
+				AND team_id = $2
+				AND status = TRUE
+				AND escalation_sent_at IS NULL
+			 RETURNING id`,
+			[incidentId, teamId]
+		);
+
+		return (result.rowCount ?? 0) > 0;
+	};
+
+	resolveActiveByMonitorId = async (monitorId: string, teamId: string): Promise<boolean> => {
+		const result = await this.pool.query<{ id: string }>(
+			`UPDATE incidents
+			 SET status = FALSE,
+				 end_time = NOW(),
+				 resolution_type = 'automatic',
+				 updated_at = NOW()
+			 WHERE monitor_id = $1
+				AND team_id = $2
+				AND status = TRUE
+			 RETURNING id`,
+			[monitorId, teamId]
+		);
+
+		return (result.rowCount ?? 0) > 0;
 	};
 
 	deleteByMonitorId = async (monitorId: string, teamId: string): Promise<number> => {
@@ -281,6 +319,7 @@ export class TimescaleIncidentsRepository implements IIncidentsRepository {
 		teamId: row.team_id,
 		startTime: row.start_time.toISOString(),
 		endTime: row.end_time ? row.end_time.toISOString() : null,
+		escalationSentAt: row.escalation_sent_at ? row.escalation_sent_at.toISOString() : null,
 		status: row.status,
 		message: row.message ?? null,
 		statusCode: row.status_code ?? null,
