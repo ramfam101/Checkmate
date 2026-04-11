@@ -3599,6 +3599,13 @@
 						},
 						"description": "Array of notification IDs to associate with this monitor"
 					},
+					"escalationNotifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Array of notification IDs for escalation alerts"
+					},
 					"secret": {
 						"type": "string"
 					},
@@ -3655,6 +3662,11 @@
 					"geoCheckInterval": {
 						"type": "integer",
 						"minimum": 300000
+					},
+					"escalationDelay": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Escalation notification delay in minutes"
 					}
 				}
 			},
@@ -3694,6 +3706,13 @@
 						"items": {
 							"type": "string"
 						}
+					},
+					"escalationNotifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Array of notification IDs for escalation alerts"
 					},
 					"secret": {
 						"type": "string"
@@ -3761,6 +3780,11 @@
 					"geoCheckInterval": {
 						"type": "integer",
 						"minimum": 300000
+					},
+					"escalationDelay": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Escalation notification delay in minutes"
 					}
 				}
 			},
@@ -3816,6 +3840,18 @@
 						"items": {
 							"type": "string"
 						}
+					},
+					"escalationNotifications": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Array of notification IDs for escalation alerts"
+					},
+					"escalationDelay": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Escalation notification delay in minutes"
 					},
 					"httpOptions": {
 						"type": "object",

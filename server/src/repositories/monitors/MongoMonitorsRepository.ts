@@ -7,8 +7,20 @@ import { MongoBulkWriteError } from "mongodb";
 import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
+	private readonly entityMetaKeysToOmit = ["id", "createdAt", "updatedAt"] as const;
+
+	/** Strip API-layer fields that must not be written with Mongoose (avoids cast / strict issues on $set and create). */
+	private omitEntityMetaForWrite = (payload: Record<string, unknown>): Record<string, unknown> => {
+		const copy = { ...payload };
+		for (const key of this.entityMetaKeysToOmit) {
+			delete copy[key];
+		}
+		return copy;
+	};
+
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const payload = this.omitEntityMetaForWrite({ ...monitor, teamId, userId } as Record<string, unknown>);
+		const monitorModel = new MonitorModel(payload);
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -167,12 +179,11 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const setPayload = this.omitEntityMetaForWrite({ ...patch } as Record<string, unknown>);
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
 			{
-				$set: {
-					...patch,
-				},
+				$set: setPayload,
 			},
 			{ new: true, runValidators: true }
 		);
@@ -294,6 +305,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
 		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany({ escalationNotifications: notificationId }, { $pull: { escalationNotifications: notificationId } });
 	};
 
 	updateNotifications = async (
@@ -351,6 +363,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) =>
+			toStringId(notification)
+		);
 
 		return {
 			id: toStringId(doc._id),
@@ -374,6 +389,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationNotifications: escalationNotificationIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -391,6 +407,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelay: doc.escalationDelay ?? 0,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -410,6 +427,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) =>
+			toStringId(notification)
+		);
 
 		return {
 			id: toStringId(doc._id),
@@ -433,6 +453,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationNotifications: escalationNotificationIds,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -450,6 +471,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationDelay: doc.escalationDelay ?? 0,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

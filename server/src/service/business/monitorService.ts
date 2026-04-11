@@ -33,7 +33,7 @@ export interface IMonitorService {
 	readonly serviceName: string;
 
 	// create
-	createMonitor(teamId: string, userId: string, body: Partial<Monitor>): Promise<void>;
+	createMonitor(teamId: string, userId: string, body: Partial<Monitor>): Promise<Monitor>;
 	createMonitors(monitors: Array<Monitor>): Promise<Monitor[] | null>;
 	addDemoMonitors(args: { userId: string; teamId: string }): Promise<Monitor[]>;
 
@@ -165,13 +165,25 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
-	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
+	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<Monitor> => {
 		const monitor = await this.monitorsRepository.create(body, teamId, userId);
 		if (!monitor) {
 			throw new AppError({ message: "Failed to create monitor", status: 500, service: SERVICE_NAME, method: "createMonitor" });
 		}
 
+		this.logger.info({
+			message: "Monitor created",
+			service: SERVICE_NAME,
+			method: "createMonitor",
+			details: {
+				monitorId: monitor.id,
+				escalationDelay: monitor.escalationDelay,
+				escalationNotifications: monitor.escalationNotifications,
+			},
+		});
+
 		this.jobQueue.addJob(monitor.id, monitor);
+		return monitor;
 	};
 
 	createMonitors = async (monitors: Array<Monitor>): Promise<Monitor[] | null> => {
@@ -438,6 +450,16 @@ export class MonitorService implements IMonitorService {
 
 	editMonitor = async ({ teamId, monitorId, body }: { teamId: string; monitorId: string; body: Partial<Monitor> }) => {
 		const editedMonitor = await this.monitorsRepository.updateById(monitorId, teamId, body);
+		this.logger.info({
+			message: "Monitor updated",
+			service: SERVICE_NAME,
+			method: "editMonitor",
+			details: {
+				monitorId: editedMonitor.id,
+				escalationDelay: editedMonitor.escalationDelay,
+				escalationNotifications: editedMonitor.escalationNotifications,
+			},
+		});
 		await this.jobQueue.updateJob(editedMonitor);
 		return editedMonitor;
 	};

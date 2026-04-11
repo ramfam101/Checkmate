@@ -171,6 +171,7 @@ describe("MonitorService", () => {
 				tempAlertThreshold: 5,
 				selectedDisks: [],
 				notifications: [],
+				escalationNotifications: [],
 				group: null,
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),

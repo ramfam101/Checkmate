@@ -10,12 +10,12 @@ import type {
 
 export interface INotificationMessageBuilder {
 	buildMessage(
-		monitor: Monitor,
+		monitor: Omit<Monitor, "notifications">,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
-	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
+	extractThresholdBreaches(monitor: Omit<Monitor, "notifications">, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
 const SERVICE_NAME = "NotificationMessageBuilder";
@@ -24,7 +24,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	static SERVICE_NAME = SERVICE_NAME;
 
 	buildMessage(
-		monitor: Monitor,
+		monitor: Omit<Monitor, "notifications">,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
 		clientHost: string
@@ -52,7 +52,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
+	private determineNotificationType(decision: MonitorActionDecision, monitor: Omit<Monitor, "notifications">): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
 			return "monitor_down";
@@ -93,7 +93,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(type: NotificationType, monitor: Omit<Monitor, "notifications">, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
 			case "monitor_down":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
@@ -108,7 +108,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildMonitorDownContent(monitor: Omit<Monitor, "notifications">, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		const title = `Monitor Down: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
@@ -131,7 +131,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildMonitorUpContent(monitor: Monitor): NotificationContent {
+	private buildMonitorUpContent(monitor: Omit<Monitor, "notifications">): NotificationContent {
 		const title = `Monitor Recovered: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" is back up and operational.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
@@ -144,7 +144,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildThresholdBreachContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): NotificationContent {
+	private buildThresholdBreachContent(monitor: Omit<Monitor, "notifications">, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): NotificationContent {
 		const title = `Threshold Exceeded: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" has exceeded one or more thresholds.`;
 		const details = [`URL: ${monitor.url}`, `Status: Threshold exceeded`, `Type: ${monitor.type}`];
@@ -160,7 +160,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildThresholdResolvedContent(monitor: Monitor): NotificationContent {
+	private buildThresholdResolvedContent(monitor: Omit<Monitor, "notifications">): NotificationContent {
 		const title = `Thresholds Resolved: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" thresholds have returned to normal.`;
 		const details = [`URL: ${monitor.url}`, `Status: Up`, `Type: ${monitor.type}`];
@@ -173,7 +173,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	private buildDefaultContent(monitor: Monitor): NotificationContent {
+	private buildDefaultContent(monitor: Omit<Monitor, "notifications">): NotificationContent {
 		return {
 			title: `Monitor: ${monitor.name}`,
 			summary: `Status update for monitor "${monitor.name}".`,
@@ -182,7 +182,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	public extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[] {
+	public extractThresholdBreaches(monitor: Omit<Monitor, "notifications">, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[] {
 		const breaches: ThresholdBreach[] = [];
 
 		// Check if this is a hardware monitor with threshold data

@@ -1,4 +1,6 @@
 import { IChecksRepository, IMonitorsRepository, IMonitorStatsRepository } from "@/repositories/index.js";
+import type { INotificationsService } from "@/service/infrastructure/notificationsService.js";
+import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	Monitor,
 	MonitorStatus,
@@ -21,6 +23,15 @@ import { AppError } from "@/utils/AppError.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "./bufferService.js";
 const SERVICE_NAME = "StatusService";
+
+/** Matches `evaluateMonitorAction` when an uptime-style monitor transitions to `down` (for escalation / message builder). */
+const STATUS_DOWN_NOTIFICATION_DECISION: MonitorActionDecision = {
+	shouldCreateIncident: true,
+	shouldResolveIncident: false,
+	shouldSendNotification: true,
+	incidentReason: "status_down",
+	notificationReason: "status_change",
+};
 
 export interface IStatusService {
 	updateRunningStats(monitor: Monitor, networkResponse: MonitorStatusResponse): Promise<boolean>;
@@ -47,19 +58,22 @@ export class StatusService implements IStatusService {
 	private monitorsRepository: IMonitorsRepository;
 	private monitorStatsRepository: IMonitorStatsRepository;
 	private checksRepository: IChecksRepository;
+	private notificationsService: INotificationsService;
 
 	constructor(
 		logger: ILogger,
 		buffer: IBufferService,
 		monitorsRepository: IMonitorsRepository,
 		monitorStatsRepository: IMonitorStatsRepository,
-		checksRepository: IChecksRepository
+		checksRepository: IChecksRepository,
+		notificationsService: INotificationsService
 	) {
 		this.logger = logger;
 		this.buffer = buffer;
 		this.monitorsRepository = monitorsRepository;
 		this.monitorStatsRepository = monitorStatsRepository;
 		this.checksRepository = checksRepository;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -349,6 +363,20 @@ export class StatusService implements IStatusService {
 			monitor.status = newStatus;
 
 			const updated = await this.monitorsRepository.updateById(monitor.id, monitor.teamId, monitor);
+
+			// Escalation: right after a check persists a threshold-based transition to DOWN (same moment incidents/alerts use).
+			if (statusChanged && updated.status === "down") {
+				void this.notificationsService
+					.scheduleEscalationOnDownTransition(updated.id, updated.teamId, statusResponse, STATUS_DOWN_NOTIFICATION_DECISION)
+					.catch((error: unknown) => {
+						this.logger.error({
+							message: `Failed to schedule escalation for monitor ${updated.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+							service: SERVICE_NAME,
+							method: "updateMonitorStatus",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					});
+			}
 
 			return {
 				monitor: updated,

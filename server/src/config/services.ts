@@ -220,9 +220,7 @@ export const initializeServices = async ({
 
 	const bufferService = new BufferService(logger, checkService, geoChecksService, settingsService);
 
-	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
-
-	// Notification providers
+	// Notification providers (before StatusService — status updates may schedule escalation)
 	const webhookProvider = new WebhookProvider(logger);
 	const slackProvider = new SlackProvider(logger);
 	const emailProvider = new EmailProvider(emailService, logger);
@@ -244,6 +242,15 @@ export const initializeServices = async ({
 		settingsService,
 		logger,
 		notificationMessageBuilder
+	);
+
+	const statusService = new StatusService(
+		logger,
+		bufferService,
+		monitorsRepository,
+		monitorStatsRepository,
+		checksRepository,
+		notificationsService
 	);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
