@@ -9,6 +9,8 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 	endTime: Date | null;
 	createdAt: Date;
 	updatedAt: Date;
+
+	escalatedAt?: Date | null;
 };
 
 export interface IncidentDocument extends IncidentDocumentBase {
@@ -72,6 +74,12 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			type: String,
 			default: null,
 		},
+
+		escalatedAt: {
+			type: Date,
+			default: null,
+		},
+
 	},
 	{ timestamps: true }
 );

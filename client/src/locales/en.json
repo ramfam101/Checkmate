@@ -543,6 +543,26 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation Rules",
+					"description": "Configure an escalation notification if a monitor stays down for a defined amount of time.",
+					"option": {
+						"enabled": {
+							"label": "Enable escalation"
+						},
+						"delay": {
+							"label": "Escalate after",
+							"value": {
+								"oneMinute": "1 minute",
+								"fiveMinutes": "5 minutes",
+								"tenMinutes": "10 minutes",
+								"fifteenMinutes": "15 minutes",
+								"thirtyMinutes": "30 minutes",
+								"sixtyMinutes": "60 minutes"
+							}
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",

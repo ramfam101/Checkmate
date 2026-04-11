@@ -211,11 +211,24 @@ const CreateMonitorPage = () => {
 	const watchedType = watch("type") as MonitorType;
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
+	const watchedEscalationEnabled = watch("escalationEnabled") as boolean;
+	const watchedEscalationDelay = watch("escalationDelay") as number | undefined;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const [escalationDelayInput, setEscalationDelayInput] = useState("1");
+	const [isEscalationDelayFocused, setIsEscalationDelayFocused] = useState(false);
 
 	useEffect(() => {
 		clearErrors();
 	}, [watchedType, clearErrors]);
+
+	useEffect(() => {
+		if (isEscalationDelayFocused) {
+			return;
+		}
+
+		const minutes = Math.max(1, Math.round((watchedEscalationDelay ?? 60000) / 60000));
+		setEscalationDelayInput(String(minutes));
+	}, [watchedEscalationDelay, isEscalationDelayFocused]);
 
 	const generalSettingsConfig = useMemo(
 		() => getGeneralSettingsConfig(watchedType, t),
@@ -762,6 +775,157 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack
+									direction="row"
+									alignItems="center"
+									spacing={theme.spacing(SPACING.LG)}
+								>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>
+										{t("pages.createMonitor.form.escalation.option.enabled.label")}
+									</Typography>
+								</Stack>
+							)}
+						/>
+
+						{watchedEscalationEnabled && (
+							<>
+								<Controller
+									name="escalationDelay"
+									control={control}
+									render={({ field, fieldState }) => (
+										<TextField
+											type="number"
+											fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+											value={escalationDelayInput}
+											onFocus={() => setIsEscalationDelayFocused(true)}
+											onBlur={() => {
+												setIsEscalationDelayFocused(false);
+												const parsedMinutes = Number(escalationDelayInput);
+
+												if (
+													escalationDelayInput.trim() === "" ||
+													Number.isNaN(parsedMinutes) ||
+													parsedMinutes <= 0
+												) {
+													setEscalationDelayInput("1");
+													field.onChange(60000);
+													return;
+												}
+
+												const minutes = Math.max(1, Math.round(parsedMinutes));
+												setEscalationDelayInput(String(minutes));
+												field.onChange(minutes * 60000);
+											}}
+											onChange={(e) => {
+												const rawValue = e.target.value;
+												setEscalationDelayInput(rawValue);
+
+												if (rawValue.trim() === "") {
+													return;
+												}
+
+												const parsedMinutes = Number(rawValue);
+
+												if (Number.isNaN(parsedMinutes)) {
+													return;
+												}
+
+												if (parsedMinutes <= 0) {
+													field.onChange(60000);
+													return;
+												}
+
+												const minutes = Math.max(1, Math.round(parsedMinutes));
+												field.onChange(minutes * 60000);
+											}}
+											inputProps={{ min: 0, step: 1 }}
+											fullWidth
+											error={!!fieldState.error}
+											helperText={fieldState.error?.message ?? ""}
+										/>
+									)}
+								/>
+
+								<Controller
+									name="escalationNotifications"
+									control={control}
+									render={({ field }) => {
+										const notificationOptions = (notifications ?? []).map((n) => ({
+											...n,
+											name: n.notificationName,
+										}));
+										const selectedNotifications = notificationOptions.filter((n) =>
+											(field.value ?? []).includes(n.id)
+										);
+
+										return (
+											<Stack spacing={theme.spacing(LAYOUT.MD)}>
+												<Autocomplete
+													multiple
+													options={notificationOptions}
+													value={selectedNotifications}
+													getOptionLabel={(option) => option.name}
+													onChange={(_: unknown, newValue: typeof notificationOptions) => {
+														field.onChange(newValue.map((n) => n.id));
+													}}
+													isOptionEqualToValue={(option, value) => option.id === value.id}
+												/>
+												{selectedNotifications.length > 0 && (
+													<Stack
+														flex={1}
+														width="100%"
+													>
+														{selectedNotifications.map((notification, index) => (
+															<Stack
+																direction="row"
+																alignItems="center"
+																key={notification.id}
+																width="100%"
+															>
+																<Typography flexGrow={1}>
+																	{notification.notificationName}
+																</Typography>
+																<IconButton
+																	size="small"
+																	onClick={() => {
+																		field.onChange(
+																			(field.value ?? []).filter(
+																				(id: string) => id !== notification.id
+																			)
+																		);
+																	}}
+																	aria-label="Remove escalation notification"
+																>
+																	<Trash2 size={16} />
+																</IconButton>
+																{index < selectedNotifications.length - 1 && <Divider />}
+															</Stack>
+														))}
+													</Stack>
+												)}
+											</Stack>
+										);
+									}}
+								/>
+							</>
+						)}
+					</Stack>
 				}
 			/>
 
