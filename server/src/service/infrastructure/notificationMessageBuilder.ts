@@ -31,7 +31,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	): NotificationMessage {
 		const type = this.determineNotificationType(decision, monitor);
 		const severity = this.determineSeverity(type);
-		const content = this.buildContent(type, monitor, monitorStatusResponse);
+		const content = this.buildContent(type, monitor, monitorStatusResponse, decision);
 
 		return {
 			type,
@@ -93,10 +93,15 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
+	private buildContent(
+		type: NotificationType,
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
 		switch (type) {
 			case "monitor_down":
-				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse, decision);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
 			case "threshold_breach":
@@ -108,10 +113,48 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		}
 	}
 
-	private buildMonitorDownContent(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
-		const title = `Monitor Down: ${monitor.name}`;
-		const summary = `Monitor "${monitor.name}" is currently down and unreachable.`;
+	private formatDurationMinutes(totalMinutes: number): string {
+		if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
+			return "0m";
+		}
+
+		const days = Math.floor(totalMinutes / (24 * 60));
+		const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+		const minutes = totalMinutes % 60;
+
+		const parts: string[] = [];
+		if (days > 0) {
+			parts.push(`${days}d`);
+		}
+		if (hours > 0) {
+			parts.push(`${hours}h`);
+		}
+		if (minutes > 0 || parts.length === 0) {
+			parts.push(`${minutes}m`);
+		}
+
+		return parts.join(" ");
+	}
+
+	private buildMonitorDownContent(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): NotificationContent {
+		const isEscalation = decision.notificationReason === "incident_escalation";
+		const escalationDurationMinutes = decision.escalationDurationMinutes ?? 0;
+		const escalationThresholdMinutes = decision.escalationThresholdMinutes ?? 0;
+
+		const title = isEscalation ? `Ongoing Incident: ${monitor.name}` : `Monitor Down: ${monitor.name}`;
+		const summary = isEscalation
+			? `Monitor "${monitor.name}" is still down after ${this.formatDurationMinutes(escalationDurationMinutes)}.`
+			: `Monitor "${monitor.name}" is currently down and unreachable.`;
 		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`];
+
+		if (isEscalation && escalationThresholdMinutes > 0) {
+			details.push(`Escalation rule: ${escalationThresholdMinutes} minute(s)`);
+			details.push(`Current outage duration: ${this.formatDurationMinutes(escalationDurationMinutes)}`);
+		}
 
 		// Add response code if available
 		if (monitorStatusResponse.code) {

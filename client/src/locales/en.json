@@ -543,6 +543,15 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalationRules": {
+					"title": "Escalation Rules",
+					"description": "If the monitor styays down for the specifid time, notify additional channels",
+					"option": {
+						"escalateAfter": "Escalate after x minutes",
+						"escalateAfterPlaceholder": "Enter minutes",
+						"channels": "Escalation notification channels"
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -922,6 +931,12 @@
 					"placeholderEmail": "example@example.com",
 					"placeholderWebhook": "https://your-server.com/webhook",
 					"title": "Address"
+				},
+				"escalation": {
+					"description": "Send follow-up alerts if an incident stays unresolved. Enter minutes separated by commas.",
+					"optionMinutes": "Escalation minutes",
+					"placeholder": "5, 15, 30",
+					"title": "Escalation alerts"
 				},
 				"homeServer": {
 					"optionHomeServer": "Home server",
