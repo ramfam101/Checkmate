@@ -263,4 +263,47 @@ export class IncidentService implements IIncidentService {
 			throw error;
 		}
 	};
+
+	checkForEscalations = async (monitor: Monitor): Promise<{ incident: Incident; notificationIds: string[] } | null> => {
+		try {
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+
+			if (!activeIncident) {
+				return null;
+			}
+
+			const notificationIds = monitor.notifications ?? [];
+			if (notificationIds.length === 0) {
+				return null;
+			}
+
+			const incidentStartTime = new Date(activeIncident.startTime).getTime();
+			const currentTime = Date.now();
+			const durationMinutes = (currentTime - incidentStartTime) / (1000 * 60);
+
+			// Get escalations that are enabled and have exceeded threshold
+			const escalationNotifications: string[] = [];
+
+			// This is a simple check - we would need to filter notifications
+			// with escalation enabled in the calling code (notificationsService)
+			// For now, we return the incident and let the service decide which notifications escalate
+			if (durationMinutes > 0) {
+				return {
+					incident: activeIncident,
+					notificationIds,
+				};
+			}
+
+			return null;
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "checkForEscalations",
+				message: error instanceof Error ? error.message : "Unknown error",
+				details: { monitorId: monitor.id },
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return null;
+		}
+	};
 }

@@ -1,6 +1,6 @@
 import type { Monitor, MonitorStatusResponse, Notification } from "@/types/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
-import { IMonitorsRepository, INotificationsRepository } from "@/repositories/index.js";
+import { IMonitorsRepository, INotificationsRepository, IIncidentsRepository } from "@/repositories/index.js";
 import { INotificationProvider } from "./notificationProviders/INotificationProvider.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { ISettingsService } from "@/service/system/settingsService.js";
@@ -14,7 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
+	handleEscalations: (monitor: Monitor) => Promise<boolean>;
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -26,6 +26,7 @@ export class NotificationsService implements INotificationsService {
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
+	private incidentsRepository: IIncidentsRepository;
 	private webhookProvider: INotificationProvider;
 	private emailProvider: INotificationProvider;
 	private slackProvider: INotificationProvider;
@@ -40,6 +41,7 @@ export class NotificationsService implements INotificationsService {
 	constructor(
 		notificationsRepository: INotificationsRepository,
 		monitorsRepository: IMonitorsRepository,
+		incidentsRepository: IIncidentsRepository,
 		webhookProvider: INotificationProvider,
 		emailProvider: INotificationProvider,
 		slackProvider: INotificationProvider,
@@ -53,6 +55,7 @@ export class NotificationsService implements INotificationsService {
 	) {
 		this.notificationsRepository = notificationsRepository;
 		this.monitorsRepository = monitorsRepository;
+		this.incidentsRepository = incidentsRepository;
 		this.webhookProvider = webhookProvider;
 		this.emailProvider = emailProvider;
 		this.slackProvider = slackProvider;
@@ -196,5 +199,90 @@ export class NotificationsService implements INotificationsService {
 		const deleted = await this.notificationsRepository.deleteById(id, teamId);
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
+	};
+
+	handleEscalations = async (monitor: Monitor): Promise<boolean> => {
+		try {
+			// Check if escalation is enabled on the monitor
+			if (!monitor.escalationEnabled || !monitor.escalationRecipient) {
+				return true;
+			}
+
+			// Get the active incident
+			const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+			if (!activeIncident) {
+				return true;
+			}
+
+			// Check incident duration and send escalation
+			const incidentStartTime = new Date(activeIncident.startTime).getTime();
+			const currentTime = Date.now();
+			const durationMinutes = (currentTime - incidentStartTime) / (1000 * 60);
+			const thresholdMinutes = monitor.escalationThresholdMinutes || 60;
+
+			// Only send escalation if threshold is exceeded
+			if (durationMinutes < thresholdMinutes) {
+				return true;
+			}
+
+			// Build escalation message
+			const settings = this.settingsService.getSettings();
+			const clientHost = settings.clientHost || "Host not defined";
+
+			const escalationMessage: NotificationMessage = {
+				type: "escalation",
+				severity: "critical",
+				monitor: {
+					id: monitor.id,
+					name: monitor.name,
+					url: `${clientHost}/monitor/${monitor.id}`,
+					type: monitor.type,
+					status: monitor.status || "unknown",
+				},
+				content: {
+					title: `Escalation: ${monitor.name} - Incident Duration Exceeded`,
+					summary: `The incident for "${monitor.name}" has been active for more than ${thresholdMinutes} minutes and requires attention.`,
+					details: [
+						`Incident Duration: ${Math.round(durationMinutes)} minutes`,
+						`Escalation Threshold: ${thresholdMinutes} minutes`,
+						`Started: ${new Date(activeIncident.startTime).toLocaleString()}`,
+					],
+					timestamp: new Date(),
+				},
+				clientHost,
+				metadata: {
+					teamId: monitor.teamId,
+					notificationReason: "incident_escalation",
+				},
+			};
+
+			// Create a virtual notification object for the email provider
+			const escalationNotification = {
+				type: "email" as const,
+				address: monitor.escalationRecipient,
+				notificationName: `Escalation - ${monitor.name}`,
+			};
+
+			const result = await this.emailProvider.sendMessage!(escalationNotification as any, escalationMessage);
+
+			if (!result) {
+				this.logger.warn({
+					message: `Failed to send escalation notification for monitor: ${monitor.id}`,
+					service: SERVICE_NAME,
+					method: "handleEscalations",
+				});
+				return false;
+			}
+
+			return true;
+		} catch (error: unknown) {
+			this.logger.error({
+				service: SERVICE_NAME,
+				method: "handleEscalations",
+				message: error instanceof Error ? error.message : "Unknown error",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			return false;
+		}
 	};
 }

@@ -24,6 +24,17 @@ export const AutoCompleteInput = ({
 }: AutoCompleteInputProps) => {
 	const theme = useTheme();
 	const multiple = props.multiple;
+	const getOptionDisplayLabel = (option: any) => {
+		if (typeof props.getOptionLabel === "function") {
+			return props.getOptionLabel(option);
+		}
+
+		if (typeof option === "string") {
+			return option;
+		}
+
+		return option?.label ?? option?.name ?? option?.notificationName ?? option?.address ?? "";
+	};
 
 	const defaultRenderInput = (params: any) => (
 		<TextField
@@ -59,7 +70,7 @@ export const AutoCompleteInput = ({
 							gap={theme.spacing(2)}
 						>
 							{multiple && <Checkbox checked={selected} />}
-							{option.name}
+							{getOptionDisplayLabel(option)}
 						</Stack>
 					</ListItem>
 				);

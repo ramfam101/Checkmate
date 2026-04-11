@@ -78,7 +78,23 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
-});
+	escalationEnabled: z.boolean().optional(),
+	escalationThresholdMinutes: z.number().int().min(1).optional(),
+	escalationRecipient: z.string().email().optional().or(z.literal("")),
+})
+	.refine(
+		(data) => {
+			// If escalation is enabled, recipient must be provided
+			if (data.escalationEnabled && !data.escalationRecipient) {
+				return false;
+			}
+			return true;
+		},
+		{
+			message: "Escalation recipient email is required when escalation is enabled",
+			path: ["escalationRecipient"],
+		}
+	);
 
 export const editMonitorBodyValidation = z.object({
 	name: z.string().optional(),
@@ -107,7 +123,23 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
-});
+	escalationEnabled: z.boolean().optional(),
+	escalationThresholdMinutes: z.number().int().min(1).optional(),
+	escalationRecipient: z.string().email().optional().or(z.literal("")),
+})
+	.refine(
+		(data) => {
+			// If escalation is enabled, recipient must be provided
+			if (data.escalationEnabled && !data.escalationRecipient) {
+				return false;
+			}
+			return true;
+		},
+		{
+			message: "Escalation recipient email is required when escalation is enabled",
+			path: ["escalationRecipient"],
+		}
+	);
 
 export const pauseMonitorParamValidation = z.object({
 	monitorId: z.string().min(1, "Monitor ID is required"),
@@ -160,6 +192,9 @@ const importedMonitorSchema = z.object({
 	geoCheckEnabled: z.boolean().default(false),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).default([]),
 	geoCheckInterval: z.number().min(300000).default(300000),
+	escalationEnabled: z.boolean().default(false),
+	escalationThresholdMinutes: z.number().int().min(1).default(60).optional(),
+	escalationRecipient: z.string().email().optional().or(z.literal("")),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional(),
 });

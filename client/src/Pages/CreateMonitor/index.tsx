@@ -765,6 +765,97 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Controller
+						name="escalationEnabled"
+						control={control}
+						render={({ field }) => (
+							<Stack spacing={theme.spacing(LAYOUT.MD)}>
+								<Stack direction="row" alignItems="center" spacing={theme.spacing(SPACING.LG)}>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>{t("pages.createMonitor.form.escalation.option.enable.label")}</Typography>
+								</Stack>
+								{field.value && (
+									<Stack spacing={theme.spacing(LAYOUT.MD)}>
+										<Controller
+											name="escalationThresholdMinutes"
+											control={control}
+											render={({ field: thresholdField, fieldState }) => (
+												<TextField
+													{...thresholdField}
+													value={thresholdField.value ?? ""}
+													onChange={(e) => {
+														const value = e.target.value;
+														thresholdField.onChange(value === "" ? undefined : Number(value));
+													}}
+													type="number"
+													fieldLabel={t("pages.createMonitor.form.escalation.option.threshold.label")}
+													placeholder="60"
+													fullWidth
+													error={!!fieldState.error}
+													helperText={fieldState.error?.message ?? ""}
+													inputProps={{ min: 1, step: 1 }}
+												/>
+											)}
+										/>
+										<Controller
+											name="escalationRecipient"
+											control={control}
+											render={({ field: recipientField, fieldState }) => {
+												// Filter to only email notifications
+												const emailNotifications = (notifications ?? []).filter((n) => n.type === "email");
+												const notificationOptions = emailNotifications.map((n) => ({
+													id: n.id,
+													notificationName: n.notificationName,
+													address: n.address,
+												}));
+
+												return (
+													<Autocomplete
+														options={notificationOptions}
+														value={
+															recipientField.value
+																? notificationOptions.find((n) => n.address === recipientField.value) || null
+																: null
+														}
+														getOptionLabel={(option) => option.notificationName}
+														onChange={(_: unknown, newValue: any) => {
+															// Store the email address, not the object
+															recipientField.onChange(newValue?.address || "");
+														}}
+														isOptionEqualToValue={(option: any, value: any) => {
+															// Both option and value are objects with address property
+															// value is the currently selected value object (or null)
+															if (!value) return false;
+															return option.id === value.id;
+														}}
+														renderInput={(params) => (
+															<TextField
+																{...params}
+																fieldLabel={t("pages.createMonitor.form.escalation.option.recipient.label")}
+																placeholder={t("pages.createMonitor.form.escalation.option.recipient.placeholder")}
+																error={!!fieldState.error}
+																helperText={fieldState.error?.message ?? ""}
+															/>
+														)}
+													/>
+												);
+											}}
+										/>
+									</Stack>
+								)}
+							</Stack>
+						)}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (
