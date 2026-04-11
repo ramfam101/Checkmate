@@ -78,6 +78,10 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private buildSubject(message: NotificationMessage): string {
+		const override = message.metadata.emailSubjectOverride;
+		if (override !== undefined && override !== "") {
+			return override;
+		}
 		switch (message.type) {
 			case "monitor_down":
 				return `Monitor ${message.monitor.name} is down`;

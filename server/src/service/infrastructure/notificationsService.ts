@@ -14,6 +14,13 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	/** Called when a monitor has just transitioned to `down` (from the job queue, after status is persisted). */
+	scheduleEscalationOnDownTransition: (
+		monitorId: string,
+		teamId: string,
+		monitorStatusResponse: MonitorStatusResponse,
+		downDecision: MonitorActionDecision
+	) => Promise<void>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -21,8 +28,22 @@ export interface INotificationsService {
 
 const SERVICE_NAME = "NotificationsService";
 
+const OBJECT_ID_HEX = /^[0-9a-fA-F]{24}$/;
+
+function sanitizeNotificationObjectIds(ids: string[] | undefined | null): string[] {
+	if (!ids?.length) {
+		return [];
+	}
+	return ids.map((id) => (typeof id === "string" ? id.trim() : "")).filter((id) => OBJECT_ID_HEX.test(id));
+}
+
+/** Resolved notification channels for send path (`Monitor.notifications` in DB/API remains `string[]`). */
+type MonitorWithResolvedNotifications = Omit<Monitor, "notifications"> & { notifications: Notification[] };
+
 export class NotificationsService implements INotificationsService {
 	static SERVICE_NAME = SERVICE_NAME;
+
+	private escalationTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 	private notificationsRepository: INotificationsRepository;
 	private monitorsRepository: IMonitorsRepository;
@@ -67,7 +88,7 @@ export class NotificationsService implements INotificationsService {
 
 	private send = async (
 		notification: Notification,
-		monitor: Monitor,
+		monitor: Omit<Monitor, "notifications">,
 		monitorStatusResponse: MonitorStatusResponse,
 		decision: MonitorActionDecision,
 		notificationMessage: NotificationMessage | undefined
@@ -107,16 +128,29 @@ export class NotificationsService implements INotificationsService {
 		}
 	};
 
-	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
-		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
+	private clearEscalationSchedule = (monitorId: string): void => {
+		const existing = this.escalationTimeouts.get(monitorId);
+		if (existing !== undefined) {
+			clearTimeout(existing);
+			this.escalationTimeouts.delete(monitorId);
+		}
+	};
 
-		// Build notification message once for all notifications
+	private sendNotifications = async (
+		monitor: MonitorWithResolvedNotifications,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		notificationMessage?: NotificationMessage
+	) => {
+		const notifications = monitor.notifications;
+
+		// Build notification message once for all notifications (unless caller supplies one, e.g. escalation)
 		const settings = this.settingsService.getSettings();
 		const clientHost = settings.clientHost || "Host not defined";
-		const notificationMessage = this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
+		const builtMessage =
+			notificationMessage ?? this.notificationMessageBuilder.buildMessage(monitor, monitorStatusResponse, decision, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage));
+		const tasks = notifications.map((notification) => this.send(notification, monitor, monitorStatusResponse, decision, builtMessage));
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;
@@ -132,13 +166,127 @@ export class NotificationsService implements INotificationsService {
 		return succeeded === notifications.length;
 	};
 
+	private runEscalation = async (
+		monitorId: string,
+		teamId: string,
+		capturedStatusResponse: MonitorStatusResponse,
+		downDecision: MonitorActionDecision
+	): Promise<void> => {
+		try {
+			const current = await this.monitorsRepository.findById(monitorId, teamId);
+			if (current.status !== "down") {
+				return;
+			}
+			if (!current.escalationNotifications || current.escalationNotifications.length === 0) {
+				return;
+			}
+			const escalationIds = sanitizeNotificationObjectIds(current.escalationNotifications);
+			if (escalationIds.length === 0) {
+				return;
+			}
+			const allNotifications = await this.notificationsRepository.findByTeamId(teamId);
+			const escalationNotificationsFull = allNotifications.filter((n) => escalationIds.includes(n.id));
+			console.log("Escalation IDs:", escalationIds);
+			console.log("Resolved escalation notifications:", escalationNotificationsFull);
+			console.log("Escalation triggered:", current.name);
+			const monitorForEscalationSend: MonitorWithResolvedNotifications = {
+				...current,
+				notifications: escalationNotificationsFull,
+			};
+			try {
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+				const originalMessage = this.notificationMessageBuilder.buildMessage(
+					monitorForEscalationSend,
+					capturedStatusResponse,
+					downDecision,
+					clientHost
+				);
+				const delayMinutes = Math.max(0, Math.floor(Number(current.escalationDelay) || 0));
+				const escalationTitle = `Escalation: Monitor ${current.name} still down`;
+				const escalationSummary = `Monitor "${current.name}" is still down after ${delayMinutes} minutes.`;
+				const escalationMessage: NotificationMessage = {
+					...originalMessage,
+					metadata: {
+						...originalMessage.metadata,
+						emailSubjectOverride: escalationTitle,
+					},
+					content: {
+						...originalMessage.content,
+						title: escalationTitle,
+						summary: escalationSummary,
+					},
+				};
+				await this.sendNotifications(monitorForEscalationSend, capturedStatusResponse, downDecision, escalationMessage);
+			} catch (error: unknown) {
+				console.error("Escalation email error:", error);
+				this.logger.error({
+					message: `Escalation send failed for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "runEscalation",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+			}
+		} catch (error: unknown) {
+			console.error("Escalation email error:", error);
+			this.logger.error({
+				message: `Escalation run failed for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "runEscalation",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
+	scheduleEscalationOnDownTransition = async (
+		monitorId: string,
+		teamId: string,
+		monitorStatusResponse: MonitorStatusResponse,
+		downDecision: MonitorActionDecision
+	): Promise<void> => {
+		try {
+			const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+			if (monitor.status !== "down") {
+				return;
+			}
+			const delayMinutes = Math.max(0, Math.floor(Number(monitor.escalationDelay) || 0));
+			if (!delayMinutes || !monitor.escalationNotifications || monitor.escalationNotifications.length === 0) {
+				return;
+			}
+			if (sanitizeNotificationObjectIds(monitor.escalationNotifications).length === 0) {
+				return;
+			}
+
+			console.log("Escalation scheduled:", monitor.name);
+			this.clearEscalationSchedule(monitor.id);
+			const ms = delayMinutes * 60 * 1000;
+			const timeout = setTimeout(() => {
+				this.escalationTimeouts.delete(monitor.id);
+				void this.runEscalation(monitor.id, teamId, monitorStatusResponse, downDecision);
+			}, ms);
+			this.escalationTimeouts.set(monitor.id, timeout);
+		} catch (error: unknown) {
+			this.logger.error({
+				message: `Failed to schedule escalation for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+				service: SERVICE_NAME,
+				method: "scheduleEscalationOnDownTransition",
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	};
+
 	handleNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
 		if (!decision.shouldSendNotification) {
 			return false;
 		}
 
-		// Send notifications based on decision
-		return await this.sendNotifications(monitor, monitorStatusResponse, decision);
+		if (monitor.status !== "down") {
+			this.clearEscalationSchedule(monitor.id);
+		}
+
+		const resolvedNotifications = await this.notificationsRepository.findNotificationsByIds(monitor.notifications ?? []);
+		const monitorForSend: MonitorWithResolvedNotifications = { ...monitor, notifications: resolvedNotifications };
+		return await this.sendNotifications(monitorForSend, monitorStatusResponse, decision);
 	};
 
 	sendTestNotification = async (notification: Partial<Notification>) => {

@@ -49,5 +49,7 @@ export interface NotificationMessage {
 	metadata: {
 		teamId: string;
 		notificationReason: string;
+		/** When set (escalation only), email subject uses this instead of the default per-type subject. */
+		emailSubjectOverride?: string;
 	};
 }
