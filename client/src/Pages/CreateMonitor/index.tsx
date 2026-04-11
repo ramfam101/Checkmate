@@ -251,12 +251,31 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
-	const onSubmit = async (data: MonitorFormData) => {
+	const onSubmit = async (data: any) => {
+		const {
+			escalationEnabled,
+			escalationDelay,
+			escalationChannelId,
+			...rest
+		} = data;
+
+		const payload = {
+			...rest,
+			escalation: escalationEnabled
+				? {
+						delayMinutes: Number(escalationDelay),
+						channelId: escalationChannelId,
+					}
+				: null,
+		};
+
+		console.log("FINAL PAYLOAD", payload);
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -762,6 +781,70 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation"
+				subtitle="Send additional alert if issue persists"
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						
+						<Controller
+							name="escalationEnabled"
+							control={control}
+							render={({ field }) => (
+								<Stack direction="row" alignItems="center" spacing={2}>
+									<Switch
+										checked={field.value ?? false}
+										onChange={(e) => field.onChange(e.target.checked)}
+									/>
+									<Typography>Enable Escalation</Typography>
+								</Stack>
+							)}
+						/>
+
+						<Controller
+							name="escalationDelay"
+							control={control}
+							render={({ field }) => (
+								<TextField
+									{...field}
+									type="number"
+									fieldLabel="Delay (minutes)"
+									placeholder="Enter delay time"
+									fullWidth
+								/>
+							)}
+						/>
+
+						<Controller
+							name="escalationChannelId"
+							control={control}
+							render={({ field }) => {
+								const notificationOptions = (notifications ?? []).map((n) => ({
+									...n,
+									name: n.notificationName,
+								}));
+
+								return (
+									<Select
+										{...field}
+										value={field.value ?? ""}
+										fieldLabel="Escalation Channel"
+									>
+										<MenuItem value="">Select channel</MenuItem>
+										{notificationOptions.map((n) => (
+											<MenuItem key={n.id} value={n.id}>
+												{n.notificationName}
+											</MenuItem>
+										))}
+									</Select>
+								);
+							}}
+						/>
+
+					</Stack>
 				}
 			/>
 
