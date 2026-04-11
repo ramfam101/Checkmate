@@ -765,6 +765,140 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalationNotifications.title")}
+				subtitle={t("pages.createMonitor.form.escalationNotifications.description")}
+				rightContent={
+					<Controller
+						name="escalationNotifications"
+						control={control}
+						render={({ field, fieldState }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+
+							const selectedNotifications = notificationOptions.filter((n) =>
+								(field.value ?? []).some((entry) => entry.notificationId === n.id)
+							);
+
+							const selectedEscalations = (field.value ?? [])
+								.map((entry) => ({
+									entry,
+									notification: notificationOptions.find(
+										(option) => option.id === entry.notificationId
+									),
+								}))
+								.filter((item) => Boolean(item.notification));
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									<Autocomplete
+										multiple
+										options={notificationOptions}
+										value={selectedNotifications}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalationNotifications.option.channel.label"
+										)}
+										getOptionLabel={(option) => option.name}
+										onChange={(_: unknown, newValue: typeof notificationOptions) => {
+											const existingDelayById = new Map(
+												(field.value ?? []).map((entry) => [entry.notificationId, entry.delayMinutes])
+											);
+
+											field.onChange(
+												newValue.map((item) => ({
+													notificationId: item.id,
+													delayMinutes: existingDelayById.get(item.id) ?? 15,
+												}))
+											);
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+									/>
+									{selectedEscalations.length > 0 && (
+										<Stack
+											flex={1}
+											width="100%"
+										>
+											{selectedEscalations.map(({ entry, notification }, index) => {
+												if (!notification) {
+													return null;
+												}
+
+												return (
+													<Stack
+														direction={{ xs: "column", md: "row" }}
+														alignItems={{ xs: "stretch", md: "center" }}
+														spacing={theme.spacing(SPACING.SM)}
+														key={notification.id}
+														width="100%"
+													>
+														<Stack flexGrow={1}>
+															<Typography variant="caption" color="text.secondary">
+																{t(
+																	"pages.createMonitor.form.escalationNotifications.option.channel.label"
+																)}
+															</Typography>
+															<Typography>{notification.notificationName}</Typography>
+														</Stack>
+														<Stack
+															direction="row"
+															alignItems="center"
+															spacing={theme.spacing(SPACING.SM)}
+														>
+															<TextField
+																type="number"
+																fieldLabel={t(
+																	"pages.createMonitor.form.escalationNotifications.option.delay.label"
+																)}
+																value={entry.delayMinutes}
+																onChange={(e) => {
+																	const nextValue = Math.max(1, Number(e.target.value) || 1);
+																	field.onChange(
+																		(field.value ?? []).map((item) =>
+																			item.notificationId === notification.id
+																				? { ...item, delayMinutes: nextValue }
+																				: item
+																		)
+																	);
+																}}
+																sx={{ minWidth: { xs: "100%", md: 180 } }}
+															/>
+															<IconButton
+																size="small"
+																onClick={() => {
+																	field.onChange(
+																		(field.value ?? []).filter(
+																			(item) => item.notificationId !== notification.id
+																		)
+																	);
+																}}
+																aria-label="Remove escalation notification"
+															>
+																<Trash2 size={16} />
+															</IconButton>
+														</Stack>
+														{index < selectedEscalations.length - 1 && <Divider />}
+													</Stack>
+												);
+											})}
+										</Stack>
+									)}
+									{fieldState.error?.message && (
+										<Typography
+											color="error"
+											variant="caption"
+										>
+											{fieldState.error.message}
+										</Typography>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

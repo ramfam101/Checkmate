@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, downForMinutes: number, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -52,6 +53,38 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
+	buildEscalationMessage(monitor: Monitor, downForMinutes: number, clientHost: string): NotificationMessage {
+		const downForLabel = this.formatDownDuration(downForMinutes);
+
+		return {
+			type: "monitor_down_escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: ${monitor.name} is still down`,
+				summary: `Monitor "${monitor.name}" is still down after ${downForLabel}.`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: Down`,
+					`Type: ${monitor.type}`,
+					`Down for: ${downForLabel}`,
+				],
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
+			},
+		};
+	}
+
 	private determineNotificationType(decision: MonitorActionDecision, monitor: Monitor): NotificationType {
 		// Down status has highest priority (critical)
 		if (monitor.status === "down") {
@@ -80,6 +113,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private determineSeverity(type: NotificationType): NotificationSeverity {
 		switch (type) {
 			case "monitor_down":
+			case "monitor_down_escalation":
 				return "critical";
 			case "threshold_breach":
 				return "warning";
@@ -96,6 +130,8 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private buildContent(type: NotificationType, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): NotificationContent {
 		switch (type) {
 			case "monitor_down":
+				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
+			case "monitor_down_escalation":
 				return this.buildMonitorDownContent(monitor, monitorStatusResponse);
 			case "monitor_up":
 				return this.buildMonitorUpContent(monitor);
@@ -180,6 +216,20 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			details: [`URL: ${monitor.url}`, `Status: ${monitor.status}`, `Type: ${monitor.type}`],
 			timestamp: new Date(),
 		};
+	}
+
+	private formatDownDuration(downForMinutes: number): string {
+		if (downForMinutes < 60) {
+			return `${downForMinutes} minute${downForMinutes === 1 ? "" : "s"}`;
+		}
+
+		const hours = Math.floor(downForMinutes / 60);
+		const minutes = downForMinutes % 60;
+		if (minutes === 0) {
+			return `${hours} hour${hours === 1 ? "" : "s"}`;
+		}
+
+		return `${hours} hour${hours === 1 ? "" : "s"} ${minutes} minute${minutes === 1 ? "" : "s"}`;
 	}
 
 	public extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse<HardwareStatusPayload>): ThresholdBreach[] {
