@@ -351,6 +351,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -391,6 +392,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationEnabled: doc.escalationEnabled ?? false,
+			escalationDelay: doc.escalationDelay,
+			escalationNotifications: escalationNotificationIds,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};
@@ -410,6 +414,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		};
 
 		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const escalationNotificationIds = (doc.escalationNotifications ?? []).map((notification: unknown) => toStringId(notification));
 
 		return {
 			id: toStringId(doc._id),
@@ -450,6 +455,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
 			geoCheckInterval: doc.geoCheckInterval ?? 300000,
+			escalationEnabled: doc.escalationEnabled ?? false,
+			escalationDelay: doc.escalationDelay,
+			escalationNotifications: escalationNotificationIds,
 			createdAt: toDateString(doc.createdAt),
 			updatedAt: toDateString(doc.updatedAt),
 		};

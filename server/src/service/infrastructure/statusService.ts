@@ -195,6 +195,34 @@ export class StatusService implements IStatusService {
 			const { monitorId, teamId, status, code } = statusResponse;
 			const monitor = await this.monitorsRepository.findById(monitorId, teamId);
 
+			const incomingCheckTime = new Date(check.createdAt).getTime();
+			const latestRecordedCheckTime = Math.max(
+				...((monitor.recentChecks ?? [])
+					.map((recent) => new Date(recent.createdAt).getTime())
+					.filter((time) => Number.isFinite(time))),
+				0
+			);
+
+			if (Number.isFinite(incomingCheckTime) && incomingCheckTime <= latestRecordedCheckTime) {
+				this.logger.debug({
+					service: SERVICE_NAME,
+					method: "updateMonitorStatus",
+					message: `Skipping stale check for monitor ${monitorId}`,
+					details: {
+						incomingCheckTime: check.createdAt,
+						latestRecordedCheckTime: new Date(latestRecordedCheckTime).toISOString(),
+					},
+				});
+
+				return {
+					monitor,
+					statusChanged: false,
+					prevStatus: monitor.status,
+					code,
+					timestamp: Date.now(),
+				};
+			}
+
 			// Update running stats
 			this.updateRunningStats(monitor, statusResponse);
 
