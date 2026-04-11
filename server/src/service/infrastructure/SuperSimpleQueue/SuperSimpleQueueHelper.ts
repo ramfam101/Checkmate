@@ -158,14 +158,19 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 				// Step 6. Handle notifications (best effort, continue even in event of failure, don't wait)
 				if (decision.shouldSendNotification) {
-					this.notificationsService.handleNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
-						this.logger.error({
-							message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
-							service: SERVICE_NAME,
-							method: "getMonitorJob",
-							stack: error instanceof Error ? error.stack : undefined,
+					this.notificationsService
+						.handleNotifications(statusChangeResult.monitor, status, decision)
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending notifications for job ${statusChangeResult.monitor.id}: ${
+									error instanceof Error ? error.message : "Unknown error"
+								}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
 						});
-					});
+
+					this.scheduleEscalation(statusChangeResult.monitor);
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -454,5 +459,40 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	private scheduleEscalation(monitor: Monitor) {
+		if (!monitor.escalation?.channelId || !monitor.escalation?.delayMinutes) return;
+
+		setTimeout(async () => {
+			try {
+				const freshMonitor = await this.monitorsRepository.findById(monitor.id, monitor.teamId);
+
+				const stillDown =
+					freshMonitor.status === "down" || freshMonitor.status === "breached";
+
+				if (!stillDown) return;
+
+				const escalationMonitor: Monitor = {
+					...freshMonitor,
+					notifications: [monitor.escalation!.channelId],
+				};
+
+				await this.notificationsService.handleNotifications(
+					escalationMonitor,
+					{} as any,
+					{
+						shouldSendNotification: true,
+						notificationReason: "status_change",
+					} as any
+				);
+			} catch (err) {
+				this.logger.error({
+					message: "Escalation failed",
+					service: SERVICE_NAME,
+					method: "scheduleEscalation",
+				});
+			}
+		}, monitor.escalation.delayMinutes * 60 * 1000);
 	}
 }

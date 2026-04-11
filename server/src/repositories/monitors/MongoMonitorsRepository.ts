@@ -8,7 +8,18 @@ import { AppError } from "@/utils/AppError.js";
 
 class MongoMonitorsRepository implements IMonitorsRepository {
 	create = async (monitor: Monitor, teamId: string, userId: string) => {
-		const monitorModel = new MonitorModel({ ...monitor, teamId, userId });
+		const monitorModel = new MonitorModel({
+			...monitor,
+			teamId,
+			userId,
+			escalation: monitor.escalation
+				? {
+						delayMinutes: monitor.escalation.delayMinutes,
+						channelId: new mongoose.Types.ObjectId(monitor.escalation.channelId),
+					}
+				: null,
+		});
+
 		const saved = await monitorModel.save();
 		return this.toEntity(saved);
 	};
@@ -167,15 +178,27 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	updateById = async (monitorId: string, teamId: string, patch: Partial<Monitor>) => {
+		const updatePayload = {
+			...patch,
+			escalation:
+				patch.escalation === null
+					? null
+					: patch.escalation
+						? {
+								delayMinutes: patch.escalation.delayMinutes,
+								channelId: new mongoose.Types.ObjectId(patch.escalation.channelId),
+							}
+						: undefined,
+		};
+
 		const updatedMonitor = await MonitorModel.findOneAndUpdate(
 			{ _id: monitorId, teamId },
 			{
-				$set: {
-					...patch,
-				},
+				$set: updatePayload,
 			},
 			{ new: true, runValidators: true }
 		);
+
 		if (!updatedMonitor) {
 			throw new AppError({ message: `Failed to update monitor with id ${monitorId}`, status: 500 });
 		}
@@ -374,6 +397,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalation: doc.escalation
+				? {
+						delayMinutes: doc.escalation.delayMinutes,
+						channelId: toStringId(doc.escalation.channelId),
+					}
+				: null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +462,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalation: doc.escalation
+				? {
+						delayMinutes: doc.escalation.delayMinutes,
+						channelId: toStringId(doc.escalation.channelId),
+					}
+				: null,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
