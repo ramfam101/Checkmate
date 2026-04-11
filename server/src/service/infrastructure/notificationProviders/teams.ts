@@ -4,7 +4,7 @@ import { INotificationProvider } from "@/service/index.js";
 import type { NotificationMessage } from "@/types/notificationMessage.js";
 import { getTestMessage } from "@/service/infrastructure/notificationProviders/utils.js";
 import type { ILogger } from "@/utils/logger.js";
-import got, { HTTPError } from "got";
+import type { HTTPError } from "got";
 
 // Types for Adaptive Card elements
 type TextBlock = {
@@ -65,6 +65,11 @@ export class TeamsProvider implements INotificationProvider {
 		this.logger = logger;
 	}
 
+	private getGotClient = async () => {
+		const { default: got } = await import("got");
+		return got;
+	};
+
 	async sendTestAlert(notification: Partial<Notification>): Promise<boolean> {
 		if (!notification.address) {
 			return false;
@@ -84,8 +89,9 @@ export class TeamsProvider implements INotificationProvider {
 					},
 				],
 			});
+			const gotClient = await this.getGotClient();
 
-			await got.post(notification.address, {
+			await gotClient.post(notification.address, {
 				json: payload,
 				headers: {
 					"Content-Type": "application/json",
@@ -112,7 +118,8 @@ export class TeamsProvider implements INotificationProvider {
 		const payload = this.wrapAdaptiveCard(this.buildAdaptiveCard(message));
 
 		try {
-			await got.post(notification.address, {
+			const gotClient = await this.getGotClient();
+			await gotClient.post(notification.address, {
 				json: payload,
 				headers: {
 					"Content-Type": "application/json",
@@ -165,6 +172,7 @@ export class TeamsProvider implements INotificationProvider {
 		const color = (colorMap[message.severity] || "default") as "Default" | "Dark" | "Light" | "Accent" | "Good" | "Warning" | "Attention" | undefined;
 
 		const body: (TextBlock | ColumnSet | FactSet)[] = [];
+		const safeClientHost = message.clientHost.endsWith("/") ? message.clientHost.slice(0, -1) : message.clientHost;
 
 		// Header with colored status indicator
 		body.push({
@@ -176,13 +184,16 @@ export class TeamsProvider implements INotificationProvider {
 			wrap: true,
 		});
 
-		// Summary
-		body.push({
+		const summaryBlock: TextBlock = {
 			type: "TextBlock",
 			text: message.content.summary,
 			wrap: true,
 			spacing: "Small",
-		});
+		};
+
+		if (!message.content.thresholds || message.content.thresholds.length === 0) {
+			body.push(summaryBlock);
+		}
 
 		// Separator
 		body.push({
@@ -221,6 +232,8 @@ export class TeamsProvider implements INotificationProvider {
 					spacing: "Small",
 				});
 			}
+
+			body.push(summaryBlock);
 		}
 
 		// Additional details
@@ -259,7 +272,7 @@ export class TeamsProvider implements INotificationProvider {
 			actions.push({
 				type: "Action.OpenUrl",
 				title: "View Incident",
-				url: `${message.clientHost}/incidents/${message.content.incident.id}`,
+				url: message.monitor.id ? `${safeClientHost}/infrastructure/${message.monitor.id}` : message.content.incident.url,
 			});
 		}
 

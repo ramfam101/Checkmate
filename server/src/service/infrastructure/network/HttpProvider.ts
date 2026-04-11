@@ -10,23 +10,42 @@ import CacheableLookup from "cacheable-lookup";
 
 export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 	readonly type = "http";
+	private fallbackGot: Got;
 
 	constructor(
 		private got: Got,
 		private advancedMatcher: IAdvancedMatcher
 	) {
-		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
-		this.got = got.extend({
-			dnsCache: cacheable,
+		this.fallbackGot = got.extend({
 			timeout: {
 				request: 30000,
 			},
 			retry: { limit: 1 },
 		});
+
+		const cacheable = new CacheableLookup({ maxTtl: 300, errorTtl: 30 });
+		this.got = this.fallbackGot.extend({
+			dnsCache: cacheable,
+		});
 	}
 
 	supports(type: MonitorType) {
 		return type === "http";
+	}
+
+	private shouldRetryWithSystemDns(error: unknown): boolean {
+		const code =
+			error && typeof error === "object" && "code" in error && typeof error.code === "string"
+				? error.code.toUpperCase()
+				: "";
+		const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
+		return (
+			code === "ECONNREFUSED" ||
+			code === "EAI_AGAIN" ||
+			message.includes("querya econnrefused") ||
+			message.includes("queryaaaa econnrefused")
+		);
 	}
 
 	private handleHttpError<T>(error: unknown, monitor: Monitor): MonitorStatusResponse<T> {
@@ -72,7 +91,18 @@ export class HttpProvider implements IStatusProvider<HttpStatusPayload> {
 		};
 
 		try {
-			const response = await this.got<string>(url, options);
+			let response;
+
+			try {
+				response = await this.got<string>(url, options);
+			} catch (error: unknown) {
+				if (!this.shouldRetryWithSystemDns(error)) {
+					throw error;
+				}
+
+				response = await this.fallbackGot<string>(url, options);
+			}
+
 			const contentType = response.headers["content-type"] || "";
 			const isJson = contentType.includes("application/json");
 

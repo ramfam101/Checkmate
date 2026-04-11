@@ -4,10 +4,14 @@ import { z } from "zod";
 // Notification Validations
 //****************************************
 
+const notificationBaseFields = {
+	notificationName: z.string().min(1, "Notification name is required"),
+};
+
 export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	// Email notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("email"),
 		address: z.email("Please enter a valid e-mail address"),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
@@ -16,7 +20,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	}),
 	// Webhook notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("webhook"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
@@ -25,7 +29,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	}),
 	// Slack notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("slack"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
@@ -34,7 +38,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	}),
 	// Discord notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("discord"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
@@ -43,7 +47,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	}),
 	// PagerDuty notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("pager_duty"),
 		address: z.string().min(1, "PagerDuty integration key is required"),
 		homeserverUrl: z.union([z.string(), z.literal("")]).optional(),
@@ -52,7 +56,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	}),
 	// Matrix notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("matrix"),
 		address: z.union([z.string(), z.literal("")]).optional(),
 		homeserverUrl: z.url({ message: "Please enter a valid Homeserver URL" }),
@@ -61,7 +65,7 @@ export const createNotificationBodyValidation = z.discriminatedUnion("type", [
 	}),
 	// Teams notification
 	z.object({
-		notificationName: z.string().min(1, "Notification name is required"),
+		...notificationBaseFields,
 		type: z.literal("teams"),
 		address: z.url({ message: "Please enter a valid Webhook URL" }),
 	}),

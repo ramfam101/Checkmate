@@ -13,6 +13,8 @@ const baseSchema = z.object({
 	description: z.string().optional(),
 	interval: z.number().min(15000, "Interval must be at least 15 seconds"),
 	notifications: z.array(z.string()),
+	escalationAfterMinutes: z.number().int().min(0, "Escalation time cannot be negative").default(0),
+	escalationNotifications: z.array(z.string()).default([]),
 	statusWindowSize: z
 		.number({ message: "Status window size is required" })
 		.min(1, "Status window size must be at least 1")
@@ -135,7 +137,7 @@ export const monitorSchema = z.discriminatedUnion("type", [
 	websocketSchema,
 ]);
 
-export type MonitorFormData = z.infer<typeof monitorSchema>;
+export type MonitorFormData = z.input<typeof monitorSchema>;
 
 // Type-specific schemas exported for individual use
 export {

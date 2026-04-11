@@ -16,7 +16,7 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 						homeserverUrl: data.homeserverUrl || "",
 						roomId: data.roomId || "",
 						accessToken: data.accessToken || "",
-					}
+				  }
 				: {
 						type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
 						notificationName: data?.notificationName || "",

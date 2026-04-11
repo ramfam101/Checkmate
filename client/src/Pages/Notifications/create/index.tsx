@@ -46,6 +46,10 @@ const NotificationsCreatePage = () => {
 	}, [defaults, reset]);
 
 	const watchedType = watch("type");
+	const addressDefault = "address" in defaults ? defaults.address : "";
+	const homeserverUrlDefault = "homeserverUrl" in defaults ? defaults.homeserverUrl : "";
+	const roomIdDefault = "roomId" in defaults ? defaults.roomId : "";
+	const accessTokenDefault = "accessToken" in defaults ? defaults.accessToken : "";
 
 	useEffect(() => {
 		clearErrors();
@@ -155,7 +159,7 @@ const NotificationsCreatePage = () => {
 						<Controller
 							name="address"
 							control={control}
-							defaultValue={defaults.address}
+							defaultValue={addressDefault}
 							render={({ field, fieldState }) => (
 								<TextField
 									{...field}
@@ -180,7 +184,7 @@ const NotificationsCreatePage = () => {
 							<Controller
 								name="homeserverUrl"
 								control={control}
-								defaultValue={defaults.homeserverUrl}
+								defaultValue={homeserverUrlDefault}
 								render={({ field, fieldState }) => (
 									<TextField
 										{...field}
@@ -196,7 +200,7 @@ const NotificationsCreatePage = () => {
 							<Controller
 								name="roomId"
 								control={control}
-								defaultValue={defaults.roomId}
+								defaultValue={roomIdDefault}
 								render={({ field, fieldState }) => (
 									<TextField
 										{...field}
@@ -212,7 +216,7 @@ const NotificationsCreatePage = () => {
 							<Controller
 								name="accessToken"
 								control={control}
-								defaultValue={defaults.accessToken}
+								defaultValue={accessTokenDefault}
 								render={({ field, fieldState }) => (
 									<TextField
 										{...field}

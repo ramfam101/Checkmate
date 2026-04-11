@@ -1,5 +1,5 @@
 import { Schema, model, type Types } from "mongoose";
-import { IncidentResolutionTypes, type Incident } from "@/types/incident.js";
+import { IncidentResolutionTypes, type Incident, type IncidentEscalationEvent } from "@/types/incident.js";
 
 type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "resolvedBy" | "startTime" | "endTime" | "createdAt" | "updatedAt"> & {
 	monitorId: Types.ObjectId;
@@ -14,6 +14,24 @@ type IncidentDocumentBase = Omit<Incident, "id" | "monitorId" | "teamId" | "reso
 export interface IncidentDocument extends IncidentDocumentBase {
 	_id: Types.ObjectId;
 }
+
+const IncidentEscalationEventSchema = new Schema<IncidentEscalationEvent>(
+	{
+		notificationId: {
+			type: String,
+			required: true,
+		},
+		minutes: {
+			type: Number,
+			required: true,
+		},
+		sentAt: {
+			type: String,
+			required: true,
+		},
+	},
+	{ _id: false }
+);
 
 const IncidentSchema = new Schema<IncidentDocument>(
 	{
@@ -71,6 +89,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 		comment: {
 			type: String,
 			default: null,
+		},
+		escalationEvents: {
+			type: [IncidentEscalationEventSchema],
+			default: [],
 		},
 	},
 	{ timestamps: true }
