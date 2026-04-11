@@ -51,6 +51,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			id: this.toStringId(doc._id),
 			monitorId: this.toStringId(doc.monitorId),
 			teamId: this.toStringId(doc.teamId),
+			escalationJobId: doc.escalationJobId ?? null,
 			startTime: this.toDateString(doc.startTime),
 			endTime: doc.endTime ? this.toDateString(doc.endTime) : null,
 			status: doc.status,

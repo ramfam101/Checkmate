@@ -7,6 +7,7 @@ export interface Incident {
 	id: string;
 	monitorId: string;
 	teamId: string;
+	escalationJobId?: string | null;
 	startTime: string;
 	endTime: string | null;
 	status: boolean;

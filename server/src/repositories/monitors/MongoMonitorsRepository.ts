@@ -338,6 +338,28 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		return documents.map((doc) => this.toEntity(doc));
 	};
 
+	private toNotificationIdString = (notification: unknown): string => {
+		if (notification instanceof mongoose.Types.ObjectId) {
+			return notification.toString();
+		}
+
+		if (typeof notification === "string") {
+			return notification;
+		}
+
+		if (notification && typeof notification === "object" && "notificationId" in notification) {
+			const maybeNotificationId = (notification as { notificationId?: unknown }).notificationId;
+			if (maybeNotificationId instanceof mongoose.Types.ObjectId) {
+				return maybeNotificationId.toString();
+			}
+			if (typeof maybeNotificationId === "string") {
+				return maybeNotificationId;
+			}
+		}
+
+		return "";
+	};
+
 	private toEntity = (doc: MonitorDocument): Monitor => {
 		const toStringId = (value: unknown): string => {
 			if (value instanceof mongoose.Types.ObjectId) {
@@ -350,7 +372,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
+		const notificationIds = (doc.notifications ?? []).map((notification) => this.toNotificationIdString(notification)).filter(Boolean);
 
 		return {
 			id: toStringId(doc._id),
@@ -387,6 +409,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalation: doc.escalation
+				? {
+					delayMinutes: doc.escalation.delayMinutes,
+					channelId: toStringId(doc.escalation.channelId),
+				}
+				: undefined,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],
@@ -409,7 +437,9 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
+		const notificationIds = (doc.notifications ?? [])
+			.map((notification: unknown) => this.toNotificationIdString(notification))
+			.filter(Boolean);
 
 		return {
 			id: toStringId(doc._id),
@@ -446,6 +476,12 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			gameId: doc.gameId ?? undefined,
 			grpcServiceName: doc.grpcServiceName ?? undefined,
 			group: doc.group ?? null,
+			escalation: doc.escalation
+				? {
+					delayMinutes: doc.escalation.delayMinutes,
+					channelId: toStringId(doc.escalation.channelId),
+				}
+				: undefined,
 			recentChecks: (doc.recentChecks ?? []).map((check: CheckSnapshotDocument) => this.toCheckSnapshot(check)),
 			geoCheckEnabled: doc.geoCheckEnabled ?? false,
 			geoCheckLocations: doc.geoCheckLocations ?? [],

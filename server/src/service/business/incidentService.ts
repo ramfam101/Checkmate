@@ -8,6 +8,8 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import { Queue } from "bullmq";
+import { bullmqRedisConnection } from "@/config/redis.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -39,6 +41,7 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private escalationQueue: Queue;
 
 	constructor(
 		logger: ILogger,
@@ -52,6 +55,7 @@ export class IncidentService implements IIncidentService {
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.escalationQueue = new Queue("escalation", { connection: bullmqRedisConnection });
 	}
 
 	get serviceName() {
@@ -86,6 +90,7 @@ export class IncidentService implements IIncidentService {
 				const incident = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
+					escalationJobId: monitor.escalation ? `escalation-${monitor.id}` : null,
 					startTime: Date.now().toString(),
 					status: true,
 					statusCode,
@@ -146,8 +151,17 @@ export class IncidentService implements IIncidentService {
 				throw new AppError({ message: "Incident is already resolved", service: SERVICE_NAME, method: "resolveIncident" });
 			}
 
+			if (incident.escalationJobId) {
+				const pendingEscalationJob = await this.escalationQueue.getJob(incident.escalationJobId);
+				// job may already be null if escalation fired before manual resolution — safe to skip
+				if (pendingEscalationJob) {
+					await pendingEscalationJob.remove();
+				}
+			}
+
 			incident.resolutionType = "manual";
 			incident.status = false;
+			incident.escalationJobId = null;
 			incident.resolvedBy = userId;
 			incident.resolvedByEmail = userEmail || null;
 			incident.comment = comment || null;

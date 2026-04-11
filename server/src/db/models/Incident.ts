@@ -31,6 +31,10 @@ const IncidentSchema = new Schema<IncidentDocument>(
 			immutable: true,
 			index: true,
 		},
+		escalationJobId: {
+			type: String,
+			default: null,
+		},
 		startTime: {
 			type: Date,
 			immutable: true,

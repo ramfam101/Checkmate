@@ -93,8 +93,12 @@ export class EmailProvider implements INotificationProvider {
 	}
 
 	private async buildEmailFromMessage(message: NotificationMessage): Promise<string | undefined> {
+		// For escalation alerts (critical monitor_down), use "Escalation" as the header
+		const isEscalation = message.type === "monitor_down" && message.severity === "critical";
+		const title = isEscalation ? "Escalation" : message.content.title;
+
 		const context = {
-			title: message.content.title,
+			title,
 			summary: message.content.summary,
 			monitorName: message.monitor.name,
 			monitorUrl: message.monitor.url,
