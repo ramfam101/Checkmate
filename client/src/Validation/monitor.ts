@@ -27,7 +27,32 @@ const baseSchema = z.object({
 		.number()
 		.min(300000, "Interval must be at least 5 minutes")
 		.optional(),
-});
+	escalationEnabled: z.boolean().default(false).optional(),
+	escalationThresholdMinutes: z
+		.number()
+		.int("Threshold must be a whole number")
+		.min(1, "Threshold must be at least 1 minute")
+		.default(60)
+		.optional(),
+	escalationRecipient: z
+		.string()
+		.email("Please enter a valid email address")
+		.optional()
+		.or(z.literal("")),
+})
+	.refine(
+		(data: any) => {
+			// If escalation is enabled, recipient must be provided
+			if (data.escalationEnabled && !data.escalationRecipient) {
+				return false;
+			}
+			return true;
+		},
+		{
+			message: "Escalation recipient email is required when escalation is enabled",
+			path: ["escalationRecipient"],
+		}
+	);
 
 // HTTP monitor schema
 const httpSchema = baseSchema.extend({

@@ -543,6 +543,24 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"title": "Escalation settings",
+					"description": "Configure automatic escalation for incidents lasting beyond a threshold duration",
+					"option": {
+						"enable": {
+							"label": "Enable escalation"
+						},
+						"threshold": {
+							"label": "Escalation threshold (minutes)",
+							"description": "Send escalation notification after incident exceeds this duration"
+						},
+						"recipient": {
+							"label": "Escalation notification channel",
+							"placeholder": "Select an email notification",
+							"description": "Select the email notification channel to receive escalation alerts"
+						}
+					}
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
@@ -951,6 +969,21 @@
 					"description": "Select the type of notification channel to create.",
 					"optionType": "Type",
 					"title": "Channel type"
+				},
+				"escalation": {
+					"title": "Escalation settings",
+					"description": "Configure escalation notifications for long-running incidents.",
+					"threshold": {
+						"title": "Escalation threshold",
+						"description": "Set how long an incident must be active before escalation is triggered.",
+						"label": "Minutes"
+					},
+					"recipient": {
+						"title": "Escalation recipient",
+						"description": "Email address to receive escalation alerts.",
+						"label": "Recipient email",
+						"placeholder": "escalation@example.com"
+					}
 				}
 			},
 			"table": {
