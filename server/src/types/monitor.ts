@@ -56,6 +56,15 @@ export interface Monitor {
 	recentChecks: CheckSnapshot[];
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * Escalation rules for notifications. Each rule defines a delay (in minutes),
+	 * a set of notification channel IDs, and an optional custom message template.
+	 */
+	escalationRules?: Array<{
+		delayMinutes: number;
+		notificationChannelIds: string[];
+		messageTemplate?: string;
+	}>;
 }
 
 export interface MonitorsSummary {

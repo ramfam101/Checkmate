@@ -14,7 +14,6 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
-
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
 }
@@ -197,4 +196,36 @@ export class NotificationsService implements INotificationsService {
 		await this.monitorsRepository.removeNotificationFromMonitors(id);
 		return deleted;
 	};
+
+	public async scheduleEscalationNotifications(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision
+	): Promise<void> {
+		if (!monitor.escalationRules || monitor.escalationRules.length === 0) return;
+
+		const settings = this.settingsService.getSettings();
+		const clientHost = settings.clientHost || "Host not defined";
+		const notificationMessage = this.notificationMessageBuilder.buildMessage(
+			monitor,
+			monitorStatusResponse,
+			decision,
+			clientHost
+		);
+
+		for (const rule of monitor.escalationRules) {
+			setTimeout(async () => {
+				const notifications = await this.notificationsRepository.findNotificationsByIds(rule.notificationChannelIds);
+				const tasks = notifications.map((notification) =>
+					this.send(notification, monitor, monitorStatusResponse, decision, notificationMessage)
+				);
+				await Promise.all(tasks);
+				this.logger.info({
+					service: SERVICE_NAME,
+					method: "scheduleEscalationNotifications",
+					message: `Escalation rule triggered after ${rule.delayMinutes} min for monitor ${monitor.id}`,
+				});
+			}, rule.delayMinutes * 60 * 1000);
+		}
+	}
 }
