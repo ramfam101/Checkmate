@@ -40,6 +40,7 @@ import {
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
 import type { MonitorFormData } from "@/Validation/monitor";
+import { TextInput } from "@/Components/inputs/TextInput";
 
 interface GeneralSettingsConfig {
 	urlLabel: string;
@@ -764,6 +765,59 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+			<ConfigBox
+                                title="Escalation Rules"
+                                subtitle="If the monitor stays down for the specified time, notify additional channels."
+                                rightContent={
+                                        <Stack spacing={theme.spacing(LAYOUT.MD)}>
+                                                <Stack spacing={theme.spacing(LAYOUT.SM)}>
+                                                        <Typography>Escalate after (minutes)</Typography>
+                                                        <Controller
+                                                                name="escalationDelay"
+                                                                control={control}
+                                                                defaultValue={0}
+                                                                render={({ field }) => (
+                                                                        <TextInput
+                                                                                type="number"
+                                                                                value={field.value ?? 0}
+                                                                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                                                                inputProps={{ min: 0 }}
+                                                                        />
+                                                                )}
+                                                        />
+                                                </Stack>
+                                                <Stack spacing={theme.spacing(LAYOUT.SM)}>
+                                                        <Typography>Escalation notification channels</Typography>
+                                                        <Controller
+                                                                name="escalationNotifications"
+                                                                control={control}
+                                                                defaultValue={[]}
+                                                                render={({ field }) => {
+                                                                        const notificationOptions = (notifications ?? []).map((n) => ({
+                                                                                ...n,
+                                                                                name: n.notificationName,
+                                                                        }));
+                                                                        const selectedEscalation = notificationOptions.filter((n) =>
+                                                                                (field.value ?? []).includes(n.id)
+                                                                        );
+                                                                        return (
+                                                                                <Autocomplete
+                                                                                        multiple
+                                                                                        options={notificationOptions}
+                                                                                        value={selectedEscalation}
+                                                                                        getOptionLabel={(option) => option.name}
+                                                                                        onChange={(_: unknown, newValue: typeof notificationOptions) => {
+                                                                                                field.onChange(newValue.map((n) => n.id));
+                                                                                        }}
+                                                                                        isOptionEqualToValue={(option, value) => option.id === value.id}
+                                                                                />
+                                                                        );
+                                                                }}
+                                                        />
+                                                </Stack>
+                                        </Stack>
+                                }
+                        />
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

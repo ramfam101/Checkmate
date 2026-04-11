@@ -168,6 +168,39 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					});
 				}
 
+				// Step 6b. Handle escalation (runs every heartbeat when monitor is down)
+				this.logger.info({
+					message: `Escalation check: status=${statusChangeResult.monitor.status}, shouldSendNotification=${decision.shouldSendNotification}, escalationDelay=${statusChangeResult.monitor.escalationDelay}, escalationNotifications=${JSON.stringify(statusChangeResult.monitor.escalationNotifications)}`,
+					service: SERVICE_NAME,
+					method: "getMonitorJob",
+	
+				});
+                                if (
+                                        statusChangeResult.monitor.status === "down" &&
+                                        !decision.shouldSendNotification &&
+                                        statusChangeResult.monitor.escalationDelay > 0 &&
+                                        statusChangeResult.monitor.escalationNotifications?.length > 0
+                                ) {
+                                        const incident = await this.incidentsRepository.findActiveByMonitorId(
+                                                statusChangeResult.monitor.id,
+                                                statusChangeResult.monitor.teamId
+                                        );
+                                        if (incident) {
+                                                const downtimeMs = Date.now() - new Date(incident.startTime).getTime();
+                                                const delayMs = statusChangeResult.monitor.escalationDelay * 60 * 1000;
+                                                if (downtimeMs >= delayMs) {
+                                                        this.notificationsService.sendEscalationNotifications(statusChangeResult.monitor, status, decision).catch((error: unknown) => {
+                                                                this.logger.error({
+                                                                        message: `Error sending escalation: ${error instanceof Error ? error.message : "Unknown error"}`,
+                                                                        service: SERVICE_NAME,
+                                                                        method: "getMonitorJob",
+                                                                });
+                                                        });
+                                                }
+                                        }
+                                }
+
+
 				// Step 7. Handle incidents (best effort, don't wait)
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
