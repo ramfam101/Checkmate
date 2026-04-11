@@ -795,29 +795,45 @@ const CreateMonitorPage = () => {
 												field.onChange(Number(val));
 											}
 										}}
-										fieldLabel={t("pages.createMonitor.form.escalation.option.time.label")}
+										fieldLabel={t(
+											"pages.createMonitor.form.escalation.option.time.label"
+										)}
 										error={!!fieldState.error}
 									>
 										<MenuItem value="">
-											{t("pages.createMonitor.form.escalation.option.time.value.fifteenSeconds")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.fifteenSeconds"
+											)}
 										</MenuItem>
 										<MenuItem value={15}>
-											{t("pages.createMonitor.form.escalation.option.time.value.fifteenSeconds")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.fifteenSeconds"
+											)}
 										</MenuItem>
 										<MenuItem value={30}>
-											{t("pages.createMonitor.form.escalation.option.time.value.thirtySeconds")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.thirtySeconds"
+											)}
 										</MenuItem>
 										<MenuItem value={60}>
-											{t("pages.createMonitor.form.escalation.option.time.value.oneMinute")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.oneMinute"
+											)}
 										</MenuItem>
 										<MenuItem value={300}>
-											{t("pages.createMonitor.form.escalation.option.time.value.fiveMinutes")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.fiveMinutes"
+											)}
 										</MenuItem>
 										<MenuItem value={900}>
-											{t("pages.createMonitor.form.escalation.option.time.value.fifteenMinutes")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.fifteenMinutes"
+											)}
 										</MenuItem>
 										<MenuItem value={1800}>
-											{t("pages.createMonitor.form.escalation.option.time.value.thirtyMinutes")}
+											{t(
+												"pages.createMonitor.form.escalation.option.time.value.thirtyMinutes"
+											)}
 										</MenuItem>
 										<MenuItem value={3600}>
 											{t("pages.createMonitor.form.escalation.option.time.value.oneHour")}
@@ -835,7 +851,9 @@ const CreateMonitorPage = () => {
 											}}
 											type="number"
 											fieldLabel="Custom time (seconds)"
-											placeholder={t("pages.createMonitor.form.escalation.option.time.placeholder")}
+											placeholder={t(
+												"pages.createMonitor.form.escalation.option.time.placeholder"
+											)}
 											fullWidth
 											error={!!fieldState.error}
 											helperText={fieldState.error?.message ?? ""}

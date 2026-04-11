@@ -15,11 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
-	buildEscalationMessage(
-		monitor: Monitor,
-		incident: import("@/types/incident.js").Incident,
-		clientHost: string
-	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: import("@/types/incident.js").Incident, clientHost: string): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -57,11 +53,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 		};
 	}
 
-	buildEscalationMessage(
-		monitor: Monitor,
-		incident: import("@/types/incident.js").Incident,
-		clientHost: string
-	): NotificationMessage {
+	buildEscalationMessage(monitor: Monitor, incident: import("@/types/incident.js").Incident, clientHost: string): NotificationMessage {
 		const type: NotificationType = "monitor_down"; // Use monitor_down for escalation
 		const severity: NotificationSeverity = "critical";
 		const content = this.buildEscalationContent(monitor, incident);
@@ -218,12 +210,7 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 	private buildEscalationContent(monitor: Monitor, incident: import("@/types/incident.js").Incident): NotificationContent {
 		const title = `Escalation Alert: ${monitor.name}`;
 		const summary = `Monitor "${monitor.name}" has been down for an extended period and requires immediate attention.`;
-		const details = [
-			`URL: ${monitor.url}`,
-			`Status: Down`,
-			`Type: ${monitor.type}`,
-			`Incident Start: ${new Date(incident.startTime).toISOString()}`,
-		];
+		const details = [`URL: ${monitor.url}`, `Status: Down`, `Type: ${monitor.type}`, `Incident Start: ${new Date(incident.startTime).toISOString()}`];
 
 		if (incident.message) {
 			details.push(`Error: ${incident.message}`);

@@ -154,7 +154,29 @@ export class NotificationsService implements INotificationsService {
 		const clientHost = settings.clientHost || "Host not defined";
 		const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(monitor, incident, clientHost);
 
-		const tasks = notifications.map((notification) => this.send(notification, monitor, { status: false, code: incident.statusCode || 0, message: incident.message || "Escalation", responseTime: 0, monitorId: monitor.id, teamId: monitor.teamId, type: monitor.type }, { shouldSendNotification: true, shouldCreateIncident: false, shouldResolveIncident: false, incidentReason: null, notificationReason: "escalation" }, notificationMessage));
+		const tasks = notifications.map((notification) =>
+			this.send(
+				notification,
+				monitor,
+				{
+					status: false,
+					code: incident.statusCode || 0,
+					message: incident.message || "Escalation",
+					responseTime: 0,
+					monitorId: monitor.id,
+					teamId: monitor.teamId,
+					type: monitor.type,
+				},
+				{
+					shouldSendNotification: true,
+					shouldCreateIncident: false,
+					shouldResolveIncident: false,
+					incidentReason: null,
+					notificationReason: "escalation",
+				},
+				notificationMessage
+			)
+		);
 
 		const outcomes = await Promise.all(tasks);
 		const succeeded = outcomes.filter(Boolean).length;

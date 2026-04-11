@@ -18,7 +18,16 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "escalationNotifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	| "id"
+	| "userId"
+	| "teamId"
+	| "notifications"
+	| "escalationNotifications"
+	| "selectedDisks"
+	| "statusWindow"
+	| "recentChecks"
+	| "createdAt"
+	| "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
