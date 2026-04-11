@@ -11,17 +11,17 @@ export const useNotificationForm = ({ data = null }: UseNotificationFormOptions 
 		const defaults =
 			data?.type === "matrix"
 				? {
-						type: "matrix" as const,
-						notificationName: data.notificationName || "",
-						homeserverUrl: data.homeserverUrl || "",
-						roomId: data.roomId || "",
-						accessToken: data.accessToken || "",
-					}
+					type: "matrix" as const,
+					notificationName: data.notificationName || "",
+					homeserverUrl: data.homeserverUrl || "",
+					roomId: data.roomId || "",
+					accessToken: data.accessToken || "",
+				}
 				: {
-						type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
-						notificationName: data?.notificationName || "",
-						address: data?.address || "",
-					};
+					type: (data?.type || "email") as Exclude<Notification["type"], "matrix">,
+					notificationName: data?.notificationName || "",
+					address: data?.address || "",
+				};
 
 		return { schema: notificationSchema, defaults };
 	}, [data]);
