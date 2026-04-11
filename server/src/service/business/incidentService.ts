@@ -8,6 +8,7 @@ import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 import type { ILogger } from "@/utils/logger.js";
+import type { NotificationsService } from "@/service/infrastructure/notificationsService.js";
 
 export interface IIncidentService {
 	handleIncident(
@@ -39,19 +40,22 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private notificationsService: NotificationsService;
 
 	constructor(
 		logger: ILogger,
 		incidentsRepository: IIncidentsRepository,
 		monitorsRepository: IMonitorsRepository,
 		usersRepository: IUsersRepository,
-		notificationMessageBuilder: INotificationMessageBuilder
+		notificationMessageBuilder: INotificationMessageBuilder,
+		notificationsService: NotificationsService
 	) {
 		this.logger = logger;
 		this.incidentsRepository = incidentsRepository;
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+		this.notificationsService = notificationsService;
 	}
 
 	get serviceName() {
@@ -91,7 +95,16 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const createdIncident = await this.incidentsRepository.create(incident);
+				// Schedule escalation notifications
+				if (monitor.escalationRules && monitor.escalationRules.length > 0 && monitorStatusResponse) {
+					this.notificationsService.scheduleEscalationNotifications(
+						monitor,
+						monitorStatusResponse,
+						decision
+					);
+				}
+				return createdIncident;
 			}
 		}
 

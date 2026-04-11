@@ -203,24 +203,9 @@ export const initializeServices = async ({
 	]);
 	const emailService = new EmailService(settingsService, fs, path, compile, mjml2html, nodemailer, logger);
 
+
+
 	const notificationMessageBuilder = new NotificationMessageBuilder();
-
-	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder);
-
-	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
-
-	const globalPingService = new GlobalPingService(logger);
-
-	const geoChecksService = new GeoChecksService({
-		logger,
-		geoChecksRepository,
-		globalPingService,
-		monitorsRepository,
-	});
-
-	const bufferService = new BufferService(logger, checkService, geoChecksService, settingsService);
-
-	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
 
 	// Notification providers
 	const webhookProvider = new WebhookProvider(logger);
@@ -245,6 +230,23 @@ export const initializeServices = async ({
 		logger,
 		notificationMessageBuilder
 	);
+
+	const incidentService = new IncidentService(logger, incidentsRepository, monitorsRepository, usersRepository, notificationMessageBuilder, notificationsService);
+
+	const checkService = new CheckService(monitorsRepository, logger, checksRepository);
+
+	const globalPingService = new GlobalPingService(logger);
+
+	const geoChecksService = new GeoChecksService({
+		logger,
+		geoChecksRepository,
+		globalPingService,
+		monitorsRepository,
+	});
+
+	const bufferService = new BufferService(logger, checkService, geoChecksService, settingsService);
+
+	const statusService = new StatusService(logger, bufferService, monitorsRepository, monitorStatsRepository, checksRepository);
 
 	const superSimpleQueueHelper = new SuperSimpleQueueHelper(
 		logger,
