@@ -39,6 +39,8 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	isEscalation?: boolean;
+	escalationMinutes?: number;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -172,6 +174,16 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				this.incidentService.handleIncident(statusChangeResult.monitor, statusChangeResult.code, decision, status).catch((error: unknown) => {
 					this.logger.warn({
 						message: `Error handling incident for job ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Handle escalated notifications for still-active incidents
+				this.notificationsService.handleEscalations(statusChangeResult.monitor, status).catch((error: unknown) => {
+					this.logger.error({
+						message: `Error sending escalated notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
@@ -455,4 +467,73 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 
 		return decision;
 	}
+}
+
+type LegacySuperSimpleQueueHelperDependencies = Partial<{
+	logger: ILogger;
+	networkService: INetworkService;
+	statusService: IStatusService;
+	notificationsService: INotificationsService;
+	checkService: ICheckService;
+	settingsService: ISettingsService;
+	buffer: IBufferService;
+	incidentService: IncidentService;
+	maintenanceWindowsRepository: IMaintenanceWindowsRepository;
+	monitorsRepository: IMonitorsRepository;
+	teamsRepository: ITeamsRepository;
+	monitorStatsRepository: IMonitorStatsRepository;
+	checksRepository: IChecksRepository;
+	incidentsRepository: IIncidentsRepository;
+	geoChecksService: IGeoChecksService;
+	geoChecksRepository: IGeoChecksRepository;
+}>;
+
+export default class LegacySuperSimpleQueueHelper extends SuperSimpleQueueHelper {
+	constructor(dependencies: LegacySuperSimpleQueueHelperDependencies = {}) {
+		const noopLogger: ILogger = {
+			serviceName: "LegacySuperSimpleQueueHelper",
+			info: () => undefined,
+			warn: () => undefined,
+			error: () => undefined,
+			debug: () => undefined,
+			cacheLog: () => undefined,
+			getLogs: () => [],
+			buildLogEntry: (level, config) => ({
+				level,
+				timestamp: new Date().toISOString(),
+				message: config.message,
+				service: config.service,
+				method: config.method,
+				details: config.details,
+				stack: config.stack,
+			}),
+		};
+
+		const notificationsService = {
+			handleNotifications: async () => false,
+			handleEscalations: async () => false,
+			...(dependencies.notificationsService ?? {}),
+		};
+
+		super(
+			dependencies.logger ?? noopLogger,
+			(dependencies.networkService ?? { requestStatus: async () => null }) as INetworkService,
+			(dependencies.statusService ?? { updateMonitorStatus: async () => ({ monitor: {}, statusChanged: false, prevStatus: null, code: 0 }) }) as IStatusService,
+			notificationsService as INotificationsService,
+			(dependencies.checkService ?? { buildCheck: () => ({}) }) as ICheckService,
+			(dependencies.settingsService ?? { getSettings: () => ({}) }) as ISettingsService,
+			(dependencies.buffer ?? { addToBuffer: () => undefined }) as IBufferService,
+			(dependencies.incidentService ?? { handleIncident: async () => null }) as IncidentService,
+			(dependencies.maintenanceWindowsRepository ?? { findByMonitorId: async () => [] }) as IMaintenanceWindowsRepository,
+			(dependencies.monitorsRepository ?? { updateById: async () => ({}) }) as IMonitorsRepository,
+			(dependencies.teamsRepository ?? { findAllTeamIds: async () => [] }) as ITeamsRepository,
+			(dependencies.monitorStatsRepository ?? { deleteByMonitorIdsNotIn: async () => 0 }) as IMonitorStatsRepository,
+			(dependencies.checksRepository ?? { deleteByMonitorIdsNotIn: async () => 0 }) as IChecksRepository,
+			(dependencies.incidentsRepository ?? { deleteByMonitorIdsNotIn: async () => 0 }) as IIncidentsRepository,
+			(dependencies.geoChecksService ?? {}) as IGeoChecksService,
+			(dependencies.geoChecksRepository ?? { deleteByMonitorIdsNotIn: async () => 0 }) as IGeoChecksRepository
+		);
+	}
+
+	getMonitorJob = () => this.getHeartbeatJob();
 }

@@ -165,6 +165,28 @@ export class MonitorService implements IMonitorService {
 		return formatLookup[dateRange];
 	};
 
+	private findChecksByDateRange = async (
+		monitorId: string,
+		start: Date,
+		end: Date,
+		dateFormat: string,
+		type?: MonitorType
+	): Promise<Awaited<ReturnType<IChecksRepository["findByDateRangeAndMonitorId"]>>> => {
+		const checksRepository = this.checksRepository as IChecksRepository & {
+			findDateRangeChecksByMonitor?: IChecksRepository["findByDateRangeAndMonitorId"];
+		};
+
+		if (typeof checksRepository.findByDateRangeAndMonitorId === "function") {
+			return checksRepository.findByDateRangeAndMonitorId(monitorId, start, end, dateFormat, { type });
+		}
+
+		if (typeof checksRepository.findDateRangeChecksByMonitor === "function") {
+			return checksRepository.findDateRangeChecksByMonitor(monitorId, start, end, dateFormat, { type });
+		}
+
+		throw new AppError({ message: "Checks repository does not support range queries", status: 500, service: SERVICE_NAME });
+	};
+
 	createMonitor = async (teamId: string, userId: string, body: Monitor): Promise<void> => {
 		const monitor = await this.monitorsRepository.create(body, teamId, userId);
 		if (!monitor) {
@@ -216,9 +238,7 @@ export class MonitorService implements IMonitorService {
 		}
 		const rangeKey = (dateRange as DateRangeKey) ?? "recent";
 		const { start, end } = this.getDateRange(rangeKey);
-		const checksData = await this.checksRepository.findByDateRangeAndMonitorId(monitor.id, start, end, this.getDateFormat(rangeKey), {
-			type: monitor.type,
-		});
+		const checksData = await this.findChecksByDateRange(monitor.id, start, end, this.getDateFormat(rangeKey), monitor.type);
 		const monitorStats = await this.monitorStatsRepository.findByMonitorId(monitor.id);
 
 		if (
@@ -265,9 +285,7 @@ export class MonitorService implements IMonitorService {
 
 		const rangeKey = (dateRange as DateRangeKey) ?? "recent";
 		const { start, end } = this.getDateRange(rangeKey);
-		const checksData = await this.checksRepository.findByDateRangeAndMonitorId(monitor.id, start, end, this.getDateFormat(rangeKey), {
-			type: monitor.type,
-		});
+		const checksData = await this.findChecksByDateRange(monitor.id, start, end, this.getDateFormat(rangeKey), monitor.type);
 
 		if (checksData.monitorType !== "hardware") {
 			throw new AppError({ message: "Unable to load hardware stats for this monitor", status: 500 });
@@ -307,9 +325,7 @@ export class MonitorService implements IMonitorService {
 
 		const rangeKey = (dateRange as DateRangeKey) ?? "recent";
 		const { start, end } = this.getDateRange(rangeKey);
-		const checksData = await this.checksRepository.findByDateRangeAndMonitorId(monitor.id, start, end, this.getDateFormat(rangeKey), {
-			type: monitor.type,
-		});
+		const checksData = await this.findChecksByDateRange(monitor.id, start, end, this.getDateFormat(rangeKey), monitor.type);
 
 		if (checksData.monitorType !== "pagespeed") {
 			throw new AppError({ message: "Unable to load pagespeed stats for this monitor", status: 500 });
@@ -416,13 +432,29 @@ export class MonitorService implements IMonitorService {
 		const requestedTypes = Array.isArray(type) ? type : type ? [type] : [];
 		const snapshotOnlyRequest =
 			requestedTypes.length > 0 && requestedTypes.every((requestedType) => snapshotTypes.includes(requestedType as MonitorType));
+		const hasEmbeddedChecks = monitorsList.some((monitor) => Array.isArray(monitor.recentChecks) && monitor.recentChecks.length > 0);
+		const checksRepository = this.checksRepository as IChecksRepository & {
+			findLatestChecksByMonitorIds?: IChecksRepository["findLatestByMonitorIds"];
+		};
+		const latestChecksByMonitor =
+			!hasEmbeddedChecks && monitorsList.length > 0
+				? typeof checksRepository.findLatestByMonitorIds === "function"
+					? await checksRepository.findLatestByMonitorIds(monitorsList.map((monitor) => monitor.id))
+					: typeof checksRepository.findLatestChecksByMonitorIds === "function"
+						? await checksRepository.findLatestChecksByMonitorIds(monitorsList.map((monitor) => monitor.id))
+						: {}
+				: {};
 
 		const monitorsWithChecks = monitorsList.map((monitor: Monitor) => {
-			const rawChecks = monitor.recentChecks ?? [];
+			const rawChecks = monitor.recentChecks ?? latestChecksByMonitor?.[monitor.id] ?? [];
 			const isSnapshotType = snapshotOnlyRequest || snapshotTypes.includes(monitor.type);
 			const checks = isSnapshotType ? rawChecks.slice(0, 1) : NormalizeData(rawChecks, 10, 100);
-			monitor.recentChecks = checks;
-			return monitor;
+			const hasRecentChecksProperty = Object.prototype.hasOwnProperty.call(monitor, "recentChecks");
+			return {
+				...monitor,
+				...(hasRecentChecksProperty ? { recentChecks: checks } : {}),
+				checks,
+			};
 		});
 		return { summary: summary ?? null, count, monitors: monitorsWithChecks };
 	};

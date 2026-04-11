@@ -60,4 +60,4 @@ export const notificationSchema = z.discriminatedUnion("type", [
 	teamsSchema,
 ]);
 
-export type NotificationFormData = z.infer<typeof notificationSchema>;
+export type NotificationFormData = z.input<typeof notificationSchema>;
