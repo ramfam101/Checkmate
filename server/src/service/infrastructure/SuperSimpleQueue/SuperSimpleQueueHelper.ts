@@ -38,7 +38,7 @@ export interface MonitorActionDecision {
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
-	notificationReason: "status_change" | "threshold_breach" | null;
+	notificationReason: "status_change" | "threshold_breach" | "escalation" | null;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -175,6 +175,15 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						service: SERVICE_NAME,
 						method: "getMonitorJob",
 						stack: error instanceof Error ? error.stack : undefined,
+					});
+				});
+
+				// Step 8. Check escalations (best effort, don't wait)
+				this.checkEscalations(statusChangeResult.monitor).catch((error: unknown) => {
+					this.logger.warn({
+						message: `Error checking escalations for monitor ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
 					});
 				});
 			} catch (error: unknown) {
@@ -416,6 +425,40 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				});
 			}
 		};
+	};
+
+	private checkEscalations = async (monitor: Monitor): Promise<void> => {
+		if (!monitor.escalationRules || monitor.escalationRules.length === 0) return;
+
+		const incident = await this.incidentsRepository.findActiveByMonitorId(monitor.id, monitor.teamId);
+		if (!incident) return;
+
+		const incidentStartMs = new Date(incident.startTime).getTime();
+		const nowMs = Date.now();
+		const alreadyFired = new Set(incident.escalationsFired ?? []);
+
+		const dueRules = monitor.escalationRules.filter((rule) => {
+			if (alreadyFired.has(rule.notificationId)) return false;
+			return nowMs >= incidentStartMs + rule.delayMinutes * 60 * 1000;
+		});
+
+		for (const rule of dueRules) {
+			try {
+				await this.notificationsService.sendEscalationNotification(monitor, rule.notificationId);
+				await this.incidentsRepository.addEscalationFired(incident.id, monitor.teamId, rule.notificationId);
+				this.logger.info({
+					message: `Escalation fired for monitor ${monitor.id}, notificationId ${rule.notificationId}`,
+					service: SERVICE_NAME,
+					method: "checkEscalations",
+				});
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: `Escalation failed for notificationId ${rule.notificationId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+					service: SERVICE_NAME,
+					method: "checkEscalations",
+				});
+			}
+		}
 	};
 
 	private evaluateMonitorAction(statusChangeResult: StatusChangeResult): MonitorActionDecision {

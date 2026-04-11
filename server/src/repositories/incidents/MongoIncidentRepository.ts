@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationsFired: doc.escalationsFired ?? [],
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -272,6 +273,13 @@ class MongoIncidentRepository implements IIncidentsRepository {
 				createdAt: this.toDateString(incident.createdAt),
 			})),
 		};
+	};
+
+	addEscalationFired = async (incidentId: string, teamId: string, notificationId: string): Promise<void> => {
+		await IncidentModel.updateOne(
+			{ _id: new mongoose.Types.ObjectId(incidentId), teamId: new mongoose.Types.ObjectId(teamId) },
+			{ $addToSet: { escalationsFired: notificationId } }
+		);
 	};
 
 	deleteByMonitorId = async (monitorId: string, teamId: string) => {

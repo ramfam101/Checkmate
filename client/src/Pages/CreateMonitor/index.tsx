@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 import { HeaderDeleteControls } from "@/Components/monitors";
 import { GeoContinents } from "@/Types/GeoCheck";
 
@@ -203,6 +203,8 @@ const CreateMonitorPage = () => {
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
+	const { fields: escalationFields, append: appendEscalation, remove: removeEscalation } =
+		useFieldArray({ control, name: "escalationRules" });
 
 	useEffect(() => {
 		form.reset(defaults);
@@ -762,6 +764,87 @@ const CreateMonitorPage = () => {
 							);
 						}}
 					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.escalation.title")}
+				subtitle={t("pages.createMonitor.form.escalation.description")}
+				rightContent={
+					<Stack spacing={theme.spacing(LAYOUT.MD)}>
+						{escalationFields.map((field, index) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							return (
+								<Stack
+									key={field.id}
+									direction="row"
+									alignItems="flex-start"
+									spacing={theme.spacing(SPACING.MD)}
+								>
+									<Controller
+										name={`escalationRules.${index}.delayMinutes`}
+										control={control}
+										render={({ field: f, fieldState }) => (
+											<TextField
+												type="number"
+												value={f.value ?? ""}
+												onChange={(e) => f.onChange(Number(e.target.value))}
+												fieldLabel={t("pages.createMonitor.form.escalation.delayLabel")}
+												error={!!fieldState.error}
+												helperText={fieldState.error?.message ?? ""}
+												sx={{ width: 140 }}
+											/>
+										)}
+									/>
+									<Controller
+										name={`escalationRules.${index}.notificationId`}
+										control={control}
+										render={({ field: f }) => {
+											const selected =
+												notificationOptions.find((n) => n.id === f.value) ?? null;
+											return (
+												<Autocomplete
+													options={notificationOptions}
+													value={selected}
+													getOptionLabel={(o) => o.name}
+													onChange={(_: unknown, v: (typeof notificationOptions)[0] | null) =>
+														f.onChange(v?.id ?? "")
+													}
+													isOptionEqualToValue={(o, v) => o.id === v.id}
+													fieldLabel={t(
+														"pages.createMonitor.form.escalation.channelLabel"
+													)}
+													sx={{ minWidth: 200 }}
+												/>
+											);
+										}}
+									/>
+									<IconButton
+										size="small"
+										onClick={() => removeEscalation(index)}
+										aria-label="Remove escalation rule"
+										sx={{ mt: 3 }}
+									>
+										<Trash2 size={16} />
+									</IconButton>
+								</Stack>
+							);
+						})}
+						<Button
+							variant="outlined"
+							onClick={() => appendEscalation({ delayMinutes: 30, notificationId: "" })}
+							sx={{ alignSelf: "flex-start" }}
+						>
+							<Plus
+								size={16}
+								style={{ marginRight: 4 }}
+							/>
+							{t("pages.createMonitor.form.escalation.addRule")}
+						</Button>
+					</Stack>
 				}
 			/>
 

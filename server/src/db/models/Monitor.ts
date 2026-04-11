@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, CheckSnapshot, EscalationRule } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -169,6 +169,14 @@ const snapshotAuditsSchema = new Schema<CheckAudits>(
 		fcp: { type: snapshotLighthouseAuditSchema },
 		lcp: { type: snapshotLighthouseAuditSchema },
 		tbt: { type: snapshotLighthouseAuditSchema },
+	},
+	{ _id: false }
+);
+
+const escalationRuleSchema = new Schema<EscalationRule>(
+	{
+		notificationId: { type: String, required: true },
+		delayMinutes: { type: Number, required: true, min: 1 },
 	},
 	{ _id: false }
 );
@@ -350,6 +358,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		geoCheckInterval: {
 			type: Number,
 			default: 300000,
+		},
+		escalationRules: {
+			type: [escalationRuleSchema],
+			default: [],
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
