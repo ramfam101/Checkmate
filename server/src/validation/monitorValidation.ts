@@ -58,6 +58,14 @@ export const createMonitorBodyValidation = z.object({
 	statusWindowThreshold: z.number().min(1).max(100).default(60),
 	url: z.string().min(1, "URL is required"),
 	ignoreTlsErrors: z.boolean().default(false),
+	escalationPolicies: z
+		.array(
+			z.object({
+				delayMinutes: z.number().min(1),
+				channelId: z.string().min(1),
+			})
+		)
+		.optional(),
 	useAdvancedMatching: z.boolean().default(false),
 	port: z.number().optional(),
 	isActive: z.boolean().optional(),
@@ -107,6 +115,14 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+	escalationPolicies: z
+		.array(
+			z.object({
+				delayMinutes: z.number().min(1),
+				channelId: z.string().min(1),
+			})
+		)
+		.optional(),
 });
 
 export const pauseMonitorParamValidation = z.object({

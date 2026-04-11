@@ -198,6 +198,14 @@ const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{ _id: false }
 );
 
+const escalationPolicySchema = new Schema(
+	{
+		delayMinutes: { type: Number, required: true },
+		channelId: { type: Schema.Types.ObjectId, ref: "Notification", required: true },
+	},
+	{ _id: false }
+);
+
 const MonitorSchema = new Schema<MonitorDocument>(
 	{
 		userId: {
@@ -353,6 +361,10 @@ const MonitorSchema = new Schema<MonitorDocument>(
 		},
 		recentChecks: {
 			type: [checkSnapshotSchema],
+			default: [],
+		},
+		escalationPolicies: {
+			type: [escalationPolicySchema],
 			default: [],
 		},
 	},

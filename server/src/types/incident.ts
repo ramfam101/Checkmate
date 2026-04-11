@@ -18,6 +18,13 @@ export interface Incident {
 	comment?: string | null;
 	createdAt: string;
 	updatedAt: string;
+	escalationsFired?: EscalationFired[];
+}
+
+export interface EscalationFired {
+	delayMinutes: number;
+	channelId: string;
+	firedAt: string;
 }
 
 export interface IncidentSummaryTopMonitor {

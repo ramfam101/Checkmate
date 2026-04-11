@@ -166,6 +166,24 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+					// Step 6b. Schedule escalation jobs if escalationPolicies exist and monitor is DOWN
+					const monitor = statusChangeResult.monitor;
+					if (monitor.status === "down" && Array.isArray(monitor.escalationPolicies) && monitor.escalationPolicies.length > 0) {
+						// TODO: Integrate with your job queue (e.g., BullMQ) to schedule escalation steps
+						// Example:
+						// for (const [i, step] of monitor.escalationPolicies.entries()) {
+						//   queue.add(
+						//     "escalationStep",
+						//     { monitorId: monitor.id, teamId: monitor.teamId, stepIndex: i },
+						//     { delay: step.delayMs }
+						//   );
+						// }
+						this.logger.info({
+							message: `Would schedule escalation jobs for monitor ${monitor.id} with ${monitor.escalationPolicies.length} steps`,
+							service: SERVICE_NAME,
+							method: "getMonitorJob",
+						});
+					}
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -454,5 +472,84 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		}
 
 		return decision;
+	}
+
+	/**
+	 * Handles a single escalation step job. To be called by your queue processor.
+	 * @param monitorId The monitor ID
+	 * @param teamId The team ID
+	 * @param incidentId The incident ID (if tracked)
+	 * @param stepIndex The escalation step index
+	 */
+	async handleEscalationStepJob({
+		monitorId,
+		teamId,
+		incidentId: _incidentId,
+		stepIndex,
+	}: {
+		monitorId: string;
+		teamId: string;
+		incidentId?: string;
+		stepIndex: number;
+	}) {
+		// Fetch monitor and (optionally) incident
+		const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+		if (!monitor) {
+			this.logger.warn({ message: `Monitor ${monitorId} not found for escalation`, service: SERVICE_NAME, method: "handleEscalationStepJob" });
+			return;
+		}
+		// Optionally fetch incident and check if still open
+		// const incident = _incidentId ? await this.incidentsRepository.findById(_incidentId) : undefined;
+		// if (incident && incident.resolved) return;
+
+		// Only proceed if monitor is still DOWN
+		if (monitor.status !== "down") {
+			this.logger.info({
+				message: `Monitor ${monitorId} is not down, skipping escalation`,
+				service: SERVICE_NAME,
+				method: "handleEscalationStepJob",
+			});
+			return;
+		}
+
+		const step = monitor.escalationPolicies?.[stepIndex];
+		if (!step) {
+			this.logger.warn({
+				message: `No escalation step ${stepIndex} for monitor ${monitorId}`,
+				service: SERVICE_NAME,
+				method: "handleEscalationStepJob",
+			});
+			return;
+		}
+
+		// Build a MonitorActionDecision for escalation (customize as needed)
+		const decision: MonitorActionDecision = {
+			shouldCreateIncident: false,
+			shouldResolveIncident: false,
+			shouldSendNotification: true,
+			incidentReason: "status_down",
+			notificationReason: "escalation_step" as "status_change" | "threshold_breach" | null,
+		};
+
+		// Optionally, build a custom MonitorStatusResponse for the notification message
+		const monitorStatusResponse = {
+			monitorId: monitor.id,
+			teamId: monitor.teamId,
+			type: monitor.type,
+			status: false,
+			responseTime: 0,
+			timings: { start: 0, phases: {} },
+			code: 0,
+			message: "",
+		};
+
+		// Send notifications to the escalation step's targets (customize as needed)
+		await this.notificationsService.handleNotifications(monitor, monitorStatusResponse, decision);
+
+		this.logger.info({
+			message: `Escalation step ${stepIndex} executed for monitor ${monitorId}`,
+			service: SERVICE_NAME,
+			method: "handleEscalationStepJob",
+		});
 	}
 }

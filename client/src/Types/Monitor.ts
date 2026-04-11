@@ -58,6 +58,10 @@ export interface Monitor {
 	port?: number;
 	isActive: boolean;
 	interval: number;
+	escalationPolicies?: Array<{
+		delayMinutes: number;
+		channelId: string;
+	}>;
 	uptimePercentage?: number;
 	notifications: string[];
 	secret?: string;

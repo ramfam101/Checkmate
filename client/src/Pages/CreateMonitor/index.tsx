@@ -765,6 +765,95 @@ const CreateMonitorPage = () => {
 				}
 			/>
 
+			{/* Escalation Policy Section */}
+			<ConfigBox
+				title={t("Escalation Policy")}
+				subtitle={t("Define escalation steps if an incident is not acknowledged.")}
+				rightContent={
+					<Controller
+						name="escalationPolicies"
+						control={control}
+						defaultValue={[]}
+						render={({ field }) => {
+							// notificationOptions from above
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+							const policies = field.value || [];
+							const setPolicies = (newPolicies: any) => field.onChange(newPolicies);
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{policies.map((policy: any, idx: number) => (
+										<Stack
+											key={idx}
+											direction="row"
+											spacing={theme.spacing(LAYOUT.MD)}
+											alignItems="center"
+										>
+											<TextField
+												type="number"
+												value={policy.delayMinutes}
+												onChange={(e) => {
+													const val = Number(e.target.value);
+													setPolicies(
+														policies.map((p: any, i: number) =>
+															i === idx ? { ...p, delayMinutes: val } : p
+														)
+													);
+												}}
+												fieldLabel={t("Escalate after (minutes)")}
+												sx={{ minWidth: 180 }}
+											/>
+											<Select
+												value={policy.channelId || ""}
+												onChange={(e) => {
+													setPolicies(
+														policies.map((p: any, i: number) =>
+															i === idx ? { ...p, channelId: e.target.value } : p
+														)
+													);
+												}}
+												fieldLabel={t("Notification Channels")}
+												sx={{ minWidth: 220 }}
+											>
+												<MenuItem value="">{t("Select channel")}</MenuItem>
+												{notificationOptions.map((n) => (
+													<MenuItem
+														key={n.id}
+														value={n.id}
+													>
+														{n.name}
+													</MenuItem>
+												))}
+											</Select>
+											<IconButton
+												size="small"
+												onClick={() =>
+													setPolicies(policies.filter((_: any, i: number) => i !== idx))
+												}
+												aria-label="Remove escalation step"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										onClick={() =>
+											setPolicies([...policies, { delayMinutes: 10, channelId: "" }])
+										}
+										sx={{ alignSelf: "flex-start" }}
+									>
+										{t("Add Escalation Step")}
+									</Button>
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||
 				watchedType === "websocket") && (

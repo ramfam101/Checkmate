@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules c8 jest --runInBand",
     "prepare": "husky"
   },
   "repository": {
@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/bluewave-labs/Checkmate#readme",
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "husky": "^9.1.7"
   }
 }

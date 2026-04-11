@@ -41,7 +41,6 @@ Checkmate has been stress-tested with 1000+ active monitors without any particul
 - [📦 Demo](#demo)  
 - [🔗 User's guide](#users-guide)  
 - [🛠️ Installation](#installation)
-- [🏁 Translations](#translations)  
 - [🚀 Performance](#performance)  
 - [💚 Questions & Ideas](#questions--ideas)  
 - [🧩 Features](#features)  
@@ -60,22 +59,21 @@ You can see the latest build of [Checkmate](https://checkmate-demo.bluewavelabs.
 
 Usage instructions can be found [here](https://checkmate.so/docs). 
 
+## Prerequisites
+- [Docker](https://www.docker.com/) installed
+- [Git](https://git-scm.com/) installed
+
 ## Installation
 
 See installation instructions in [Checkmate documentation portal](https://checkmate.so/docs). 
 
-Alternatively, you can also use [Elestio](https://elest.io/open-source/checkmate), [K8s](./charts/helm/checkmate/INSTALLATION.md), [Sive Host](https://sive.host) (South Africa) or [Pikapods](https://www.pikapods.com/) to quickly spin off a Checkmate instance. If you would like to monitor your server infrastructure, you'll need [Capture agent](https://github.com/bluewave-labs/capture). Capture repository also contains the installation instructions.
+Alternatively, you can also use [Coolify](https://coolify.io/), [Elestio](https://elest.io/open-source/checkmate), [K8s](./charts/helm/checkmate/INSTALLATION.md), [Sive Host](https://sive.host) (South Africa), [Cloudzy](https://cloudzy.com/marketplace/checkmate) or [Pikapods](https://www.pikapods.com/) to quickly spin off a Checkmate instance. If you would like to monitor your server infrastructure, you'll need [Capture agent](https://github.com/bluewave-labs/capture). Capture repository also contains the installation instructions.
 
 ### Using a Custom CA
 
 If you need to monitor internal HTTPS endpoints with certificates from private Certificate Authorities (like Smallstep), see our [Custom CA Trust Guide](./docs/custom-ca-trust.md) for Docker configuration options.
 
 For more documentation, see the [docs directory](./docs/).
-
-
-## Translations
-
-If you would like to use Checkmate in your language, please [go to this page](https://poeditor.com/join/project/lRUoGZFCsJ) and register for the language you would like to translate Checkmate to. 
 
 ## Performance
 
@@ -92,7 +90,7 @@ You can see the memory footprint of MongoDB and Redis on the same server (398Mb 
 If you have any questions, suggestions or comments, you have several options: 
 
 - [Discord channel](https://discord.gg/NAb6H3UTjK) (preferred)
-- [GitHub Discussions](https://github.com/bluewave-labs/bluewave-uptime/discussions) (we check here from time to time)
+- [GitHub Discussions](https://github.com/bluewave-labs/Checkmate/discussions) (we check here from time to time)
 
 Feel free to ask questions or share your ideas - we'd love to hear from you!
 
@@ -179,7 +177,7 @@ Here's how you can contribute:
   <img src="https://contrib.rocks/image?repo=bluewave-labs/checkmate" />
 </a>
 
-[![Star History Chart](https://api.star-history.com/svg?repos=bluewave-labs/checkmate&type=Date)](https://star-history.com/#bluewave-labs/bluewave-uptime&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=bluewave-labs/checkmate&type=Date)](https://star-history.com/#bluewave-labs/Checkmate&Date)
 
 ## Our sponsors
 
