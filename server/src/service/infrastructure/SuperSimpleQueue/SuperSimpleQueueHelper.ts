@@ -1,6 +1,13 @@
 const SERVICE_NAME = "JobQueueHelper";
 import type { Monitor } from "@/types/monitor.js";
 import { supportsGeoCheck } from "@/types/monitor.js";
+import { Queue, Worker } from "bullmq";
+
+type EscalationJobData = {
+	monitorId: string;
+	channelId: string;
+	teamId: string;
+};
 import { AppError } from "@/utils/AppError.js";
 import {
 	ICheckService,
@@ -11,7 +18,7 @@ import {
 	IncidentService,
 	type IGeoChecksService,
 } from "@/service/index.js";
-import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type StatusChangeResult } from "@/types/index.js";
+import { CHECK_TTL_SENTINEL, type MaintenanceWindow, type MonitorStatusResponse, type StatusChangeResult } from "@/types/index.js";
 import {
 	IMaintenanceWindowsRepository,
 	IMonitorsRepository,
@@ -23,6 +30,7 @@ import {
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import { bullmqRedisConnection } from "@/config/redis.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
@@ -31,6 +39,7 @@ export interface ISuperSimpleQueueHelper {
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
+	removeEscalationJob(monitorId: string): Promise<void>;
 }
 
 export interface MonitorActionDecision {
@@ -66,6 +75,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private escalationQueue: Queue<EscalationJobData>;
+	private escalationWorker: Worker<EscalationJobData>;
 
 	constructor(
 		logger: ILogger,
@@ -101,6 +112,95 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+
+		this.escalationQueue = new Queue<EscalationJobData>("escalation", { connection: bullmqRedisConnection });
+
+		this.escalationWorker = new Worker<EscalationJobData>(
+			"escalation",
+			async (job) => {
+				const { monitorId, channelId, teamId } = job.data;
+				this.logger.info({
+					message: `Escalation worker received job ${job.id ?? "unknown"} for monitor ${monitorId}`,
+					service: SERVICE_NAME,
+					method: "escalationWorker",
+					details: { monitorId, channelId, teamId, jobId: job.id },
+				});
+
+				// Bail early if the incident resolved before the delay elapsed
+				const activeIncident = await this.incidentsRepository.findActiveByMonitorId(monitorId, teamId);
+				if (!activeIncident) {
+					this.logger.info({
+						message: `Escalation fired but incident already resolved for monitor ${monitorId}`,
+						service: SERVICE_NAME,
+						method: "escalationWorker",
+					});
+					return;
+				}
+
+				// Fetch monitor — log clearly and abort if it no longer exists
+				let monitor: Monitor;
+				try {
+					monitor = await this.monitorsRepository.findById(monitorId, teamId);
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Escalation worker: monitor ${monitorId} not found — cannot send escalation alert`,
+						service: SERVICE_NAME,
+						method: "escalationWorker",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					return;
+				}
+
+				try {
+					// Validate the escalation channel still exists before dispatching
+					try {
+						await this.notificationsService.findById(channelId, teamId);
+					} catch (error: unknown) {
+						this.logger.error({
+							message: `Escalation worker: notification channel ${channelId} not found for monitor ${monitorId} — cannot send escalation alert`,
+							service: SERVICE_NAME,
+							method: "escalationWorker",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						return;
+					}
+
+					// Use the same notification path as real monitor-down alerts.
+					// Override notifications so only the escalation channel receives this alert.
+					const escalationMonitor: Monitor = { ...monitor, notifications: [channelId] };
+					const syntheticResponse: MonitorStatusResponse = {
+						monitorId,
+						teamId,
+						type: monitor.type,
+						status: false,
+						code: 0,
+						message: "Escalation alert: monitor has been down beyond the configured threshold",
+					};
+					const decision: MonitorActionDecision = {
+						shouldCreateIncident: false,
+						shouldResolveIncident: false,
+						shouldSendNotification: true,
+						incidentReason: "status_down",
+						notificationReason: "status_change",
+					};
+
+					await this.notificationsService.handleNotifications(escalationMonitor, syntheticResponse, decision);
+					this.logger.info({
+						message: `Escalation notification sent for monitor ${monitorId}`,
+						service: SERVICE_NAME,
+						method: "escalationWorker",
+					});
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Escalation worker: failed to send escalation alert for monitor ${monitorId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "escalationWorker",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			},
+			{ connection: bullmqRedisConnection }
+		);
 	}
 
 	get serviceName() {
@@ -177,6 +277,37 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 						stack: error instanceof Error ? error.stack : undefined,
 					});
 				});
+
+				// Step 8. Schedule or cancel escalation job (best effort)
+				if (monitor.escalation) {
+					this.logger.debug({
+						message: `Escalation evaluation for monitor ${monitor.id}`,
+						service: SERVICE_NAME,
+						method: "getMonitorJob",
+						details: {
+							escalation: monitor.escalation,
+							shouldCreateIncident: decision.shouldCreateIncident,
+							shouldResolveIncident: decision.shouldResolveIncident,
+						},
+					});
+					if (decision.shouldCreateIncident) {
+						this.scheduleEscalationJob(monitor).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error scheduling escalation job for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+						});
+					} else if (decision.shouldResolveIncident) {
+						this.removeEscalationJob(monitor.id).catch((error: unknown) => {
+							this.logger.error({
+								message: `Error removing escalation job for monitor ${monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+							});
+						});
+					}
+				}
 			} catch (error: unknown) {
 				this.logger.warn({
 					message: error instanceof Error ? error.message : "Unknown error",
@@ -187,6 +318,47 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 				throw error;
 			}
 		};
+	};
+
+	private scheduleEscalationJob = async (monitor: Monitor): Promise<void> => {
+		if (!monitor.escalation) return;
+		const delayMs = monitor.escalation.delayMinutes * 60 * 1000;
+		const jobId = `escalation-${monitor.id}`;
+		this.logger.info({
+			message: `Adding escalation job for monitor ${monitor.id}`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalationJob",
+			details: { delayMs, jobId },
+		});
+		await this.escalationQueue.add(
+			"escalation",
+			{ monitorId: monitor.id, channelId: monitor.escalation.channelId, teamId: monitor.teamId },
+			{
+				delay: delayMs,
+				// Deterministic ID prevents duplicate jobs if the monitor goes down repeatedly
+				// before the first escalation fires
+				jobId,
+				removeOnComplete: true,
+				removeOnFail: false,
+			}
+		);
+		this.logger.info({
+			message: `Escalation job scheduled for monitor ${monitor.id} (delay: ${monitor.escalation.delayMinutes}m)`,
+			service: SERVICE_NAME,
+			method: "scheduleEscalationJob",
+		});
+	};
+
+	removeEscalationJob = async (monitorId: string): Promise<void> => {
+		const job = await this.escalationQueue.getJob(`escalation-${monitorId}`);
+		if (job) {
+			await job.remove();
+			this.logger.info({
+				message: `Escalation job removed for monitor ${monitorId}`,
+				service: SERVICE_NAME,
+				method: "removeEscalationJob",
+			});
+		}
 	};
 
 	getCleanupOrphanedJob = () => {

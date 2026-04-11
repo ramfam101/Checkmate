@@ -32,6 +32,7 @@ import {
 import { SPACING, LAYOUT } from "@/Utils/Theme/constants";
 import { useGet, usePost, usePatch, useDelete } from "@/Hooks/UseApi";
 import { useMonitorForm } from "@/Hooks/useMonitorForm";
+import { EscalationRulesPanel } from "./EscalationRulesPanel";
 import {
 	type Monitor,
 	type MonitorType,
@@ -212,6 +213,13 @@ const CreateMonitorPage = () => {
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
+	const [escalationEnabled, setEscalationEnabled] = useState(false);
+	const [escalationDelayMinutes, setEscalationDelayMinutes] = useState("15");
+	const [escalationChannelId, setEscalationChannelId] = useState("");
+	const [escalationErrors, setEscalationErrors] = useState<{
+		delayMinutes?: string;
+		channelId?: string;
+	}>({});
 
 	useEffect(() => {
 		clearErrors();
@@ -222,8 +230,27 @@ const CreateMonitorPage = () => {
 		[watchedType, t]
 	);
 
-	const { post, loading: isCreating } = usePost<MonitorFormData, Monitor>();
-	const { patch, loading: isUpdating } = usePatch<MonitorFormData, Monitor>();
+	const escalationChannels = useMemo(
+		() =>
+			(notifications ?? []).map((channel) => ({
+				_id: channel.id,
+				name: channel.notificationName,
+			})),
+		[notifications]
+	);
+
+	const { post, loading: isCreating } = usePost<
+		MonitorFormData & {
+			escalation?: { delayMinutes: number; channelId: string };
+		},
+		Monitor
+	>();
+	const { patch, loading: isUpdating } = usePatch<
+		MonitorFormData & {
+			escalation?: { delayMinutes: number; channelId: string };
+		},
+		Monitor
+	>();
 	const isSubmitting = isCreating || isUpdating;
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -251,12 +278,69 @@ const CreateMonitorPage = () => {
 		setIsDeleteDialogOpen(false);
 	};
 
+	useEffect(() => {
+		const escalationData = (existingMonitor as Monitor & {
+			escalation?: { delayMinutes: number; channelId: string };
+		})?.escalation;
+		if (!escalationData) {
+			setEscalationEnabled(false);
+			setEscalationDelayMinutes("15");
+			setEscalationChannelId("");
+			setEscalationErrors({});
+			return;
+		}
+
+		setEscalationEnabled(true);
+		setEscalationDelayMinutes(String(escalationData.delayMinutes));
+		setEscalationChannelId(escalationData.channelId);
+		setEscalationErrors({});
+	}, [existingMonitor]);
+
+	const validateEscalation = () => {
+		if (!escalationEnabled) {
+			setEscalationErrors({});
+			return true;
+		}
+
+		const nextErrors: { delayMinutes?: string; channelId?: string } = {};
+		const delay = Number(escalationDelayMinutes);
+
+		if (!Number.isInteger(delay) || delay < 1) {
+			nextErrors.delayMinutes = "Delay must be a positive integer";
+		}
+
+		if (!escalationChannelId) {
+			nextErrors.channelId = "Please select an escalation channel";
+		}
+
+		setEscalationErrors(nextErrors);
+		return Object.keys(nextErrors).length === 0;
+	};
+
 	const onSubmit = async (data: MonitorFormData) => {
+		if (!validateEscalation()) {
+			return;
+		}
+
+		const payload: MonitorFormData & {
+			escalation?: { delayMinutes: number; channelId: string };
+		} = {
+			...data,
+			...(escalationEnabled
+				? {
+						escalation: {
+							delayMinutes: Number(escalationDelayMinutes),
+							channelId: escalationChannelId,
+						},
+					}
+				: {}),
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, payload);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", payload);
 		}
 
 		if (result?.success) {
@@ -1043,6 +1127,48 @@ const CreateMonitorPage = () => {
 					}
 				/>
 			)}
+
+			<ConfigBox
+				title="Escalation"
+				subtitle="Configure delayed escalation to another channel if the incident remains unacknowledged."
+				rightContent={
+					<EscalationRulesPanel
+						enabled={escalationEnabled}
+						delayMinutes={escalationDelayMinutes}
+						channelId={escalationChannelId}
+						channels={escalationChannels}
+						errors={escalationErrors}
+						onToggle={(enabled) => {
+							setEscalationEnabled(enabled);
+							if (!enabled) {
+								setEscalationErrors({});
+							}
+						}}
+						onDelayMinutesChange={(value) => {
+							setEscalationDelayMinutes(value);
+							if (escalationEnabled) {
+								const delay = Number(value);
+								setEscalationErrors((prev) => ({
+									...prev,
+									delayMinutes:
+										Number.isInteger(delay) && delay > 0
+											? undefined
+											: "Delay must be a positive integer",
+								}));
+							}
+						}}
+						onChannelChange={(value) => {
+							setEscalationChannelId(value);
+							if (escalationEnabled) {
+								setEscalationErrors((prev) => ({
+									...prev,
+									channelId: value ? undefined : "Please select an escalation channel",
+								}));
+							}
+						}}
+					/>
+				}
+			/>
 
 			<Stack
 				direction="row"
