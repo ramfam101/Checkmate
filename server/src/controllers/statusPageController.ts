@@ -119,7 +119,7 @@ class StatusPageController implements IStatusPageController {
 				const normalizedChecks = NormalizeData(monitor.recentChecks, 10, 100);
 				if (!showURL) {
 					// eslint-disable-next-line @typescript-eslint/no-unused-vars
-					const { url, port, secret, notifications, ...rest } = monitor;
+					const { url, port, secret, notificationConfig, ...rest } = monitor;
 					return { ...rest, checks: normalizedChecks };
 				}
 				return { ...monitor, checks: normalizedChecks };

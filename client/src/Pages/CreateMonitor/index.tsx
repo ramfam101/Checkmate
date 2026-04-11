@@ -227,6 +227,8 @@ const CreateMonitorPage = () => {
 	const isSubmitting = isCreating || isUpdating;
 	// Delete functionality
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [escalationDelay, setEscalationDelay] = useState<number>(3);
+	const [escalationChannel, setEscalationChannel] = useState<Notification | null>(null);
 	const { deleteFn, loading: isDeleting } = useDelete();
 
 	const handleDeleteClick = () => {

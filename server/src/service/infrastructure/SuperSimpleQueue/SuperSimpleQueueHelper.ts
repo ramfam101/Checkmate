@@ -20,14 +20,17 @@ import {
 	IChecksRepository,
 	IIncidentsRepository,
 	IGeoChecksRepository,
+	INotificationsRepository,
 } from "@/repositories/index.js";
 import { ILogger } from "@/utils/logger.js";
 import { IBufferService } from "@/service/index.js";
+import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
 
 export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationJob(): (escalationData: { incidentId: string; monitorId: string; channelId: string; teamId: string }) => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -66,6 +69,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 	private incidentsRepository: IIncidentsRepository;
 	private geoChecksService: IGeoChecksService;
 	private geoChecksRepository: IGeoChecksRepository;
+	private notificationsRepository: INotificationsRepository;
+	private notificationMessageBuilder: INotificationMessageBuilder;
 
 	constructor(
 		logger: ILogger,
@@ -83,7 +88,9 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		checksRepository: IChecksRepository,
 		incidentsRepository: IIncidentsRepository,
 		geoChecksService: IGeoChecksService,
-		geoChecksRepository: IGeoChecksRepository
+		geoChecksRepository: IGeoChecksRepository,
+		notificationsRepository: INotificationsRepository,
+		notificationMessageBuilder: INotificationMessageBuilder
 	) {
 		this.logger = logger;
 		this.networkService = networkService;
@@ -101,6 +108,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 		this.incidentsRepository = incidentsRepository;
 		this.geoChecksService = geoChecksService;
 		this.geoChecksRepository = geoChecksRepository;
+		this.notificationsRepository = notificationsRepository;
+		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
 	get serviceName() {
@@ -350,6 +359,75 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				// Don't throw - geo check failures shouldn't crash the job scheduler
+			}
+		};
+	};
+
+	getEscalationJob = () => {
+		return async (escalationData: { incidentId: string; monitorId: string; channelId: string; teamId: string }) => {
+			try {
+				const { incidentId, monitorId, channelId, teamId } = escalationData;
+
+				// Check if incident is still active
+				const incident = await this.incidentsRepository.findById(incidentId, teamId);
+				if (!incident || !incident.status) {
+					// Incident is resolved or doesn't exist, no escalation needed
+					this.logger.debug({
+						message: `Incident ${incidentId} is no longer active, skipping escalation`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+					return;
+				}
+
+				// Get the escalation notification
+				const escalationNotification = await this.notificationsRepository.findById(channelId, teamId);
+				if (!escalationNotification) {
+					this.logger.warn({
+						message: `Escalation notification ${channelId} not found`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+					return;
+				}
+
+				// Get monitor for context
+				const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+				if (!monitor) {
+					this.logger.warn({
+						message: `Monitor ${monitorId} not found for escalation`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+					return;
+				}
+
+				// Send escalation notification
+				const settings = this.settingsService.getSettings();
+				const clientHost = settings.clientHost || "Host not defined";
+				const notificationMessage = this.notificationMessageBuilder.buildEscalationMessage(incident, monitor, clientHost);
+
+				const success = await this.notificationsService.send(escalationNotification, monitor, null, null, notificationMessage);
+				if (success) {
+					this.logger.info({
+						message: `Escalation notification sent for incident ${incidentId} to channel ${channelId}`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+				} else {
+					this.logger.warn({
+						message: `Failed to send escalation notification for incident ${incidentId}`,
+						service: SERVICE_NAME,
+						method: "getEscalationJob",
+					});
+				}
+			} catch (error: unknown) {
+				this.logger.error({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
 			}
 		};
 	};

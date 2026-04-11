@@ -1,5 +1,5 @@
 import { Schema, model, Types } from "mongoose";
-import type { Monitor, MonitorMatchMethod, CheckSnapshot } from "@/types/monitor.js";
+import type { Monitor, MonitorMatchMethod, CheckSnapshot, MonitorNotificationConfig } from "@/types/monitor.js";
 import { MonitorTypes, MonitorStatuses } from "@/types/monitor.js";
 import type {
 	CheckAudits,
@@ -18,11 +18,11 @@ type CheckSnapshotDocument = Omit<CheckSnapshot, "createdAt"> & { createdAt: Dat
 
 type MonitorDocumentBase = Omit<
 	Monitor,
-	"id" | "userId" | "teamId" | "notifications" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
+	"id" | "userId" | "teamId" | "notificationConfig" | "selectedDisks" | "statusWindow" | "recentChecks" | "createdAt" | "updatedAt"
 > & {
 	statusWindow: boolean[];
 	recentChecks: CheckSnapshotDocument[];
-	notifications: Types.ObjectId[];
+	notificationConfig: MonitorNotificationConfig[];
 	selectedDisks: string[];
 	matchMethod?: MonitorMatchMethod;
 };
@@ -173,6 +173,20 @@ const snapshotAuditsSchema = new Schema<CheckAudits>(
 	{ _id: false }
 );
 
+const notificationConfigSchema = new Schema<MonitorNotificationConfig>(
+	{
+		notificationId: {
+			type: String,
+			required: true,
+		},
+		escalation: {
+			delayMinutes: { type: Number },
+			channelId: { type: String },
+		},
+	},
+	{ _id: false }
+);
+
 const checkSnapshotSchema = new Schema<CheckSnapshotDocument>(
 	{
 		id: { type: String, required: true },
@@ -278,12 +292,7 @@ const MonitorSchema = new Schema<MonitorDocument>(
 			type: Number,
 			default: undefined,
 		},
-		notifications: [
-			{
-				type: Schema.Types.ObjectId,
-				ref: "Notification",
-			},
-		],
+		notificationConfig: [notificationConfigSchema],
 		secret: {
 			type: String,
 		},

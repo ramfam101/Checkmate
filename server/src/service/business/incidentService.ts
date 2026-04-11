@@ -7,6 +7,7 @@ import type { IIncidentsRepository, IMonitorsRepository, IUsersRepository } from
 import type { Incident, IncidentSummary, User } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type { INotificationMessageBuilder } from "@/service/infrastructure/notificationMessageBuilder.js";
+import type { ISuperSimpleQueue } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueue.js";
 import type { ILogger } from "@/utils/logger.js";
 
 export interface IIncidentService {
@@ -39,6 +40,7 @@ export class IncidentService implements IIncidentService {
 	private monitorsRepository: IMonitorsRepository;
 	private usersRepository: IUsersRepository;
 	private notificationMessageBuilder: INotificationMessageBuilder;
+	private jobQueue?: ISuperSimpleQueue;
 
 	constructor(
 		logger: ILogger,
@@ -52,6 +54,10 @@ export class IncidentService implements IIncidentService {
 		this.monitorsRepository = monitorsRepository;
 		this.usersRepository = usersRepository;
 		this.notificationMessageBuilder = notificationMessageBuilder;
+	}
+
+	setJobQueue(jobQueue: ISuperSimpleQueue) {
+		this.jobQueue = jobQueue;
 	}
 
 	get serviceName() {
@@ -83,7 +89,7 @@ export class IncidentService implements IIncidentService {
 					message = this.buildThresholdBreachMessage(monitor, monitorStatusResponse);
 				}
 
-				const incident = {
+				const incidentData = {
 					monitorId: monitor.id,
 					teamId: monitor.teamId,
 					startTime: Date.now().toString(),
@@ -91,7 +97,12 @@ export class IncidentService implements IIncidentService {
 					statusCode,
 					message,
 				};
-				return await this.incidentsRepository.create(incident);
+				const incident = await this.incidentsRepository.create(incidentData);
+				
+				// Schedule escalation jobs if configured
+				await this.scheduleEscalations(monitor, incident);
+				
+				return incident;
 			}
 		}
 
@@ -172,6 +183,41 @@ export class IncidentService implements IIncidentService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			throw error;
+		}
+	};
+
+	private scheduleEscalations = async (monitor: Monitor, incident: Incident) => {
+		if (!this.jobQueue || !monitor.notificationConfig) {
+			return;
+		}
+
+		for (const config of monitor.notificationConfig) {
+			if (config.escalation) {
+				const delayMs = config.escalation.delayMinutes * 60 * 1000; // Convert minutes to milliseconds
+				const jobId = `escalation-${incident.id}-${config.notificationId}`;
+				
+				try {
+					await this.jobQueue.addDelayedJob(jobId, "escalation-job", delayMs, {
+						incidentId: incident.id,
+						monitorId: monitor.id,
+						channelId: config.escalation.channelId,
+						teamId: monitor.teamId,
+					});
+					
+					this.logger.info({
+						message: `Scheduled escalation job for incident ${incident.id} with delay ${config.escalation.delayMinutes} minutes`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalations",
+					});
+				} catch (error: unknown) {
+					this.logger.error({
+						message: `Failed to schedule escalation job: ${error instanceof Error ? error.message : "Unknown error"}`,
+						service: SERVICE_NAME,
+						method: "scheduleEscalations",
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+				}
+			}
 		}
 	};
 

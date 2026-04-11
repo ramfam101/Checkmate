@@ -43,6 +43,7 @@ export interface ISuperSimpleQueue {
 	readonly serviceName: string;
 	init(): Promise<boolean>;
 	addJob(monitorId: string, monitor: Monitor): Promise<void>;
+	addDelayedJob(jobId: string, template: string, delayMs: number, data: any): Promise<void>;
 	deleteJob(monitor: Monitor): Promise<void>;
 	pauseJob(monitor: Monitor): Promise<void>;
 	resumeJob(monitor: Monitor): Promise<void>;
@@ -91,6 +92,7 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 
 			this.scheduler.addTemplate("monitor-job", this.helper.getHeartbeatJob());
 			this.scheduler.addTemplate("geo-check-job", this.helper.getHeartbeatGeoJob());
+			this.scheduler.addTemplate("escalation-job", this.helper.getEscalationJob());
 			this.scheduler.addTemplate("cleanup-orphaned", this.helper.getCleanupOrphanedJob());
 			this.scheduler.addTemplate("cleanup-retention-job", this.helper.getCleanupRetentionJob());
 			const monitors = await this.monitorsRepository.findAll();
@@ -142,6 +144,20 @@ export class SuperSimpleQueue implements ISuperSimpleQueue {
 				data: monitor,
 			});
 		}
+	};
+
+	addDelayedJob = async (jobId: string, template: string, delayMs: number, data: any) => {
+		// For now, use setTimeout to schedule delayed jobs
+		// TODO: Replace with proper scheduler delayed job support if available
+		setTimeout(() => {
+			this.scheduler.addJob({
+				id: jobId,
+				template,
+				repeat: 0, // Run once
+				active: true,
+				data,
+			});
+		}, delayMs);
 	};
 
 	deleteJob = async (monitor: Monitor) => {
