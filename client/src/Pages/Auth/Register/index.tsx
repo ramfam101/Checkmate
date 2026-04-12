@@ -24,7 +24,7 @@ interface InviteVerifyResponse {
 const RegisterPage = () => {
 	const { t } = useTranslation();
 	const { schema, defaults } = useRegisterForm();
-	const { post, loading } = usePost<RegisterPayload, AuthResponse>();
+	const { loading } = usePost<RegisterPayload, AuthResponse>();
 	const dispatch = useDispatch();
 	const navigate = useNavigate();
 	const { token } = useParams<{ token?: string }>();

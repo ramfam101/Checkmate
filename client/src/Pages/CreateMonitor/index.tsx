@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useEffect } from "react";
 import { logger } from "@/Utils/logger";
 import { useParams, useLocation, useNavigate } from "react-router";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTheme } from "@mui/material";
 import Stack from "@mui/material/Stack";
@@ -199,7 +199,7 @@ const CreateMonitorPage = () => {
 	});
 
 	const form = useForm<MonitorFormData>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(schema) as unknown as Resolver<MonitorFormData>,
 		defaultValues: defaults,
 	});
 	const { control, watch, handleSubmit, clearErrors } = form;
