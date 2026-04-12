@@ -15,6 +15,12 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +54,49 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(
+		monitor: Monitor,
+		monitorStatusResponse: MonitorStatusResponse,
+		decision: MonitorActionDecision,
+		clientHost: string
+	): NotificationMessage {
+		const delayMinutes = monitor.escalationDelay ? Math.round(monitor.escalationDelay / 60000) : 0;
+		const downSinceStr = monitor.downSince ? new Date(monitor.downSince).toUTCString() : "unknown";
+
+		const content: NotificationContent = {
+			title: `Escalation Alert: ${monitor.name} Still Down`,
+			summary: `Monitor "${monitor.name}" has been down for more than ${delayMinutes} minute${delayMinutes !== 1 ? "s" : ""} and requires immediate attention.`,
+			details: [
+				`URL: ${monitor.url}`,
+				`Status: Down`,
+				`Type: ${monitor.type}`,
+				`Down Since: ${downSinceStr}`,
+				`Escalation Delay: ${delayMinutes} minute${delayMinutes !== 1 ? "s" : ""}`,
+				...(monitorStatusResponse.code ? [`Response Code: ${monitorStatusResponse.code}`] : []),
+				...(monitorStatusResponse.message ? [`Error: ${monitorStatusResponse.message}`] : []),
+			],
+			timestamp: new Date(),
+		};
+
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content,
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "status_change",
 			},
 		};
 	}

@@ -37,6 +37,7 @@ export interface MonitorActionDecision {
 	shouldCreateIncident: boolean;
 	shouldResolveIncident: boolean;
 	shouldSendNotification: boolean;
+	shouldSendEscalation: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
 	thresholdBreaches?: {
@@ -166,6 +167,22 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 							stack: error instanceof Error ? error.stack : undefined,
 						});
 					});
+				}
+
+				// Step 6b. Handle escalation notifications if delay threshold met
+				if (decision.shouldSendEscalation) {
+					// Mark escalation as fired before sending to prevent duplicate escalations
+					await this.monitorsRepository.updateById(statusChangeResult.monitor.id, statusChangeResult.monitor.teamId, { escalationFired: true });
+					this.notificationsService
+						.handleEscalationNotifications(statusChangeResult.monitor, status, decision)
+						.catch((error: unknown) => {
+							this.logger.error({
+								message: `Error sending escalation notifications for job ${statusChangeResult.monitor.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+								service: SERVICE_NAME,
+								method: "getMonitorJob",
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						});
 				}
 
 				// Step 7. Handle incidents (best effort, don't wait)
@@ -426,9 +443,25 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldCreateIncident: false,
 			shouldResolveIncident: false,
 			shouldSendNotification: false,
+			shouldSendEscalation: false,
 			incidentReason: null,
 			notificationReason: null,
 		};
+
+		// Check for escalation: monitor is currently down, has been for longer than escalationDelay,
+		// has escalation channels configured, and hasn't already fired escalation this downtime
+		if (
+			monitor.status === "down" &&
+			monitor.escalationDelay != null &&
+			monitor.escalationDelay > 0 &&
+			monitor.escalationNotifications &&
+			monitor.escalationNotifications.length > 0 &&
+			!monitor.escalationFired &&
+			monitor.downSince != null &&
+			Date.now() - monitor.downSince >= monitor.escalationDelay
+		) {
+			decision.shouldSendEscalation = true;
+		}
 
 		if (!statusChanged) {
 			return decision;
