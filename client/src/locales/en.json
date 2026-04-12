@@ -535,6 +535,9 @@
 						},
 						"percentage": {
 							"label": "What percentage of checks in the sliding window fail/succeed before monitor status changes?"
+						},
+						"escalationDelay": {
+							"label": "Escalation delay (minutes)"
 						}
 					},
 					"title": "Incidents"

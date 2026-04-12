@@ -191,9 +191,13 @@ export class StatusService implements IStatusService {
 		>,
 		check: Check
 	): Promise<StatusChangeResult> => {
+		console.log("updateMonitorStatus HIT");
 		try {
 			const { monitorId, teamId, status, code } = statusResponse;
 			const monitor = await this.monitorsRepository.findById(monitorId, teamId);
+			const now = Date.now(); 
+			const m = monitor as any; 
+			m._escalationStart ??= null; 
 
 			// Update running stats
 			this.updateRunningStats(monitor, statusResponse);
@@ -253,16 +257,19 @@ export class StatusService implements IStatusService {
 			const failures = monitor.statusWindow.filter((s) => s === false).length;
 			const failureRate = (failures / monitor.statusWindow.length) * 100;
 
-			// If threshold has been met and the monitor is not already down, mark down:
-			if (failureRate >= monitor.statusWindowThreshold && monitor.status !== "down") {
+		// If threshold has been met and the monitor is not already down, mark down:
+		if (failureRate >= monitor.statusWindowThreshold) {
+			if (!m._escalationStart) {
+				m._escalationStart = now;
+			}
+			const elapsed = now - m._escalationStart;
+			if (elapsed >= (monitor.escalationDelay ?? 0)) {
 				newStatus = "down";
-				statusChanged = true;
+				statusChanged = monitor.status !== "down";
 			}
-			// If the failure rate is below the threshold and the monitor is down, recover:
-			else if (failureRate < monitor.statusWindowThreshold && monitor.status === "down") {
-				newStatus = "up";
-				statusChanged = true;
-			}
+		} else {
+			m._escalationStart = undefined;
+		}
 
 			// Evaluate hardware threshold breaches (only for hardware monitors)
 			let thresholdBreaches: { cpu: boolean; memory: boolean; disk: boolean; temp: boolean } | undefined;

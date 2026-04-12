@@ -39,6 +39,7 @@ export interface MonitorActionDecision {
 	shouldSendNotification: boolean;
 	incidentReason: "status_down" | "threshold_breach" | null;
 	notificationReason: "status_change" | "threshold_breach" | null;
+	isEscalation?: boolean;
 	thresholdBreaches?: {
 		cpu?: boolean;
 		memory?: boolean;
@@ -428,9 +429,19 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			shouldSendNotification: false,
 			incidentReason: null,
 			notificationReason: null,
+			isEscalation: false,
 		};
 
 		if (!statusChanged) {
+			// Check if monitor is still down and escalation delay has been met
+			if (monitor.status === "down" && monitor._escalationStart && monitor.escalationDelay) {
+				const elapsed = Date.now() - monitor._escalationStart;
+				if (elapsed >= monitor.escalationDelay) {
+					decision.shouldSendNotification = true;
+					decision.notificationReason = "status_change";
+					decision.isEscalation = true;
+				}
+			}
 			return decision;
 		}
 
@@ -451,6 +462,8 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 			decision.shouldResolveIncident = true;
 			decision.shouldSendNotification = true;
 			decision.notificationReason = "status_change";
+			// Reset escalation when monitor recovers
+			monitor._escalationStart = undefined;
 		}
 
 		return decision;

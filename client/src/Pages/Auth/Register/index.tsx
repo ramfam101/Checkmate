@@ -24,7 +24,7 @@ interface InviteVerifyResponse {
 const RegisterPage = () => {
 	const { t } = useTranslation();
 	const { schema, defaults } = useRegisterForm();
-	const { post, loading } = usePost<RegisterPayload, AuthResponse>();
+	const { loading } = usePost<RegisterPayload, AuthResponse>();
 	const dispatch = useDispatch();
 	const navigate = useNavigate();
 	const { token } = useParams<{ token?: string }>();
@@ -73,7 +73,15 @@ const RegisterPage = () => {
 		if (token) {
 			payload.token = token;
 		}
-		const result = await post("/auth/register", payload);
+		const response = await fetch("http://localhost:52345/api/v1/auth/register", {
+    		method: "POST",
+  			headers: {
+    		"Content-Type": "application/json",
+  		},
+  		body: JSON.stringify(payload),
+});
+
+const result = await response.json();
 
 		if (result?.success) {
 			dispatch(setAuthState(result));
