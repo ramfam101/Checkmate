@@ -73,7 +73,15 @@ const RegisterPage = () => {
 		if (token) {
 			payload.token = token;
 		}
-		const result = await post("/auth/register", payload);
+		const response = await fetch("http://localhost:52345/api/v1/auth/register", {
+    		method: "POST",
+  			headers: {
+    		"Content-Type": "application/json",
+  		},
+  		body: JSON.stringify(payload),
+});
+
+const result = await response.json();
 
 		if (result?.success) {
 			dispatch(setAuthState(result));

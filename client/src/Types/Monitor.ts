@@ -48,6 +48,7 @@ export interface Monitor {
 	statusWindow: boolean[];
 	statusWindowSize: number;
 	statusWindowThreshold: number;
+	escalationDelay?: number;
 	type: MonitorType;
 	ignoreTlsErrors: boolean;
 	useAdvancedMatching: boolean;
