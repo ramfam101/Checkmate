@@ -11,7 +11,12 @@ const getBaseDefaults = (data?: Monitor | null) => ({
 	name: data?.name || "",
 	description: data?.description || "",
 	interval: data?.interval || 60000,
-	notifications: data?.notifications || [],
+	// `notifications` holds plain notification IDs (regular channels)
+	notifications: data?.notificationConfig
+		? data.notificationConfig.filter((c) => !c.escalation).map((c) => c.notificationId)
+		: data?.notifications || [],
+	// `notificationConfig` preserves escalation entries (and any explicit configs)
+	notificationConfig: data?.notificationConfig || [],
 	statusWindowSize: data?.statusWindowSize || 5,
 	statusWindowThreshold: data?.statusWindowThreshold || 60,
 	geoCheckEnabled: data?.geoCheckEnabled ?? false,
