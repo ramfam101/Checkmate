@@ -209,6 +209,14 @@ const CreateMonitorPage = () => {
 	}, [defaults, form]);
 
 	const watchedType = watch("type") as MonitorType;
+	const notificationOptions = useMemo(
+		() =>
+			(notifications ?? []).map((notification) => ({
+				...notification,
+				name: notification.notificationName,
+			})),
+		[notifications]
+	);
 
 	const watchedUseAdvancedMatching = watch("useAdvancedMatching") as boolean;
 	const watchGeoCheckEnabled = watch("geoCheckEnabled") as boolean;
@@ -705,11 +713,6 @@ const CreateMonitorPage = () => {
 						name="notifications"
 						control={control}
 						render={({ field }) => {
-							// Map notifications to have 'name' property for Autocomplete
-							const notificationOptions = (notifications ?? []).map((n) => ({
-								...n,
-								name: n.notificationName,
-							}));
 							const selectedNotifications = notificationOptions.filter((n) =>
 								(field.value ?? []).includes(n.id)
 							);
@@ -764,6 +767,64 @@ const CreateMonitorPage = () => {
 					/>
 				}
 			/>
+
+				<ConfigBox
+					title={t("pages.createMonitor.form.escalation.title")}
+					subtitle={t("pages.createMonitor.form.escalation.description")}
+					rightContent={
+						<Stack spacing={theme.spacing(LAYOUT.MD)}>
+							<Controller
+								name="escalationDelayMinutes"
+								control={control}
+								render={({ field, fieldState }) => (
+									<TextField
+										{...field}
+										value={field.value ?? ""}
+										onChange={(e) => {
+											const value = e.target.value;
+											field.onChange(value === "" ? undefined : Number(value));
+										}}
+										type="number"
+										fieldLabel={t("pages.createMonitor.form.escalation.option.delay.label")}
+										placeholder={t("pages.createMonitor.form.escalation.option.delay.placeholder")}
+										fullWidth
+										inputProps={{ min: 1, step: 1 }}
+										error={!!fieldState.error}
+										helperText={fieldState.error?.message ?? ""}
+									/>
+								)}
+							/>
+							<Controller
+								name="escalationNotificationId"
+								control={control}
+								render={({ field, fieldState }) => (
+									<Select
+										{...field}
+										value={field.value ?? ""}
+										onChange={(e) => {
+											const value = e.target.value;
+											field.onChange(value === "" ? undefined : value);
+										}}
+										fieldLabel={t("pages.createMonitor.form.escalation.option.channel.label")}
+										error={!!fieldState.error}
+									>
+										<MenuItem value="">
+											{t("pages.createMonitor.form.escalation.option.channel.placeholder")}
+										</MenuItem>
+										{notificationOptions.map((notification) => (
+											<MenuItem
+												key={notification.id}
+												value={notification.id}
+											>
+												{notification.notificationName}
+											</MenuItem>
+										))}
+									</Select>
+								)}
+							/>
+						</Stack>
+					}
+				/>
 
 			{(watchedType === "http" ||
 				watchedType === "grpc" ||

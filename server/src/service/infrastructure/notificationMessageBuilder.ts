@@ -1,4 +1,4 @@
-import type { HardwareStatusPayload, Monitor, MonitorStatusResponse } from "@/types/index.js";
+import type { HardwareStatusPayload, Incident, Monitor, MonitorStatusResponse } from "@/types/index.js";
 import type { MonitorActionDecision } from "@/service/infrastructure/SuperSimpleQueue/SuperSimpleQueueHelper.js";
 import type {
 	NotificationMessage,
@@ -15,6 +15,7 @@ export interface INotificationMessageBuilder {
 		decision: MonitorActionDecision,
 		clientHost: string
 	): NotificationMessage;
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string, delayMinutes: number): NotificationMessage;
 	extractThresholdBreaches(monitor: Monitor, monitorStatusResponse: MonitorStatusResponse): ThresholdBreach[];
 }
 
@@ -48,6 +49,43 @@ export class NotificationMessageBuilder implements INotificationMessageBuilder {
 			metadata: {
 				teamId: monitor.teamId,
 				notificationReason: decision.notificationReason || "status_change",
+			},
+		};
+	}
+
+	buildEscalationMessage(monitor: Monitor, incident: Incident, clientHost: string, delayMinutes: number): NotificationMessage {
+		return {
+			type: "escalation",
+			severity: "critical",
+			monitor: {
+				id: monitor.id,
+				name: monitor.name,
+				url: monitor.url,
+				type: monitor.type,
+				status: monitor.status,
+			},
+			content: {
+				title: `Escalation: ${monitor.name}`,
+				summary: `Monitor "${monitor.name}" is still down after ${delayMinutes} minute(s).`,
+				details: [
+					`URL: ${monitor.url}`,
+					`Status: Down`,
+					`Type: ${monitor.type}`,
+					`Incident started: ${new Date(incident.startTime).toISOString()}`,
+					`Escalation delay: ${delayMinutes} minute(s)`,
+					`Dashboard: ${clientHost}`,
+				],
+				incident: {
+					id: incident.id,
+					url: `${clientHost}/incidents/${incident.id}`,
+					createdAt: new Date(incident.startTime),
+				},
+				timestamp: new Date(),
+			},
+			clientHost,
+			metadata: {
+				teamId: monitor.teamId,
+				notificationReason: "escalation",
 			},
 		};
 	}

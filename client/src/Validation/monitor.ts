@@ -21,6 +21,8 @@ const baseSchema = z.object({
 		.number({ message: "Threshold percentage is required" })
 		.min(1, "Incident percentage must be at least 1")
 		.max(100, "Incident percentage must be at most 100"),
+	escalationDelayMinutes: z.number().int().min(1, "Escalation delay must be at least 1 minute").optional(),
+	escalationNotificationId: z.string().min(1, "Escalation notification channel is required").optional(),
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z
@@ -133,7 +135,26 @@ export const monitorSchema = z.discriminatedUnion("type", [
 	pagespeedSchema,
 	hardwareSchema,
 	websocketSchema,
-]);
+]).superRefine((data, ctx) => {
+	const hasDelay = data.escalationDelayMinutes !== undefined && data.escalationDelayMinutes !== null;
+	const hasChannel = Boolean(data.escalationNotificationId);
+
+	if (hasDelay && !hasChannel) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			message: "Escalation notification channel is required",
+			path: ["escalationNotificationId"],
+		});
+	}
+
+	if (hasChannel && !hasDelay) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			message: "Escalation delay must be at least 1 minute",
+			path: ["escalationDelayMinutes"],
+		});
+	}
+});
 
 export type MonitorFormData = z.infer<typeof monitorSchema>;
 

@@ -293,7 +293,13 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ $or: [{ notifications: notificationId }, { escalationNotificationId: new mongoose.Types.ObjectId(notificationId) }] },
+			{
+				$pull: { notifications: notificationId },
+				$unset: { escalationNotificationId: "" },
+			}
+		);
 	};
 
 	updateNotifications = async (
@@ -374,6 +380,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationNotificationId: doc.escalationNotificationId ? toStringId(doc.escalationNotificationId) : undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -433,6 +441,8 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
 			notifications: notificationIds,
+			escalationDelayMinutes: doc.escalationDelayMinutes ?? undefined,
+			escalationNotificationId: doc.escalationNotificationId ? toStringId(doc.escalationNotificationId) : undefined,
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,

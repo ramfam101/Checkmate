@@ -28,6 +28,7 @@ export interface ISuperSimpleQueueHelper {
 	readonly serviceName: string;
 	getHeartbeatJob(): (monitor: Monitor) => Promise<void>;
 	getHeartbeatGeoJob(): (monitor: Monitor) => Promise<void>;
+	getEscalationSweepJob(): () => Promise<void>;
 	getCleanupOrphanedJob(): () => Promise<void>;
 	getCleanupRetentionJob(): () => Promise<void>;
 	isInMaintenanceWindow(monitorId: string, teamId: string): Promise<boolean>;
@@ -350,6 +351,58 @@ export class SuperSimpleQueueHelper implements ISuperSimpleQueueHelper {
 					stack: error instanceof Error ? error.stack : undefined,
 				});
 				// Don't throw - geo check failures shouldn't crash the job scheduler
+			}
+		};
+	};
+
+	getEscalationSweepJob = () => {
+		return async () => {
+			try {
+				const activeIncidents = await this.incidentsRepository.findActive();
+				if (!activeIncidents.length) {
+					return;
+				}
+
+				for (const incident of activeIncidents) {
+					try {
+						if (incident.escalationSentAt) {
+							continue;
+						}
+
+						const monitor = await this.monitorsRepository.findById(incident.monitorId, incident.teamId);
+						if (!monitor.escalationNotificationId || !monitor.escalationDelayMinutes) {
+							continue;
+						}
+
+						const incidentStartTime = new Date(incident.startTime).getTime();
+						const delayInMs = monitor.escalationDelayMinutes * 60 * 1000;
+						if (Date.now() - incidentStartTime < delayInMs) {
+							continue;
+						}
+
+						const sent = await this.notificationsService.sendEscalationNotification(monitor, incident);
+						if (sent) {
+							await this.incidentsRepository.updateById(incident.id, incident.teamId, {
+								escalationSentAt: new Date().toISOString(),
+							});
+						}
+					} catch (error: unknown) {
+						this.logger.warn({
+							message: error instanceof Error ? error.message : "Unknown error",
+							service: SERVICE_NAME,
+							method: "getEscalationSweepJob",
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+					}
+				}
+			} catch (error: unknown) {
+				this.logger.warn({
+					message: error instanceof Error ? error.message : "Unknown error",
+					service: SERVICE_NAME,
+					method: "getEscalationSweepJob",
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				throw error;
 			}
 		};
 	};
