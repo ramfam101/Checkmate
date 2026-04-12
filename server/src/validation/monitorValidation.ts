@@ -67,6 +67,8 @@ export const createMonitorBodyValidation = z.object({
 	diskAlertThreshold: z.number().optional(),
 	tempAlertThreshold: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationDelayMinutes: z.number().int().min(1).optional(),
+	escalationNotificationId: z.string().optional(),
 	secret: z.string().optional(),
 	jsonPath: z.union([z.string(), z.literal("")]).optional(),
 	expectedValue: z.union([z.string(), z.literal("")]).optional(),
@@ -78,6 +80,17 @@ export const createMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+}).superRefine((data, ctx) => {
+	const hasDelay = data.escalationDelayMinutes !== undefined && data.escalationDelayMinutes !== null;
+	const hasChannel = Boolean(data.escalationNotificationId);
+
+	if (hasDelay && !hasChannel) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escalation notification channel is required", path: ["escalationNotificationId"] });
+	}
+
+	if (hasChannel && !hasDelay) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escalation delay must be at least 1 minute", path: ["escalationDelayMinutes"] });
+	}
 });
 
 export const editMonitorBodyValidation = z.object({
@@ -89,6 +102,8 @@ export const editMonitorBodyValidation = z.object({
 	description: z.union([z.string(), z.literal("")]).optional(),
 	interval: z.number().optional(),
 	notifications: z.array(z.string()).optional(),
+	escalationDelayMinutes: z.number().int().min(1).optional(),
+	escalationNotificationId: z.string().optional(),
 	secret: z.string().optional(),
 	ignoreTlsErrors: z.boolean().optional(),
 	useAdvancedMatching: z.boolean().optional(),
@@ -107,6 +122,17 @@ export const editMonitorBodyValidation = z.object({
 	geoCheckEnabled: z.boolean().optional(),
 	geoCheckLocations: z.array(z.enum(GeoContinents)).optional(),
 	geoCheckInterval: z.number().min(300000).optional(),
+}).superRefine((data, ctx) => {
+	const hasDelay = data.escalationDelayMinutes !== undefined && data.escalationDelayMinutes !== null;
+	const hasChannel = Boolean(data.escalationNotificationId);
+
+	if (hasDelay && !hasChannel) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escalation notification channel is required", path: ["escalationNotificationId"] });
+	}
+
+	if (hasChannel && !hasDelay) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escalation delay must be at least 1 minute", path: ["escalationDelayMinutes"] });
+	}
 });
 
 export const pauseMonitorParamValidation = z.object({
@@ -144,6 +170,8 @@ const importedMonitorSchema = z.object({
 	interval: z.number().default(60000),
 	uptimePercentage: z.number().optional(),
 	notifications: z.array(z.string()).default([]),
+	escalationDelayMinutes: z.number().int().min(1).optional(),
+	escalationNotificationId: z.string().optional(),
 	secret: z.string().optional(),
 	cpuAlertThreshold: z.number().default(100),
 	cpuAlertCounter: z.number().default(5),

@@ -60,6 +60,7 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			resolvedBy: doc.resolvedBy ? this.toStringId(doc.resolvedBy) : null,
 			resolvedByEmail: doc.resolvedByEmail ?? null,
 			comment: doc.comment ?? null,
+			escalationSentAt: doc.escalationSentAt ? this.toDateString(doc.escalationSentAt) : null,
 			createdAt: this.toDateString(doc.createdAt),
 			updatedAt: this.toDateString(doc.updatedAt),
 		};
@@ -113,6 +114,11 @@ class MongoIncidentRepository implements IIncidentsRepository {
 			return null;
 		}
 		return this.toEntity(incident);
+	};
+
+	findActive = async (): Promise<Incident[]> => {
+		const incidents = await IncidentModel.find({ status: true, escalationSentAt: null });
+		return this.mapDocuments(incidents);
 	};
 
 	findByTeamId = async (

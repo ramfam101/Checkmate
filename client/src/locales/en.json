@@ -543,6 +543,20 @@
 					"description": "Select the notification channels you want to use",
 					"title": "Notifications"
 				},
+				"escalation": {
+					"description": "Send a second notification to a chosen channel after the first alert has been sent.",
+					"option": {
+						"delay": {
+							"label": "Escalation delay (minutes)",
+							"placeholder": "e.g. 15"
+						},
+						"channel": {
+							"label": "Escalation channel",
+							"placeholder": "Select a notification channel"
+						}
+					},
+					"title": "Escalation"
+				},
 				"type": {
 					"description": "Select the type of check to perform",
 					"optionDockerDescription": "Use Docker to monitor if a container is running.",
