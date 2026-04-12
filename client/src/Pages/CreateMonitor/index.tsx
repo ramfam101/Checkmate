@@ -36,6 +36,7 @@ import {
 	type Monitor,
 	type MonitorType,
 	type GamesMap,
+	type EscalationRule,
 	supportsGeoCheck,
 } from "@/Types/Monitor";
 import type { Notification } from "@/Types/Notification";
@@ -758,6 +759,93 @@ const CreateMonitorPage = () => {
 											))}
 										</Stack>
 									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title="Escalation Rules"
+				subtitle="Configure delayed notifications when monitor stays down"
+				rightContent={
+					<Controller
+						name="escalationRules"
+						control={control}
+						render={({ field }) => {
+							const escalationRules = field.value ?? [];
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{escalationRules.map((rule: EscalationRule, index: number) => (
+										<Stack
+											key={index}
+											direction="row"
+											spacing={theme.spacing(LAYOUT.SM)}
+											alignItems="center"
+										>
+											<TextField
+												label="Delay (minutes)"
+												type="number"
+												value={rule.delayMinutes}
+												onChange={(e) => {
+													const newRules = [...escalationRules];
+													newRules[index] = {
+														...rule,
+														delayMinutes: parseInt(e.target.value) || 1,
+													};
+													field.onChange(newRules);
+												}}
+												size="small"
+												sx={{ width: 120 }}
+											/>
+											<Autocomplete
+												options={(notifications ?? []).map((n) => ({
+													...n,
+													name: n.notificationName,
+												}))}
+												value={
+													notifications?.find((n) => n.id === rule.notificationId) ? {
+														...notifications.find((n) => n.id === rule.notificationId)!,
+														name: notifications.find((n) => n.id === rule.notificationId)!.notificationName,
+													} : null
+												}
+												getOptionLabel={(option) => option.name}
+												onChange={(_, newValue) => {
+													const newRules = [...escalationRules];
+													newRules[index] = {
+														...rule,
+														notificationId: newValue?.id || "",
+													};
+													field.onChange(newRules);
+												}}
+												isOptionEqualToValue={(option, value) => option.id === value.id}
+												sx={{ flexGrow: 1 }}
+												size="small"
+											/>
+											<IconButton
+												size="small"
+												onClick={() => {
+													field.onChange(escalationRules.filter((_, i) => i !== index));
+												}}
+												aria-label="Remove escalation rule"
+											>
+												<Trash2 size={16} />
+											</IconButton>
+										</Stack>
+									))}
+									<Button
+										variant="outlined"
+										size="small"
+										onClick={() => {
+											field.onChange([
+												...escalationRules,
+												{ delayMinutes: 5, notificationId: "" },
+											]);
+										}}
+									>
+										Add Escalation Rule
+									</Button>
 								</Stack>
 							);
 						}}

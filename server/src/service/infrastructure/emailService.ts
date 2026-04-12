@@ -112,6 +112,16 @@ export class EmailService implements IEmailService {
 			config = transportConfig;
 		} else {
 			config = await this.settingsService.getDBSettings();
+			if (!config.systemEmailHost) {
+				config = {
+					...config,
+					systemEmailHost: process.env.SYSTEM_EMAIL_HOST,
+					systemEmailPort: process.env.SYSTEM_EMAIL_PORT ? Number(process.env.SYSTEM_EMAIL_PORT) : undefined,
+					systemEmailAddress: process.env.SYSTEM_EMAIL_ADDRESS,
+					systemEmailPassword: process.env.SYSTEM_EMAIL_PASSWORD,
+					systemEmailSecure: process.env.SYSTEM_EMAIL_SECURE === "true",
+				};
+			}
 		}
 		const {
 			systemEmailHost,
