@@ -252,11 +252,28 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		// Build notificationConfig expected by backend by combining regular notifications
+		// and any escalation entries from the notificationConfig form field.
+		const regularNotifications = data.notifications ?? [];
+		const escalationConfigs = (data.notificationConfig ?? []).filter((c) => c.escalation);
+
+		const notificationConfig = [
+			// regular notifications as simple entries
+			...regularNotifications.map((id: string) => ({ notificationId: id })),
+			// include escalation-configured entries (these already include escalation)
+			...escalationConfigs,
+		];
+
+		const submitData = {
+			...data,
+			notificationConfig,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, submitData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", submitData);
 		}
 
 		if (result?.success) {
