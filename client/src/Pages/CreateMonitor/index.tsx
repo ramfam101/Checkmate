@@ -252,11 +252,23 @@ const CreateMonitorPage = () => {
 	};
 
 	const onSubmit = async (data: MonitorFormData) => {
+		// Convert notifications array to notificationConfig entries
+		const notifications = data.notifications || [];
+		const notificationConfig = [
+			...notifications.map((notificationId: string) => ({ notificationId })),
+			...(data.notificationConfig || []).filter((config) => config.escalation), // Keep escalation entries
+		];
+
+		const submitData = {
+			...data,
+			notificationConfig,
+		};
+
 		let result;
 		if (isEditMode && monitorId) {
-			result = await patch(`/monitors/${monitorId}`, data);
+			result = await patch(`/monitors/${monitorId}`, submitData);
 		} else {
-			result = await post("/monitors", data);
+			result = await post("/monitors", submitData);
 		}
 
 		if (result?.success) {
@@ -756,6 +768,108 @@ const CreateMonitorPage = () => {
 													{index < selectedNotifications.length - 1 && <Divider />}
 												</Stack>
 											))}
+										</Stack>
+									)}
+								</Stack>
+							);
+						}}
+					/>
+				}
+			/>
+
+			<ConfigBox
+				title={t("pages.createMonitor.form.notifications.escalationRules.title")}
+				subtitle={t("pages.createMonitor.form.notifications.escalationRules.description")}
+				rightContent={
+					<Controller
+						name="notificationConfig"
+						control={control}
+						render={({ field }) => {
+							const notificationOptions = (notifications ?? []).map((n) => ({
+								...n,
+								name: n.notificationName,
+							}));
+
+							const escalationEntry = field.value?.find((e) => e.escalation);
+							const selectedChannelId = escalationEntry?.escalation?.channelId ?? null;
+							const delayMinutes = escalationEntry?.escalation?.delayMinutes ?? 3;
+							const selectedChannel =
+								notificationOptions.find((n) => n.id === selectedChannelId) ?? null;
+
+							// Local state for the delay input to ensure proper controlled behavior
+							const [localDelay, setLocalDelay] = useState(delayMinutes);
+
+							// Sync local state with form state
+							useEffect(() => {
+								setLocalDelay(delayMinutes);
+							}, [delayMinutes]);
+
+							const updateEscalation = (channelId: string | null, delay: number) => {
+								// notificationConfig should only contain escalation entries
+								if (!channelId) {
+									field.onChange([]);
+									return;
+								}
+								field.onChange([
+									{
+										notificationId: channelId,
+										escalation: { delayMinutes: delay, channelId },
+									},
+								]);
+							};
+
+							return (
+								<Stack spacing={theme.spacing(LAYOUT.MD)}>
+									{/* Escalate after (minutes) */}
+									<TextField
+										type="number"
+										fieldLabel={t(
+											"pages.createMonitor.form.notifications.escalationRules.option.escalateAfter.label"
+										)}
+										value={localDelay}
+										onChange={(e) => {
+											const val = Math.max(1, Number(e.target.value));
+											setLocalDelay(val);
+											updateEscalation(selectedChannelId, val);
+										}}
+										fullWidth
+										inputProps={{ min: 1 }}
+									/>
+
+									{/* Escalation notification channels */}
+									<Autocomplete
+										multiple={false}
+										options={notificationOptions}
+										value={selectedChannel}
+										getOptionLabel={(option) => option.name}
+										onChange={(
+											_: unknown,
+											newValue: (typeof notificationOptions)[0] | null
+										) => {
+											updateEscalation(newValue?.id ?? null, localDelay);
+										}}
+										isOptionEqualToValue={(option, value) => option.id === value.id}
+										fieldLabel={t(
+											"pages.createMonitor.form.notifications.escalationRules.option.channels.label"
+										)}
+									/>
+
+									{selectedChannel && (
+										<Stack
+											direction="row"
+											alignItems="center"
+											width="100%"
+										>
+											<Typography flexGrow={1}>
+												{selectedChannel.notificationName}
+											</Typography>
+											<IconButton
+												size="small"
+												onClick={() => updateEscalation(null, localDelay)}
+												aria-label="Remove escalation channel"
+											>
+												<Trash2 size={16} />
+											</IconButton>
 										</Stack>
 									)}
 								</Stack>

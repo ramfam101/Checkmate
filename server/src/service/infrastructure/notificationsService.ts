@@ -14,6 +14,7 @@ export interface INotificationsService {
 	updateById(id: string, teamId: string, updateData: Partial<Notification>): Promise<Notification>;
 	deleteById: (id: string, teamId: string) => Promise<Notification>;
 	handleNotifications: (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => Promise<boolean>;
+	send: (notification: Notification, monitor: Monitor, monitorStatusResponse: MonitorStatusResponse | null, decision: MonitorActionDecision | null, notificationMessage: NotificationMessage) => Promise<boolean>;
 
 	sendTestNotification: (notification: Partial<Notification>) => Promise<boolean>;
 	testAllNotifications: (notificationIds: string[]) => Promise<boolean>;
@@ -65,12 +66,12 @@ export class NotificationsService implements INotificationsService {
 		this.notificationMessageBuilder = notificationMessageBuilder;
 	}
 
-	private send = async (
+	send = async (
 		notification: Notification,
 		monitor: Monitor,
-		monitorStatusResponse: MonitorStatusResponse,
-		decision: MonitorActionDecision,
-		notificationMessage: NotificationMessage | undefined
+		monitorStatusResponse: MonitorStatusResponse | null,
+		decision: MonitorActionDecision | null,
+		notificationMessage: NotificationMessage
 	): Promise<boolean> => {
 		if (!notificationMessage) {
 			this.logger.warn({
@@ -108,7 +109,7 @@ export class NotificationsService implements INotificationsService {
 	};
 
 	private sendNotifications = async (monitor: Monitor, monitorStatusResponse: MonitorStatusResponse, decision: MonitorActionDecision) => {
-		const notificationIds = monitor.notifications ?? [];
+		const notificationIds = monitor.notificationConfig?.map(config => config.notificationId) ?? [];
 		const notifications = await this.notificationsRepository.findNotificationsByIds(notificationIds);
 
 		// Build notification message once for all notifications

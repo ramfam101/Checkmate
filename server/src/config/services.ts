@@ -262,10 +262,15 @@ export const initializeServices = async ({
 		checksRepository,
 		incidentsRepository,
 		geoChecksService,
-		geoChecksRepository
+		geoChecksRepository,
+		notificationsRepository,
+		notificationMessageBuilder
 	);
 
 	const superSimpleQueue = await SuperSimpleQueue.create(logger, superSimpleQueueHelper, monitorsRepository);
+
+	// Set jobQueue on incidentService to avoid circular dependency
+	incidentService.setJobQueue(superSimpleQueue);
 
 	// Business services
 	const userService = new UserService({

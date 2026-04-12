@@ -293,7 +293,10 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 	};
 
 	removeNotificationFromMonitors = async (notificationId: string): Promise<void> => {
-		await MonitorModel.updateMany({ notifications: notificationId }, { $pull: { notifications: notificationId } });
+		await MonitorModel.updateMany(
+			{ "notificationConfig.notificationId": notificationId },
+			{ $pull: { notificationConfig: { notificationId } } }
+		);
 	};
 
 	updateNotifications = async (
@@ -303,25 +306,25 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 		action: "add" | "remove" | "set"
 	): Promise<number> => {
 		let objectIds;
-		let notificationObjectIds;
 		try {
 			objectIds = monitorIds.map((id) => new mongoose.Types.ObjectId(id));
-			notificationObjectIds = notificationIds.map((id) => new mongoose.Types.ObjectId(id));
 		} catch {
-			throw new AppError({ message: "One or more monitor or notification IDs are invalid", status: 400 });
+			throw new AppError({ message: "One or more monitor IDs are invalid", status: 400 });
 		}
 		const filter = { _id: { $in: objectIds }, teamId: new mongoose.Types.ObjectId(teamId) };
 
 		let update;
 		switch (action) {
 			case "add":
-				update = { $addToSet: { notifications: { $each: notificationObjectIds } } };
+				const configsToAdd = notificationIds.map(notificationId => ({ notificationId }));
+				update = { $addToSet: { notificationConfig: { $each: configsToAdd } } };
 				break;
 			case "remove":
-				update = { $pull: { notifications: { $in: notificationObjectIds } } };
+				update = { $pull: { notificationConfig: { notificationId: { $in: notificationIds } } } };
 				break;
 			case "set":
-				update = { $set: { notifications: notificationObjectIds } };
+				const configsToSet = notificationIds.map(notificationId => ({ notificationId }));
+				update = { $set: { notificationConfig: configsToSet } };
 				break;
 			default:
 				throw new AppError({ message: `Invalid action: ${action}`, status: 400 });
@@ -350,8 +353,6 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification) => toStringId(notification));
-
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -373,7 +374,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			isActive: doc.isActive,
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
+			notificationConfig: doc.notificationConfig ?? [],
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
@@ -409,8 +410,6 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			return value instanceof Date ? value.toISOString() : value;
 		};
 
-		const notificationIds = (doc.notifications ?? []).map((notification: unknown) => toStringId(notification));
-
 		return {
 			id: toStringId(doc._id),
 			userId: toStringId(doc.userId),
@@ -432,7 +431,7 @@ class MongoMonitorsRepository implements IMonitorsRepository {
 			isActive: doc.isActive,
 			interval: doc.interval,
 			uptimePercentage: doc.uptimePercentage ?? undefined,
-			notifications: notificationIds,
+			notificationConfig: doc.notificationConfig ?? [],
 			secret: doc.secret ?? undefined,
 			cpuAlertThreshold: doc.cpuAlertThreshold,
 			cpuAlertCounter: doc.cpuAlertCounter,
